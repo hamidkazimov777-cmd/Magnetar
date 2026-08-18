@@ -97,6 +97,37 @@ export const useStore = create<State>()(
 
       hydrate: async () => {
         try {
+          // Connections live in SQLite (durable). Migrate any legacy localStorage
+          // connections into the DB on first run, then use the DB as the source.
+          const dbConns = await db.listConnections();
+          if (dbConns.length > 0) {
+            set({
+              connections: dbConns.map((c) => ({
+                id: c.id,
+                name: c.name,
+                kind: c.kind as Connection["kind"],
+                baseUrl: c.baseUrl,
+                scope: c.scope ?? undefined,
+                caPath: c.caPath ?? undefined,
+              })),
+            });
+          } else {
+            // migrate whatever was persisted in localStorage
+            for (const c of get().connections) {
+              void db
+                .saveConnection({
+                  id: c.id,
+                  name: c.name,
+                  kind: c.kind,
+                  baseUrl: c.baseUrl,
+                  scope: c.scope ?? null,
+                  caPath: c.caPath ?? null,
+                  createdAt: Date.now(),
+                })
+                .catch(() => {});
+            }
+          }
+
           const projects = await db.listProjects();
           set({ projects });
           const metas = await db.listSessions();
@@ -185,10 +216,22 @@ export const useStore = create<State>()(
           connections: [...s.connections, { ...c, id }],
           activeConnectionId: s.activeConnectionId ?? id,
         }));
+        void db
+          .saveConnection({
+            id,
+            name: c.name,
+            kind: c.kind,
+            baseUrl: c.baseUrl,
+            scope: c.scope ?? null,
+            caPath: c.caPath ?? null,
+            createdAt: Date.now(),
+          })
+          .catch(() => {});
         return id;
       },
 
-      removeConnection: (id) =>
+      removeConnection: (id) => {
+        void db.deleteConnection(id).catch(() => {});
         set((s) => {
           const connections = s.connections.filter((c) => c.id !== id);
           return {
@@ -197,7 +240,8 @@ export const useStore = create<State>()(
               s.activeConnectionId === id ? connections[0]?.id : s.activeConnectionId,
             activeModel: s.activeConnectionId === id ? undefined : s.activeModel,
           };
-        }),
+        });
+      },
 
       setActiveConnection: (id) =>
         set({ activeConnectionId: id, activeModel: undefined }),
@@ -342,15 +386,14 @@ export const useStore = create<State>()(
     }),
     {
       name: "magnetar-store",
-      // Canon (sessions) is in SQLite; only keep light preferences here.
+      // Canon (sessions) + connections live in SQLite; models re-warm at startup.
+      // Keep only small, non-critical preferences in localStorage.
       partialize: (s) => ({
-        connections: s.connections,
         activeConnectionId: s.activeConnectionId,
         activeModel: s.activeModel,
         adaptive: s.adaptive,
         agentMode: s.agentMode,
         workspaceRoot: s.workspaceRoot,
-        models: s.models,
         lang: s.lang,
         activeProjectId: s.activeProjectId,
       }),

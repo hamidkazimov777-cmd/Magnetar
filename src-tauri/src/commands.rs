@@ -2,7 +2,7 @@
 
 use crate::canon::{self, MessageRow, SessionMeta};
 use crate::workspace::{
-    self, KnowledgeEdge, KnowledgeNode, Project, Task, TimelineEvent,
+    self, ConnectionRow, KnowledgeEdge, KnowledgeNode, Project, Task, TimelineEvent,
 };
 use crate::keychain;
 use crate::providers::{
@@ -44,6 +44,23 @@ pub fn upsert_message(message: MessageRow) -> Result<(), String> {
 #[tauri::command]
 pub fn delete_session(id: String) -> Result<(), String> {
     canon::delete_session(&id)
+}
+
+// ---- Connections (durable, in SQLite) --------------------------------------
+
+#[tauri::command]
+pub fn list_connections() -> Result<Vec<ConnectionRow>, String> {
+    workspace::list_connections()
+}
+
+#[tauri::command]
+pub fn save_connection(connection: ConnectionRow) -> Result<(), String> {
+    workspace::save_connection(connection)
+}
+
+#[tauri::command]
+pub fn delete_connection(id: String) -> Result<(), String> {
+    workspace::delete_connection(&id)
 }
 
 // ---- Workspace (Projects, Tasks, Knowledge, Timeline) ----------------------

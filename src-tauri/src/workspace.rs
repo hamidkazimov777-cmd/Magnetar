@@ -2,6 +2,68 @@ use crate::db::with_conn;
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
+// --- Connections (durable provider connections) ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionRow {
+    pub id: String,
+    pub name: String,
+    pub kind: String,
+    pub base_url: String,
+    pub scope: Option<String>,
+    pub ca_path: Option<String>,
+    pub created_at: i64,
+}
+
+pub fn list_connections() -> Result<Vec<ConnectionRow>, String> {
+    with_conn(|c| {
+        let mut stmt = c
+            .prepare(
+                "SELECT id, name, kind, base_url, scope, ca_path, created_at \
+                 FROM connections ORDER BY created_at ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(ConnectionRow {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    kind: r.get(2)?,
+                    base_url: r.get(3)?,
+                    scope: r.get(4)?,
+                    ca_path: r.get(5)?,
+                    created_at: r.get(6)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    })
+}
+
+pub fn save_connection(c0: ConnectionRow) -> Result<(), String> {
+    with_conn(|c| {
+        c.execute(
+            "INSERT INTO connections (id, name, kind, base_url, scope, ca_path, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) \
+             ON CONFLICT(id) DO UPDATE SET \
+               name=excluded.name, kind=excluded.kind, base_url=excluded.base_url, \
+               scope=excluded.scope, ca_path=excluded.ca_path",
+            params![c0.id, c0.name, c0.kind, c0.base_url, c0.scope, c0.ca_path, c0.created_at],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+}
+
+pub fn delete_connection(id: &str) -> Result<(), String> {
+    with_conn(|c| {
+        c.execute("DELETE FROM connections WHERE id = ?1", params![id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+}
+
 // --- Projects ---
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

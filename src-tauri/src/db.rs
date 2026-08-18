@@ -98,6 +98,18 @@ pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
             created_at  INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_tevents_project ON timeline_events(project_id);
+
+        -- Provider connections (durable — не в хрупком localStorage). Ключи
+        -- по-прежнему в Keychain по connection id; здесь только метаданные.
+        CREATE TABLE IF NOT EXISTS connections (
+            id         TEXT PRIMARY KEY,
+            name       TEXT NOT NULL,
+            kind       TEXT NOT NULL,
+            base_url   TEXT NOT NULL,
+            scope      TEXT,
+            ca_path    TEXT,
+            created_at INTEGER NOT NULL
+        );
         "#,
     )
     .map_err(|e| e.to_string())?;

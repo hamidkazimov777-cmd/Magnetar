@@ -22,7 +22,22 @@ export interface MessageRow {
   createdAt: number;
 }
 
+export interface ConnectionRow {
+  id: string;
+  name: string;
+  kind: string;
+  baseUrl: string;
+  scope: string | null;
+  caPath: string | null;
+  createdAt: number;
+}
+
 export const db = {
+  listConnections: () => invoke<ConnectionRow[]>("list_connections"),
+  saveConnection: (connection: ConnectionRow) =>
+    invoke<void>("save_connection", { connection }),
+  deleteConnection: (id: string) => invoke<void>("delete_connection", { id }),
+
   listSessions: () => invoke<SessionMetaRow[]>("list_sessions"),
   loadMessages: (sessionId: string) =>
     invoke<MessageRow[]>("load_messages", { sessionId }),
