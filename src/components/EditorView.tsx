@@ -160,7 +160,7 @@ function TreeNode({
   );
 }
 
-export function EditorView() {
+export function EditorView({ embedded = false }: { embedded?: boolean }) {
   const t = useT();
   const workspaceRoot = useStore((s) => s.workspaceRoot);
   const setWorkspaceRoot = useStore((s) => s.setWorkspaceRoot);
@@ -245,7 +245,7 @@ export function EditorView() {
 
   return (
     <div className="flex h-full flex-1 flex-col">
-      <header className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-2.5">
+      <header className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--color-border)] px-4">
         <div className="flex items-center gap-2 text-sm">
           <button
             onClick={pickFolder}
@@ -327,8 +327,8 @@ export function EditorView() {
               style={{ height: "100%", fontSize: 13 }}
             />
           ) : (
-            <div className="grid h-full place-items-center text-sm text-[var(--color-text-dim)]">
-              {t("editorPickFile")}
+            <div className="grid h-full place-items-center text-center text-sm text-[var(--color-text-dim)]">
+              <div>{embedded ? t("workspaceEditorEmpty") : t("editorPickFile")}</div>
             </div>
           )}
         </div>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, KeyRound, Loader2, Plus, Trash2 } from "lucide-react";
+import { Check, KeyRound, Loader2, Plus, Trash2, Play } from "lucide-react";
 import { api } from "../lib/api";
 import { useStore } from "../lib/store";
 import {
@@ -23,6 +23,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const connections = useStore((s) => s.connections);
   const addConnection = useStore((s) => s.addConnection);
   const removeConnection = useStore((s) => s.removeConnection);
+  const setActive = useStore((s) => s.setActive);
+  const setModels = useStore((s) => s.setModels);
 
   const [kind, setKind] = useState<ProviderKind>("openai_compat");
   const [name, setName] = useState("OpenRouter");
@@ -33,6 +35,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [keyed, setKeyed] = useState<Record<string, boolean>>({});
+  const [testing, setTesting] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<Record<string, string>>({});
 
   useEffect(() => {
     (async () => {
@@ -95,6 +99,24 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     removeConnection(id);
   };
 
+  const testConnection = async (c: (typeof connections)[number]) => {
+    setTesting(c.id);
+    setTestResult((prev) => ({ ...prev, [c.id]: t("connectionTesting") }));
+    try {
+      const models = await api.listModels(c);
+      if (!models[0]) throw new Error(t("noModels"));
+      setModels(c.id, models);
+      setActive(c.id, models[0].id);
+      const answer = await api.complete(c, models[0].id, [{ id: "health", role: "user", content: "Reply exactly: OK", createdAt: 0 }]);
+      if (!/ok/i.test(answer)) throw new Error(answer.slice(0, 80));
+      setTestResult((prev) => ({ ...prev, [c.id]: t("connectionTestOk", { count: String(models.length), model: models[0].id }) }));
+    } catch (e) {
+      setTestResult((prev) => ({ ...prev, [c.id]: `${t("connectionTestFail")}: ${String(e).slice(0, 120)}` }));
+    } finally {
+      setTesting(null);
+    }
+  };
+
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-lg p-0 gap-0 border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)]">
@@ -109,7 +131,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               {connections.map((c) => (
                 <div
                   key={c.id}
-                  className="flex items-center justify-between rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2.5"
+                  className="flex flex-wrap items-center justify-between rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2.5"
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 truncate text-sm font-medium">
@@ -122,7 +144,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                       {c.baseUrl}
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
                     <span
                       className={cn(
                         "flex items-center gap-1 text-xs",
@@ -134,6 +156,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                       {keyed[c.id] ? <Check size={13} /> : <KeyRound size={13} />}
                       {keyed[c.id] ? t("keyInKeychain") : t("noKey")}
                     </span>
+                    <button onClick={() => void testConnection(c)} disabled={testing !== null} className="flex items-center gap-1 rounded-md border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)] disabled:opacity-40" title={t("connectionTest")}>
+                      {testing === c.id ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}{t("connectionTest")}
+                    </button>
                     <button
                       onClick={() => remove(c.id)}
                       className="rounded-lg p-1.5 text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)] hover:text-red-400"
@@ -141,6 +166,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                       <Trash2 size={15} />
                     </button>
                   </div>
+                  {testResult[c.id] && <p className={cn("mt-2 w-full text-xs", testResult[c.id].startsWith(t("connectionTestFail")) ? "text-red-400" : "text-emerald-400")}>{testResult[c.id]}</p>}
                 </div>
               ))}
             </div>

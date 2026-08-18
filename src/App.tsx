@@ -12,11 +12,12 @@ import { SubscriptionsView } from "./components/SubscriptionsView";
 import { EditorView } from "./components/EditorView";
 import { GitView } from "./components/GitView";
 import { TerminalView } from "./components/TerminalView";
+import { IdeWorkspace } from "./components/IdeWorkspace";
 import { useStore } from "./lib/store";
 import { api } from "./lib/api";
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState("chats");
+  const [activeTab, setActiveTab] = useState("workspace");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
@@ -41,6 +42,10 @@ export default function App() {
         try {
           const list = await api.listModels(c);
           useStore.getState().setModels(c.id, list);
+          const state = useStore.getState();
+          if (state.activeConnectionId === c.id && !state.activeModel && list[0]) {
+            state.setActiveModel(list[0].id);
+          }
         } catch {
           /* ignore — offline / bad key surfaces elsewhere */
         }
@@ -56,6 +61,9 @@ export default function App() {
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenGuide={() => setGuideOpen(true)}
       />
+      {activeTab === "workspace" && (
+        <IdeWorkspace onOpenSettings={() => setSettingsOpen(true)} onNavigate={setActiveTab} />
+      )}
       {activeTab === "chats" && (
         <ChatView
           onOpenSettings={() => setSettingsOpen(true)}

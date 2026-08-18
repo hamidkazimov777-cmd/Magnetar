@@ -130,3 +130,15 @@ React/TS/Tailwind), BYOK-чат с ИИ, код и доступ к машине.
   (x86_64, Intel macOS). Её можно открыть в Finder для ручного QA.
 - Не считать DMG актуальным: новая DMG-упаковка не завершилась в этом цикле.
   Перед передачей пользователю повторить Tauri build и проверить свежую дату DMG.
+
+### UX и модели — 2026-08-19
+
+- Default screen теперь `IdeWorkspace`: activity bar (56px) → Explorer/editor →
+  Agent panel. Главные файлы: `src/components/IdeWorkspace.tsx`, `EditorView.tsx`,
+  `ChatView.tsx`, `Sidebar.tsx`.
+- Ошибка «Нет подключения» при наличии connections исправлена в `src/lib/store.ts`:
+  hydrate выбирает первый валидный SQLite connection. `App.tsx` назначает первую
+  модель после успешного `/models`.
+- Для проверки пользователя: Settings → «Проверить» на нужном подключении. Это
+  делает настоящий `/models` и короткий completion, показывает конкретную ошибку
+  и активирует выбранную модель при успехе.

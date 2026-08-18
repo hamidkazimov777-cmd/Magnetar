@@ -101,16 +101,23 @@ export const useStore = create<State>()(
           // connections into the DB on first run, then use the DB as the source.
           const dbConns = await db.listConnections();
           if (dbConns.length > 0) {
-            set({
-              connections: dbConns.map((c) => ({
+            const connections = dbConns.map((c) => ({
                 id: c.id,
                 name: c.name,
                 kind: c.kind as Connection["kind"],
                 baseUrl: c.baseUrl,
                 scope: c.scope ?? undefined,
                 caPath: c.caPath ?? undefined,
-              })),
-            });
+              }));
+            // SQLite is the source of truth. A persisted active id can point to a
+            // connection that was deleted, or be absent after a WebView reset.
+            // Always promote a valid saved connection so the chat is usable.
+            set((s) => ({
+              connections,
+              activeConnectionId: connections.some((c) => c.id === s.activeConnectionId)
+                ? s.activeConnectionId
+                : connections[0]?.id,
+            }));
           } else {
             // migrate whatever was persisted in localStorage
             for (const c of get().connections) {

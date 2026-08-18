@@ -100,6 +100,7 @@ const ru: Dict = {
   onboardingProjectTitle: "Открыть проект", onboardingProjectText: "Выберите папку: код, Git и терминал будут готовы в одном месте.", onboardingReady: "Готово. Опишите задачу — или включите режим Агента для работы с проектом.",
   projectsTitle: "Проекты", projectsEmpty: "Проектов пока нет.", projectNew: "Новый проект", projectName: "Название проекта", projectSave: "Сохранить", projectDelete: "Удалить проект", projectDeleteConfirm: "Удалить этот проект?", projectSelect: "Выберите проект или создайте новый.",
   projectCto: "AI CTO", projectCtoText: "Проведёт аудит кодовой базы и предложит задачи для плана.", projectCtoAction: "Запустить аудит", projectCtoHint: "Чтобы запустить AI CTO, откройте «Чаты» и введите: /cto", projectDescription: "Описание", projectDescriptionHint: "О чём этот проект?", projectStack: "Технологии", projectStackHint: "Например: React, Tauri, Rust, SQLite", projectStandards: "Стандарты кода", projectStandardsHint: "Например: ранние возвраты, строго типизированные API", projectArchitecture: "Архитектурные заметки", projectArchitectureHint: "Ключевые паттерны и поток данных", projectDecisions: "Ключевые решения", projectDecisionsHint: "Зафиксированные решения и компромиссы",
+  workspace: "Рабочее пространство", workspaceEditorEmpty: "Откройте файл в Explorer или выберите папку проекта.", connectionTest: "Проверить", connectionTesting: "Проверяю…", connectionTestOk: "Готово: {count} моделей · выбрана {model}", connectionTestFail: "Не удалось проверить",
 };
 
 const en: Dict = {
@@ -191,6 +192,7 @@ const en: Dict = {
   onboardingProjectTitle: "Open a project", onboardingProjectText: "Pick a folder to prepare code, Git, and terminal in one place.", onboardingReady: "Ready. Describe a task—or turn on Agent mode to work with the project.",
   projectsTitle: "Projects", projectsEmpty: "No projects yet.", projectNew: "New project", projectName: "Project name", projectSave: "Save", projectDelete: "Delete project", projectDeleteConfirm: "Delete this project?", projectSelect: "Select a project or create a new one.",
   projectCto: "AI CTO", projectCtoText: "Audits the codebase and proposes roadmap tasks.", projectCtoAction: "Run audit", projectCtoHint: "To run AI CTO, open Chats and type: /cto", projectDescription: "Description", projectDescriptionHint: "What is this project about?", projectStack: "Tech stack", projectStackHint: "For example: React, Tauri, Rust, SQLite", projectStandards: "Coding standards", projectStandardsHint: "For example: early returns, strictly typed APIs", projectArchitecture: "Architecture notes", projectArchitectureHint: "Key patterns and data flow", projectDecisions: "Core decisions", projectDecisionsHint: "Recorded decisions and trade-offs",
+  workspace: "Workspace", workspaceEditorEmpty: "Open a file in Explorer or choose a project folder.", connectionTest: "Test", connectionTesting: "Testing…", connectionTestOk: "Ready: {count} models · selected {model}", connectionTestFail: "Test failed",
 };
 
 const es: Dict = {
@@ -282,6 +284,7 @@ const es: Dict = {
   onboardingProjectTitle: "Abrir un proyecto", onboardingProjectText: "Elige una carpeta para preparar código, Git y terminal en un solo lugar.", onboardingReady: "Listo. Describe una tarea o activa el modo Agente para trabajar con el proyecto.",
   projectsTitle: "Proyectos", projectsEmpty: "Aún no hay proyectos.", projectNew: "Nuevo proyecto", projectName: "Nombre del proyecto", projectSave: "Guardar", projectDelete: "Eliminar proyecto", projectDeleteConfirm: "¿Eliminar este proyecto?", projectSelect: "Selecciona un proyecto o crea uno.",
   projectCto: "AI CTO", projectCtoText: "Audita la base de código y propone tareas para el plan.", projectCtoAction: "Ejecutar auditoría", projectCtoHint: "Para ejecutar AI CTO, abre Chats y escribe: /cto", projectDescription: "Descripción", projectDescriptionHint: "¿De qué trata este proyecto?", projectStack: "Tecnologías", projectStackHint: "Por ejemplo: React, Tauri, Rust, SQLite", projectStandards: "Estándares de código", projectStandardsHint: "Por ejemplo: retornos tempranos, APIs estrictamente tipadas", projectArchitecture: "Notas de arquitectura", projectArchitectureHint: "Patrones clave y flujo de datos", projectDecisions: "Decisiones clave", projectDecisionsHint: "Decisiones y compromisos registrados",
+  workspace: "Espacio de trabajo", workspaceEditorEmpty: "Abre un archivo en Explorer o elige una carpeta de proyecto.", connectionTest: "Probar", connectionTesting: "Probando…", connectionTestOk: "Listo: {count} modelos · seleccionado {model}", connectionTestFail: "Error de prueba",
 };
 
 const DICTS: Record<Lang, Dict> = { ru, en, es };

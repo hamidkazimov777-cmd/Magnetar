@@ -1,4 +1,4 @@
-import { BookOpen, MessageSquarePlus, Settings, Trash2, FolderGit2, MessageSquare, ListTodo, Network, Clock, Globe, Code2, GitBranch, TerminalSquare } from "lucide-react";
+import { BookOpen, Settings, FolderGit2, MessageSquare, ListTodo, Network, Clock, Globe, Code2, GitBranch, TerminalSquare, PanelLeftOpen } from "lucide-react";
 import { useStore } from "../lib/store";
 import { useT, LANGS } from "../lib/i18n";
 import { LogoMark } from "./Logo";
@@ -16,30 +16,30 @@ export function Sidebar({
   onOpenGuide: () => void;
 }) {
   const t = useT();
-  const sessions = useStore((s) => s.sessions);
-  const activeSessionId = useStore((s) => s.activeSessionId);
-  const newSession = useStore((s) => s.newSession);
-  const selectSession = useStore((s) => s.selectSession);
-  const deleteSession = useStore((s) => s.deleteSession);
   const lang = useStore((s) => s.lang);
   const setLang = useStore((s) => s.setLang);
 
   return (
-    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)]">
+    <aside className="flex h-full w-14 shrink-0 flex-col items-center border-r border-[var(--color-border)] bg-[var(--color-surface)]">
       <div
         data-tauri-drag-region
-        className="flex items-center gap-2 px-4 pb-2 pt-9"
+        className="flex h-12 items-center justify-center"
       >
-        <LogoMark size={26} />
-        <span
-          className="text-sm font-light uppercase text-[var(--color-text)]"
-          style={{ letterSpacing: "0.28em" }}
-        >
-          Magnetar
-        </span>
+        <LogoMark size={27} />
       </div>
 
-      <div className="space-y-1 p-3">
+      <div className="flex w-full flex-col items-center gap-1 py-2">
+        <Nav icon={PanelLeftOpen} active={activeTab === "workspace"} label={t("workspace")} onClick={() => onTabChange("workspace")} />
+        <Nav icon={MessageSquare} active={activeTab === "chats"} label={t("chats")} onClick={() => onTabChange("chats")} />
+        <Nav icon={FolderGit2} active={activeTab === "projects"} label={t("projects")} onClick={() => onTabChange("projects")} />
+        <Nav icon={ListTodo} active={activeTab === "roadmap"} label={t("roadmap")} onClick={() => onTabChange("roadmap")} />
+        <Nav icon={Network} active={activeTab === "knowledge"} label={t("knowledgeGraph")} onClick={() => onTabChange("knowledge")} />
+        <Nav icon={Clock} active={activeTab === "timeline"} label={t("timeline")} onClick={() => onTabChange("timeline")} />
+        <Nav icon={GitBranch} active={activeTab === "git"} label={t("git")} onClick={() => onTabChange("git")} />
+        <Nav icon={TerminalSquare} active={activeTab === "terminal"} label={t("terminal")} onClick={() => onTabChange("terminal")} />
+        <Nav icon={Globe} active={activeTab === "subscriptions"} label={t("subscriptions")} onClick={() => onTabChange("subscriptions")} />
+      </div>
+      <div className="hidden">
         <button
           onClick={() => onTabChange("chats")}
           className={cn(
@@ -151,58 +151,10 @@ export function Sidebar({
         </button>
       </div>
 
-      {activeTab === "chats" && (
-        <>
-          <div className="px-3 pb-2">
-            <button
-              onClick={() => newSession()}
-              className="flex w-full items-center gap-2 rounded-xl border border-[var(--color-border)] px-3 py-2 text-sm hover:bg-[var(--color-surface-2)] text-[var(--color-text)]"
-            >
-              <MessageSquarePlus size={16} />
-              {t("newChat")}
-            </button>
-          </div>
+      <div className="flex-1" />
 
-          <div className="flex-1 space-y-0.5 overflow-y-auto px-2">
-        {sessions.map((s) => (
-          <div
-            key={s.id}
-            onClick={() => selectSession(s.id)}
-            className={cn(
-              "group flex cursor-pointer items-center justify-between rounded-lg px-2.5 py-2 text-sm",
-              s.id === activeSessionId
-                ? "bg-[var(--color-surface-2)]"
-                : "hover:bg-[var(--color-surface-2)]/60",
-            )}
-          >
-            <span className="truncate text-[var(--color-text)]">{s.title}</span>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                deleteSession(s.id);
-              }}
-              className="opacity-0 transition group-hover:opacity-100"
-            >
-              <Trash2
-                size={14}
-                className="text-[var(--color-text-dim)] hover:text-red-400"
-              />
-            </button>
-          </div>
-        ))}
-        {sessions.length === 0 && (
-          <p className="px-3 py-6 text-center text-xs text-[var(--color-text-dim)]">
-            {t("noChats")}
-          </p>
-        )}
-          </div>
-        </>
-      )}
-      
-      {activeTab !== "chats" && <div className="flex-1" />}
-
-      <div className="space-y-2 border-t border-[var(--color-border)] p-3">
-        <div className="flex gap-1">
+      <div className="flex w-full flex-col items-center gap-2 border-t border-[var(--color-border)] py-3">
+        <div className="hidden gap-1">
           {LANGS.map((l) => (
             <button
               key={l.code}
@@ -218,21 +170,13 @@ export function Sidebar({
             </button>
           ))}
         </div>
-        <button
-          onClick={onOpenGuide}
-          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
-        >
-          <BookOpen size={16} />
-          {t("guide")}
-        </button>
-        <button
-          onClick={onOpenSettings}
-          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
-        >
-          <Settings size={16} />
-          {t("settingsKeys")}
-        </button>
+        <Nav icon={BookOpen} label={t("guide")} onClick={onOpenGuide} />
+        <Nav icon={Settings} label={t("settingsKeys")} onClick={onOpenSettings} />
       </div>
     </aside>
   );
+}
+
+function Nav({ icon: Icon, label, active, onClick }: { icon: typeof Code2; label: string; active?: boolean; onClick: () => void }) {
+  return <button title={label} aria-label={label} onClick={onClick} className={cn("grid h-9 w-9 place-items-center rounded-lg text-[var(--color-text-dim)] transition hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]", active && "bg-[var(--color-surface-2)] text-[var(--color-accent-strong)]")}><Icon size={19} /></button>;
 }
