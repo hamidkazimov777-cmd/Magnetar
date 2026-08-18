@@ -4,7 +4,6 @@ import { ChatView } from "./components/ChatView";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { GuideDialog } from "./components/GuideDialog";
 import { Splash } from "./components/Splash";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useStore } from "./lib/store";
 import { api } from "./lib/api";
 
@@ -13,14 +12,6 @@ export default function App() {
   const [guideOpen, setGuideOpen] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const connections = useStore((s) => s.connections);
-
-  // Reveal the window only once the UI has painted — kills the white flash.
-  useEffect(() => {
-    const id = requestAnimationFrame(() => {
-      getCurrentWindow().show().catch(() => {});
-    });
-    return () => cancelAnimationFrame(id);
-  }, []);
 
   // Open settings on first run so the user lands on "paste your key".
   useEffect(() => {
