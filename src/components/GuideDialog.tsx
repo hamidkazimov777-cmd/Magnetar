@@ -77,6 +77,15 @@ const GUIDE: Record<Lang, { heading: string; intro: string; sections: Section[] 
           "Всё работает локально. Наружу приложение ходит только к тем API, ключи которых ты вставил. Ничего «домой» не отправляется.",
         ],
       },
+      {
+        title: "О Magnetar",
+        items: [
+          "Magnetar — универсальное рабочее пространство для проектов с ИИ: чат, код (редактор + git + терминал), агент с инструментами и память уровня проекта.",
+          "Главная идея: в центре не модель, а проект. Модели — сменные исполнители, а память проекта (решения, стек, ход работы) остаётся единой. Переключил модель — новая продолжает из памяти, а не перечитывает проект. Так экономятся токены.",
+          "Работает с любым ИИ по твоему ключу (BYOK): OpenAI-совместимые, GigaChat, локальные (Ollama/LM Studio). Ключи — только в macOS Keychain.",
+          "Приватность прежде всего: всё локально, наружу — только к твоим API. Версия 0.1.0 (MVP).",
+        ],
+      },
     ],
   },
   en: {
@@ -147,6 +156,15 @@ const GUIDE: Record<Lang, { heading: string; intro: string; sections: Section[] 
           "Everything runs locally. The app only reaches the APIs whose keys you added. Nothing phones home.",
         ],
       },
+      {
+        title: "About Magnetar",
+        items: [
+          "Magnetar is a universal AI workspace for projects: chat, code (editor + git + terminal), a tool-using agent, and project-level memory.",
+          "The core idea: the project is at the center, not the model. Models are swappable executors while the project's memory (decisions, stack, progress) stays the same. Switch model — the new one continues from memory instead of re-reading the project. That saves tokens.",
+          "Works with any AI via your own key (BYOK): OpenAI-compatible, GigaChat, local (Ollama/LM Studio). Keys live only in the macOS Keychain.",
+          "Privacy first: everything is local, outbound only to your APIs. Version 0.1.0 (MVP).",
+        ],
+      },
     ],
   },
   es: {
@@ -215,6 +233,15 @@ const GUIDE: Record<Lang, { heading: string; intro: string; sections: Section[] 
         items: [
           "El idioma de la interfaz (RU/EN/ES) está abajo a la izquierda.",
           "Todo funciona localmente. La app solo contacta las APIs cuyas claves añadiste. No envía nada a terceros.",
+        ],
+      },
+      {
+        title: "Acerca de Magnetar",
+        items: [
+          "Magnetar es un espacio de trabajo de IA para proyectos: chat, código (editor + git + terminal), un agente con herramientas y memoria a nivel de proyecto.",
+          "La idea central: el proyecto está en el centro, no el modelo. Los modelos son ejecutores intercambiables mientras la memoria del proyecto (decisiones, stack, progreso) permanece. Cambias de modelo — el nuevo continúa desde la memoria en vez de releer el proyecto. Eso ahorra tokens.",
+          "Funciona con cualquier IA mediante tu clave (BYOK): compatible con OpenAI, GigaChat, local (Ollama/LM Studio). Las claves solo en el Keychain de macOS.",
+          "Privacidad primero: todo local, salida solo a tus APIs. Versión 0.1.0 (MVP).",
         ],
       },
     ],
