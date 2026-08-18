@@ -72,6 +72,8 @@ export const api = {
     },
   ): () => void {
     let stopped = false;
+    const requestId =
+      crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
     const channel = new Channel<StreamEvent>();
     channel.onmessage = (ev) => {
       if (stopped) return;
@@ -88,6 +90,7 @@ export const api = {
         system: opts.system ?? null,
         temperature: opts.temperature ?? null,
       },
+      requestId,
       onEvent: channel,
     }).catch((e) => {
       if (!stopped) opts.onError(String(e));
@@ -95,6 +98,8 @@ export const api = {
 
     return () => {
       stopped = true;
+      // Tell the backend to stop generating (stops billing/work too).
+      void invoke("cancel_stream", { requestId }).catch(() => {});
     };
   },
 

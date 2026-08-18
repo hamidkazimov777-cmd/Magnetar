@@ -6,7 +6,15 @@ use crate::providers::{
     build_provider, AgentStep, ChatParams, Connection, ModelInfo, StreamEvent, ToolDef,
 };
 use crate::tools;
+use once_cell::sync::Lazy;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use tauri::ipc::Channel;
+
+/// Live stream cancellation flags, keyed by a frontend-supplied request id.
+static CANCELS: Lazy<Mutex<HashMap<String, Arc<AtomicBool>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 // ---- Canon (SQLite) --------------------------------------------------------
 
@@ -133,15 +141,39 @@ pub fn tool_run_bash(command: String, cwd: Option<String>) -> Result<tools::Bash
 pub async fn chat_stream(
     connection: Connection,
     params: ChatParams,
+    request_id: String,
     on_event: Channel<StreamEvent>,
 ) -> Result<(), String> {
     let key = resolve_key(&connection)?;
     let provider = build_provider(&connection, key).map_err(|e| e.to_string())?;
-    if let Err(e) = provider.chat_stream(params, &on_event).await {
+
+    let cancel = Arc::new(AtomicBool::new(false));
+    if let Ok(mut m) = CANCELS.lock() {
+        m.insert(request_id.clone(), cancel.clone());
+    }
+
+    let result = provider.chat_stream(params, &on_event, cancel).await;
+
+    if let Ok(mut m) = CANCELS.lock() {
+        m.remove(&request_id);
+    }
+
+    if let Err(e) = result {
         let _ = on_event.send(StreamEvent::Error {
             message: e.to_string(),
         });
         return Err(e.to_string());
+    }
+    Ok(())
+}
+
+/// Ask an in-flight `chat_stream` to stop early.
+#[tauri::command]
+pub fn cancel_stream(request_id: String) -> Result<(), String> {
+    if let Ok(m) = CANCELS.lock() {
+        if let Some(flag) = m.get(&request_id) {
+            flag.store(true, Ordering::Relaxed);
+        }
     }
     Ok(())
 }

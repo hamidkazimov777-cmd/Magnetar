@@ -39,6 +39,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     resolve: (ok: boolean) => void;
   } | null>(null);
   const stopRef = useRef<null | (() => void)>(null);
+  const agentCancelRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const session = useMemo(
@@ -114,12 +115,14 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
       useStore.getState().sessions.find((s) => s.id === sessionId)?.messages ?? []
     ).filter((m) => m.id !== assistantId);
 
+    agentCancelRef.current = false;
     setStreaming(true);
     try {
       await runAgent(connection, model, history, {
         confirm: (name, args) =>
           new Promise<boolean>((resolve) => setConfirm({ name, args, resolve })),
         onText: (t) => appendToMessage(sessionId!, assistantId, t),
+        cancelled: () => agentCancelRef.current,
       });
     } catch (e) {
       appendToMessage(sessionId!, assistantId, `\n\n⚠️ ${String(e)}`);
@@ -159,6 +162,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
   };
 
   const stop = () => {
+    agentCancelRef.current = true; // halt the agent loop between steps
     stopRef.current?.();
     stopRef.current = null;
     setStreaming(false);

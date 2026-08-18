@@ -206,6 +206,7 @@ impl Provider for GigaChat {
         &self,
         params: ChatParams,
         channel: &Channel<StreamEvent>,
+        cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
     ) -> Result<(), ProviderError> {
         let _guard = GIGA_LOCK.lock().await;
         let token = self.access_token().await?;
@@ -241,6 +242,12 @@ impl Provider for GigaChat {
         let mut stream = resp.bytes_stream();
         let mut buf = String::new();
         while let Some(chunk) = stream.next().await {
+            if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                let _ = channel.send(StreamEvent::Done {
+                    finish_reason: Some("cancelled".into()),
+                });
+                return Ok(());
+            }
             let bytes = chunk.map_err(|e| ProviderError::Network(e.to_string()))?;
             buf.push_str(&String::from_utf8_lossy(&bytes));
             while let Some(nl) = buf.find('\n') {

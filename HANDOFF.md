@@ -362,4 +362,36 @@ ReAct-протокол текстом. Затем **Фаза 5** — доп. э�
 
 **Как продолжить:** `npm run tauri dev` (при необходимости `source $HOME/.cargo/env`).
 
-<!-- Следующий ассистент: добавь «Запись 8 — дата — модель — тема» здесь. -->
+### Запись 8 — 2026-08-18 — Claude (Opus 4.8) — остатки: ReAct-агент, отмена стрима, таймаут bash
+
+**Статус: реализовано (`cargo check` ✅, `tsc` ✅, `npm run build` ✅).**
+
+- **ReAct-агент для GigaChat / провайдеров без native tools** (`lib/agent.ts`):
+  `runAgent` теперь диспетчер — `openai_compat` → нативный tool-use, остальные
+  (gigachat/custom) → **текстовый ReAct** через `complete`. Формат
+  Thought/Action/Action Input → Observation → Final Answer; `parseReAct` терпит
+  ```json-обёртку и достаёт `{...}`. Разрушающие так же гейтятся `confirm`.
+  Теперь режим «Агент» работает и на GigaChat.
+- **Отмена стрима по «Стоп» (backend):** `chat_stream` принимает `request_id`,
+  регистрирует `Arc<AtomicBool>` в глобальном реестре `CANCELS`; команда
+  `cancel_stream(request_id)` ставит флаг; оба адаптера проверяют его в SSE-цикле
+  и выходят (`finish_reason: "cancelled"`). Фронт: `api.chatStream` шлёт
+  request_id и на stop() зовёт `cancel_stream` — генерация реально прерывается.
+  Сигнатура трейта `chat_stream` получила `cancel: Arc<AtomicBool>`.
+- **Отмена агентского цикла:** `AgentHandlers.cancelled()` — циклы (нативный и
+  ReAct) проверяют флаг между шагами; ChatView `stop()` ставит `agentCancelRef`.
+- **Таймаут run_bash** (`tools.rs`): spawn + drain-потоки на stdout/stderr +
+  `wait_timeout` (крейт `wait-timeout`), при превышении 120с — kill + пометка
+  `[killed: exceeded 120s timeout]`. Защита от зависания агента.
+
+**Что осталось (мелочи/на будущее):**
+- Мгновенный kill конкретного `run_bash` именно по кнопке «Стоп» (сейчас: агент
+  останавливается между шагами, а bash защищён 120с-таймаутом).
+- Роутинг резюме на самую дешёвую модель; кэш-брейкпоинт на резюме.
+- GigaChat native function-calling (сейчас на нём — ReAct; это ок).
+
+Все исходные 5 фаз + заявленные остатки закрыты. Дальше — по желанию пользователя.
+
+**Как продолжить:** `npm run tauri dev` (при необходимости `source $HOME/.cargo/env`).
+
+<!-- Следующий ассистент: добавь «Запись 9 — дата — модель — тема» здесь. -->

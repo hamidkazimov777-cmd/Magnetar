@@ -4,7 +4,14 @@
 //! user confirmation in the UI before the frontend invokes them.
 
 use serde::Serialize;
+use std::io::Read;
 use std::path::Path;
+use std::process::Stdio;
+use std::time::Duration;
+use wait_timeout::ChildExt;
+
+/// Hard ceiling so a runaway command can't hang the agent forever.
+const BASH_TIMEOUT_SECS: u64 = 120;
 
 /// Hard caps so a single tool call can't blow up the context window.
 const MAX_READ_BYTES: usize = 60_000;
@@ -195,17 +202,55 @@ fn walk_grep(dir: &Path, needle: &str, hits: &mut Vec<GrepHit>) {
 
 pub fn run_bash(command: &str, cwd: Option<&str>) -> Result<BashResult, String> {
     let mut cmd = std::process::Command::new("bash");
-    cmd.arg("-lc").arg(command);
+    cmd.arg("-lc").arg(command).stdout(Stdio::piped()).stderr(Stdio::piped());
     if let Some(dir) = cwd.filter(|d| !d.is_empty()) {
         cmd.current_dir(dir);
     }
-    let out = cmd.output().map_err(|e| e.to_string())?;
-    let (stdout, t1) = clip(&String::from_utf8_lossy(&out.stdout), MAX_BASH_BYTES);
-    let (stderr, t2) = clip(&String::from_utf8_lossy(&out.stderr), MAX_BASH_BYTES);
+    let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+
+    // Drain pipes on threads so a chatty command can't deadlock on a full buffer
+    // while we wait.
+    let mut so = child.stdout.take();
+    let mut se = child.stderr.take();
+    let th_o = std::thread::spawn(move || {
+        let mut s = String::new();
+        if let Some(p) = so.as_mut() {
+            let _ = p.read_to_string(&mut s);
+        }
+        s
+    });
+    let th_e = std::thread::spawn(move || {
+        let mut s = String::new();
+        if let Some(p) = se.as_mut() {
+            let _ = p.read_to_string(&mut s);
+        }
+        s
+    });
+
+    let (code, timed_out) = match child
+        .wait_timeout(Duration::from_secs(BASH_TIMEOUT_SECS))
+        .map_err(|e| e.to_string())?
+    {
+        Some(status) => (status.code().unwrap_or(-1), false),
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            (-1, true)
+        }
+    };
+
+    let stdout_raw = th_o.join().unwrap_or_default();
+    let mut stderr_raw = th_e.join().unwrap_or_default();
+    if timed_out {
+        stderr_raw.push_str(&format!("\n[killed: exceeded {BASH_TIMEOUT_SECS}s timeout]"));
+    }
+
+    let (stdout, t1) = clip(&stdout_raw, MAX_BASH_BYTES);
+    let (stderr, t2) = clip(&stderr_raw, MAX_BASH_BYTES);
     Ok(BashResult {
         stdout,
         stderr,
-        code: out.status.code().unwrap_or(-1),
+        code,
         truncated: t1 || t2,
     })
 }

@@ -110,6 +110,7 @@ impl Provider for OpenAiCompat {
         &self,
         params: ChatParams,
         channel: &Channel<StreamEvent>,
+        cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
     ) -> Result<(), ProviderError> {
         if self.api_key.is_empty() {
             return Err(ProviderError::MissingKey);
@@ -162,6 +163,12 @@ impl Provider for OpenAiCompat {
         let mut buf = String::new();
 
         while let Some(chunk) = stream.next().await {
+            if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                let _ = channel.send(StreamEvent::Done {
+                    finish_reason: Some("cancelled".into()),
+                });
+                return Ok(());
+            }
             let bytes = chunk.map_err(|e| ProviderError::Network(e.to_string()))?;
             buf.push_str(&String::from_utf8_lossy(&bytes));
 

@@ -133,6 +133,8 @@ export interface AgentHandlers {
   confirm: (name: string, args: ToolArgs) => Promise<boolean>;
   /** Append visible progress (assistant text / tool step) to the chat. */
   onText: (text: string) => void;
+  /** Returns true when the user pressed Stop — the loop halts between steps. */
+  cancelled?: () => boolean;
 }
 
 /** Convert canon messages to OpenAI wire messages. */
@@ -142,8 +144,22 @@ function toWire(messages: ChatMessage[]): unknown[] {
     .map((m) => ({ role: m.role, content: m.content }));
 }
 
-/** Run the agentic tool-use loop. Returns the final assistant text. */
+/** Dispatch: providers with native function-calling use the tools loop;
+ *  everyone else (GigaChat, custom) uses the text-based ReAct loop. */
 export async function runAgent(
+  connection: Connection,
+  model: string,
+  history: ChatMessage[],
+  h: AgentHandlers,
+): Promise<void> {
+  if (connection.kind === "openai_compat") {
+    return runAgentNative(connection, model, history, h);
+  }
+  return runAgentReAct(connection, model, history, h);
+}
+
+/** Native OpenAI tool-use loop. */
+async function runAgentNative(
   connection: Connection,
   model: string,
   history: ChatMessage[],
@@ -155,6 +171,7 @@ export async function runAgent(
   ];
 
   for (let i = 0; i < MAX_ITERS; i++) {
+    if (h.cancelled?.()) return;
     const step = await api.agentStep(connection, model, messages, AGENT_TOOLS);
 
     if (step.content) h.onText(step.content);
@@ -197,6 +214,102 @@ export async function runAgent(
 
       messages.push({ role: "tool", tool_call_id: tc.id, content: result });
     }
+  }
+
+  h.onText("\n\n_(достигнут лимит шагов агента)_");
+}
+
+const REACT_SYSTEM = `You are Magnetar, a local coding agent. You have tools but must call them via text. To use a tool, reply EXACTLY in this format and nothing else:
+Thought: <your reasoning>
+Action: <tool name>
+Action Input: <a single-line JSON object of arguments>
+
+Then stop — you will receive an "Observation:" with the result. Repeat as needed. When the task is complete, reply:
+Thought: <reasoning>
+Final Answer: <your answer to the user>
+
+Available tools (Action Input is JSON):
+- read_file {"path":"...","offset"?:n,"limit"?:n}
+- list_dir {"path":"..."}
+- grep {"pattern":"...","path"?:"..."}
+- write_file {"path":"...","content":"..."}
+- edit_file {"path":"...","old_string":"...","new_string":"..."}
+- run_bash {"command":"...","cwd"?:"..."}`;
+
+interface ReActParse {
+  thought?: string;
+  action?: string;
+  input: ToolArgs;
+  final?: string;
+}
+
+function parseReAct(text: string): ReActParse {
+  const finalM = text.match(/Final Answer:\s*([\s\S]*)$/i);
+  if (finalM) return { final: finalM[1].trim(), input: {} };
+
+  const thought = text.match(/Thought:\s*(.*)/i)?.[1]?.trim();
+  const action = text.match(/Action:\s*([a-zA-Z_]+)/i)?.[1]?.trim();
+  let input: ToolArgs = {};
+  const inputM = text.match(/Action Input:\s*([\s\S]*?)(?:\nObservation:|$)/i);
+  if (inputM) {
+    const raw = inputM[1].trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+    const a = raw.indexOf("{");
+    const b = raw.lastIndexOf("}");
+    try {
+      input = JSON.parse(a >= 0 && b > a ? raw.slice(a, b + 1) : raw);
+    } catch {
+      input = {};
+    }
+  }
+  return { thought, action, input };
+}
+
+/** Text-based ReAct loop for providers without native tool-use (e.g. GigaChat). */
+async function runAgentReAct(
+  connection: Connection,
+  model: string,
+  history: ChatMessage[],
+  h: AgentHandlers,
+): Promise<void> {
+  const messages: ChatMessage[] = [...history];
+  const mk = (role: ChatMessage["role"], content: string): ChatMessage => ({
+    id: "", role, content, createdAt: 0,
+  });
+
+  for (let i = 0; i < MAX_ITERS; i++) {
+    if (h.cancelled?.()) return;
+    const text = await api.complete(connection, model, messages, REACT_SYSTEM);
+    const p = parseReAct(text);
+
+    if (p.final != null) {
+      h.onText((i > 0 ? "\n\n" : "") + p.final);
+      return;
+    }
+    if (!p.action) {
+      // Model answered without the ReAct format — treat as final.
+      h.onText(text.trim());
+      return;
+    }
+
+    h.onText(
+      `${i > 0 ? "\n\n" : ""}${p.thought ? `${p.thought}\n` : ""}\`${p.action}\` ${summarizeArgs(p.action, p.input)}`,
+    );
+
+    let result: string;
+    if (DESTRUCTIVE.has(p.action)) {
+      const ok = await h.confirm(p.action, p.input);
+      if (!ok) {
+        result = "User declined this action.";
+        h.onText(" ⛔");
+      } else {
+        result = await executeTool(p.action, p.input);
+      }
+    } else {
+      result = await executeTool(p.action, p.input);
+    }
+
+    messages.push(mk("assistant", text));
+    messages.push(mk("user", `Observation: ${result}`));
   }
 
   h.onText("\n\n_(достигнут лимит шагов агента)_");

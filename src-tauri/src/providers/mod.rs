@@ -11,6 +11,8 @@ pub mod openai_compat;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use tauri::ipc::Channel;
 use thiserror::Error;
 
@@ -127,6 +129,7 @@ pub trait Provider: Send + Sync {
         &self,
         params: ChatParams,
         channel: &Channel<StreamEvent>,
+        cancel: Arc<AtomicBool>,
     ) -> Result<(), ProviderError>;
     /// Single-shot, non-streaming completion. Used by the adaptive router
     /// (prompt classification) and the handoff summarizer — short, cheap calls.
