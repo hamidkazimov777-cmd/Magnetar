@@ -6,6 +6,7 @@ import { buildCatalog, recommend, type Recommendation } from "../lib/adaptive";
 import { buildOutgoing, maybeSummarize } from "../lib/handoff";
 import { runAgent } from "../lib/agent";
 import { LogoMark } from "./Logo";
+import { ToolPreview } from "./ToolPreview";
 import { useT } from "../lib/i18n";
 import { Composer } from "./Composer";
 import { Message } from "./Message";
@@ -290,16 +291,16 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
           confirm.resolve(false);
           setConfirm(null);
         }}>
-          <DialogContent className="max-w-md p-0 gap-0 border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)]">
+          <DialogContent className="max-w-2xl p-0 gap-0 border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)]">
             <DialogHeader className="border-b border-[var(--color-border)] px-5 py-3.5 flex flex-row items-center gap-2">
               <TriangleAlert size={17} className="text-[var(--color-accent-strong)]" />
               <DialogTitle className="text-sm font-semibold">{t("confirmTitle")}</DialogTitle>
             </DialogHeader>
             <div className="space-y-2 px-5 py-4">
-              <div className="text-sm font-medium">{confirm.name}</div>
-              <pre className="max-h-56 overflow-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3 text-xs">
-                {JSON.stringify(confirm.args, null, 2)}
-              </pre>
+              <div className="font-mono text-sm font-medium text-[var(--color-accent-strong)]">
+                {confirm.name}
+              </div>
+              <ToolPreview name={confirm.name} args={confirm.args} />
             </div>
             <div className="flex justify-end gap-2 border-t border-[var(--color-border)] px-5 py-3">
               <button

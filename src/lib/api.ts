@@ -139,6 +139,8 @@ export const api = {
     }),
   toolWriteFile: (path: string, content: string) =>
     invoke<number>("tool_write_file", { path, content }),
+  editorReadFile: (path: string) =>
+    invoke<string>("editor_read_file", { path }),
   toolEditFile: (path: string, oldString: string, newString: string) =>
     invoke<{ replaced: number; diff: string }>("tool_edit_file", {
       path,

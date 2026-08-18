@@ -37,6 +37,8 @@ interface State {
   adaptive: boolean;
   agentMode: boolean;
   setAgentMode: (on: boolean) => void;
+  workspaceRoot?: string;
+  setWorkspaceRoot: (path: string | undefined) => void;
   lang: Lang;
   setLang: (lang: Lang) => void;
 
@@ -85,6 +87,7 @@ export const useStore = create<State>()(
       adaptive: false,
       agentMode: false,
       setAgentMode: (on) => set({ agentMode: on }),
+      setWorkspaceRoot: (path) => set({ workspaceRoot: path }),
       lang: "ru",
       setLang: (lang) => set({ lang }),
       sessions: [],
@@ -335,6 +338,7 @@ export const useStore = create<State>()(
         activeModel: s.activeModel,
         adaptive: s.adaptive,
         agentMode: s.agentMode,
+        workspaceRoot: s.workspaceRoot,
         lang: s.lang,
         activeProjectId: s.activeProjectId,
       }),

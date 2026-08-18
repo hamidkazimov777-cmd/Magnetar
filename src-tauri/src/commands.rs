@@ -221,6 +221,12 @@ pub fn extract_pdf_text(path: String) -> Result<String, String> {
     pdf_extract::extract_text(&path).map_err(|e| format!("Failed to extract PDF: {}", e))
 }
 
+/// Full file read for the code editor (no size cap).
+#[tauri::command]
+pub fn editor_read_file(path: String) -> Result<String, String> {
+    tools::read_text(&path)
+}
+
 #[tauri::command]
 pub async fn chat_stream(
     connection: Connection,

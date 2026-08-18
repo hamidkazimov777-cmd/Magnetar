@@ -45,6 +45,7 @@ pub fn run() {
             commands::tool_kill_bash,
             commands::tool_attach_file,
             commands::extract_pdf_text,
+            commands::editor_read_file,
             commands::list_projects,
             commands::save_project,
             commands::delete_project,

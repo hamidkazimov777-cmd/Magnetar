@@ -100,6 +100,11 @@ pub fn read_file(
     })
 }
 
+/// Full file read (no truncation) — for the in-app code editor.
+pub fn read_text(path: &str) -> Result<String, String> {
+    std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))
+}
+
 pub fn write_file(path: &str, content: &str) -> Result<usize, String> {
     if let Some(parent) = Path::new(path).parent() {
         if !parent.as_os_str().is_empty() {
