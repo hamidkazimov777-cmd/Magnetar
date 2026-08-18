@@ -47,6 +47,49 @@ fn maybe_cache_system(messages: &mut [Value], enabled: bool) {
     }
 }
 
+fn format_message(m: &crate::providers::ChatMessage) -> Value {
+    let mut has_images = false;
+    if let Some(atts) = &m.attachments {
+        if atts.iter().any(|a| a.kind == "image" && a.data.is_some()) {
+            has_images = true;
+        }
+    }
+
+    if !has_images {
+        json!({ "role": m.role, "content": m.content })
+    } else {
+        let mut content = vec![json!({
+            "type": "text",
+            "text": m.content
+        })];
+        if let Some(atts) = &m.attachments {
+            for a in atts {
+                if a.kind == "image" {
+                    if let Some(data) = &a.data {
+                        // data is expected to be base64 without data:image/... prefix on rust side, or with prefix?
+                        // Actually frontend can provide data URL directly. Let's assume data is the full data URL.
+                        // Or if it's just base64, we need mime_type.
+                        // Let's assume frontend sends full data URL or just base64. 
+                        // If it doesn't start with data:, we prepend it.
+                        let url = if data.starts_with("data:") {
+                            data.clone()
+                        } else {
+                            format!("data:{};base64,{}", a.mime_type, data)
+                        };
+                        content.push(json!({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": url
+                            }
+                        }));
+                    }
+                }
+            }
+        }
+        json!({ "role": m.role, "content": content })
+    }
+}
+
 impl OpenAiCompat {
     pub fn new(conn: Connection, api_key: String) -> Self {
         Self {
@@ -123,7 +166,7 @@ impl Provider for OpenAiCompat {
             }
         }
         for m in &params.messages {
-            messages.push(json!({ "role": m.role, "content": m.content }));
+            messages.push(format_message(m));
         }
         maybe_cache_system(
             &mut messages,
@@ -234,7 +277,7 @@ impl Provider for OpenAiCompat {
             }
         }
         for m in &params.messages {
-            messages.push(json!({ "role": m.role, "content": m.content }));
+            messages.push(format_message(m));
         }
         maybe_cache_system(
             &mut messages,

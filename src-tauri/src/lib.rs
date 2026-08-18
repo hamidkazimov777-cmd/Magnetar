@@ -8,6 +8,8 @@ mod tools;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             use tauri::Manager;
@@ -39,6 +41,8 @@ pub fn run() {
             commands::tool_write_file,
             commands::tool_edit_file,
             commands::tool_run_bash,
+            commands::tool_attach_file,
+            commands::extract_pdf_text,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

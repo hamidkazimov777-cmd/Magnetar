@@ -33,6 +33,7 @@ pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
             role       TEXT NOT NULL,
             content    TEXT NOT NULL,
             model      TEXT,
+            attachments TEXT,
             created_at INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
@@ -48,6 +49,7 @@ pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
         "ALTER TABLE sessions ADD COLUMN summary TEXT",
         "ALTER TABLE sessions ADD COLUMN summary_up_to_id TEXT",
         "ALTER TABLE messages ADD COLUMN model TEXT",
+        "ALTER TABLE messages ADD COLUMN attachments TEXT",
     ] {
         let _ = conn.execute(stmt, []);
     }

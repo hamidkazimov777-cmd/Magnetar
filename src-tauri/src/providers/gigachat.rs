@@ -135,7 +135,48 @@ impl GigaChat {
         Ok(token)
     }
 
-    fn build_messages(params: &ChatParams) -> Vec<Value> {
+    async fn upload_file(&self, token: &str, data_url: &str) -> Result<String, ProviderError> {
+        let b64 = if let Some(stripped) = data_url.strip_prefix("data:") {
+            if let Some(idx) = stripped.find("base64,") {
+                &stripped[idx + 7..]
+            } else {
+                data_url
+            }
+        } else {
+            data_url
+        };
+
+        let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b64)
+            .map_err(|e| ProviderError::Api(format!("bad base64: {e}")))?;
+
+        let part = reqwest::multipart::Part::bytes(bytes)
+            .file_name("image.jpg")
+            .mime_str("image/jpeg")
+            .unwrap();
+
+        let form = reqwest::multipart::Form::new()
+            .part("file", part)
+            .text("purpose", "general");
+
+        let resp = self.http.post(format!("{API_BASE}/files"))
+            .bearer_auth(token)
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| ProviderError::Network(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let code = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Api(format!("files {code}: {body}")));
+        }
+
+        let v: Value = resp.json().await.map_err(|e| ProviderError::Api(e.to_string()))?;
+        let id = v.get("id").and_then(|i| i.as_str()).unwrap_or("").to_string();
+        Ok(id)
+    }
+
+    async fn build_messages(&self, token: &str, params: &ChatParams) -> Result<Vec<Value>, ProviderError> {
         let mut messages: Vec<Value> = Vec::new();
         if let Some(sys) = &params.system {
             if !sys.is_empty() {
@@ -143,9 +184,34 @@ impl GigaChat {
             }
         }
         for m in &params.messages {
-            messages.push(json!({ "role": m.role, "content": m.content }));
+            let mut has_images = false;
+            if let Some(atts) = &m.attachments {
+                if atts.iter().any(|a| a.kind == "image" && a.data.is_some()) {
+                    has_images = true;
+                }
+            }
+            if !has_images {
+                messages.push(json!({ "role": m.role, "content": m.content }));
+            } else {
+                let mut file_ids = Vec::new();
+                if let Some(atts) = &m.attachments {
+                    for a in atts {
+                        if a.kind == "image" {
+                            if let Some(data) = &a.data {
+                                let id = self.upload_file(token, data).await?;
+                                file_ids.push(id);
+                            }
+                        }
+                    }
+                }
+                messages.push(json!({
+                    "role": m.role,
+                    "content": m.content,
+                    "attachments": file_ids
+                }));
+            }
         }
-        messages
+        Ok(messages)
     }
 }
 
@@ -211,9 +277,10 @@ impl Provider for GigaChat {
         let _guard = GIGA_LOCK.lock().await;
         let token = self.access_token().await?;
 
+        let msgs = self.build_messages(&token, &params).await?;
         let mut body = json!({
             "model": params.model,
-            "messages": Self::build_messages(&params),
+            "messages": msgs,
             "stream": true,
         });
         if let Some(t) = params.temperature {
@@ -297,9 +364,10 @@ impl Provider for GigaChat {
         let _guard = GIGA_LOCK.lock().await;
         let token = self.access_token().await?;
 
+        let msgs = self.build_messages(&token, &params).await?;
         let mut body = json!({
             "model": params.model,
-            "messages": Self::build_messages(&params),
+            "messages": msgs,
             "stream": false,
         });
         if let Some(t) = params.temperature {

@@ -57,6 +57,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
 
   const runSend = async (
     text: string,
+    attachments: import("../lib/types").Attachment[],
     connId: string,
     model: string,
   ) => {
@@ -66,7 +67,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     let sessionId = useStore.getState().activeSessionId;
     if (!sessionId) sessionId = newSession();
 
-    addMessage(sessionId, { role: "user", content: text });
+    addMessage(sessionId, { role: "user", content: text, attachments });
     const assistantId = addMessage(sessionId, {
       role: "assistant",
       content: "",
@@ -104,13 +105,18 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     stopRef.current = stop;
   };
 
-  const runAgentPath = async (text: string, connId: string, model: string) => {
+  const runAgentPath = async (
+    text: string,
+    attachments: import("../lib/types").Attachment[],
+    connId: string,
+    model: string
+  ) => {
     const connection = useStore.getState().connections.find((c) => c.id === connId);
     if (!connection) return;
     let sessionId = useStore.getState().activeSessionId;
     if (!sessionId) sessionId = newSession();
 
-    addMessage(sessionId, { role: "user", content: text });
+    addMessage(sessionId, { role: "user", content: text, attachments });
     const assistantId = addMessage(sessionId, { role: "assistant", content: "", model });
     const history = (
       useStore.getState().sessions.find((s) => s.id === sessionId)?.messages ?? []
@@ -133,7 +139,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     }
   };
 
-  const send = async (text: string) => {
+  const send = async (text: string, attachments: import("../lib/types").Attachment[] = []) => {
     if (!conn || !activeModel) return;
     setUpgrade(undefined);
     setNote(null);
@@ -158,8 +164,8 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
       if (rec.upgrade) setUpgrade(rec.upgrade);
     }
 
-    if (agentMode) await runAgentPath(text, connId, model);
-    else await runSend(text, connId, model);
+    if (agentMode) await runAgentPath(text, attachments, connId, model);
+    else await runSend(text, attachments, connId, model);
   };
 
   const stop = () => {

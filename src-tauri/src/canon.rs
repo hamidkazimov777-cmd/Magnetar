@@ -26,6 +26,7 @@ pub struct MessageRow {
     pub role: String,
     pub content: String,
     pub model: Option<String>,
+    pub attachments: Option<String>,
     pub created_at: i64,
 }
 
@@ -59,7 +60,7 @@ pub fn load_messages(session_id: &str) -> Result<Vec<MessageRow>, String> {
     with_conn(|c| {
         let mut stmt = c
             .prepare(
-                "SELECT id, session_id, role, content, model, created_at \
+                "SELECT id, session_id, role, content, model, attachments, created_at \
                  FROM messages WHERE session_id = ?1 ORDER BY created_at ASC",
             )
             .map_err(|e| e.to_string())?;
@@ -71,7 +72,8 @@ pub fn load_messages(session_id: &str) -> Result<Vec<MessageRow>, String> {
                     role: r.get(2)?,
                     content: r.get(3)?,
                     model: r.get(4)?,
-                    created_at: r.get(5)?,
+                    attachments: r.get(5)?,
+                    created_at: r.get(6)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -108,15 +110,16 @@ pub fn save_session(meta: SessionMeta) -> Result<(), String> {
 pub fn upsert_message(msg: MessageRow) -> Result<(), String> {
     with_conn(|c| {
         c.execute(
-            "INSERT INTO messages (id, session_id, role, content, model, created_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
-             ON CONFLICT(id) DO UPDATE SET content=excluded.content, model=excluded.model",
+            "INSERT INTO messages (id, session_id, role, content, model, attachments, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) \
+             ON CONFLICT(id) DO UPDATE SET content=excluded.content, model=excluded.model, attachments=excluded.attachments",
             params![
                 msg.id,
                 msg.session_id,
                 msg.role,
                 msg.content,
                 msg.model,
+                msg.attachments,
                 msg.created_at,
             ],
         )

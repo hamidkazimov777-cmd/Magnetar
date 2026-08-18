@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, FileImage } from "lucide-react";
 import { cn } from "../lib/cn";
 import type { ChatMessage } from "../lib/types";
 
@@ -61,6 +61,27 @@ export function Message({ message }: { message: ChatMessage }) {
               : "bg-transparent text-[var(--color-text)]",
           )}
         >
+          {message.attachments && message.attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {message.attachments.map(a => (
+                <div key={a.id} className="relative rounded-lg overflow-hidden border border-[var(--color-border)] bg-black/5 group/att">
+                  {a.type === "image" && a.data ? (
+                    <img src={`data:${a.mimeType};base64,${a.data}`} alt={a.name} className="max-h-48 max-w-full object-contain" />
+                  ) : (
+                    <div className="flex items-center gap-2 px-3 py-2">
+                      <FileImage size={18} className="text-[var(--color-text-dim)]" />
+                      <span className="text-sm text-[var(--color-text)]">{a.name}</span>
+                    </div>
+                  )}
+                  {a.type === "image" && a.data && (
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/att:opacity-100 transition flex items-center justify-center p-2 text-center pointer-events-none">
+                       <span className="text-white text-xs truncate break-all">{a.name}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
           {message.content ? (
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}

@@ -51,7 +51,11 @@ export const api = {
       connection: toRustConn(connection),
       params: {
         model,
-        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        messages: messages.map((m) => ({
+          role: m.role,
+          content: m.content,
+          attachments: m.attachments ?? null,
+        })),
         system: system ?? null,
         temperature: 0,
       },
@@ -86,7 +90,11 @@ export const api = {
       connection: toRustConn(connection),
       params: {
         model,
-        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        messages: messages.map((m) => ({
+          role: m.role,
+          content: m.content,
+          attachments: m.attachments ?? null,
+        })),
         system: opts.system ?? null,
         temperature: opts.temperature ?? null,
       },
@@ -142,4 +150,8 @@ export const api = {
       "tool_run_bash",
       { command, cwd: cwd ?? null },
     ),
+  toolAttachFile: (path: string) =>
+    invoke<string>("tool_attach_file", { path }),
+  extractPdfText: (path: string) =>
+    invoke<string>("extract_pdf_text", { path }),
 };

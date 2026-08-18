@@ -23,6 +23,16 @@ export interface ModelInfo {
 
 export type Role = "user" | "assistant" | "system";
 
+export interface Attachment {
+  id: string;
+  type: "image" | "file";
+  mimeType: string;
+  name: string;
+  data?: string; // base64 for images
+  path?: string; // for attach_file tool
+  extractedText?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: Role;
@@ -30,6 +40,7 @@ export interface ChatMessage {
   createdAt: number;
   /** Which model produced this message (for cross-model handoff continuity). */
   model?: string;
+  attachments?: Attachment[];
 }
 
 export interface Session {

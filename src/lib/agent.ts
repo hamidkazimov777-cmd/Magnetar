@@ -73,6 +73,17 @@ export const AGENT_TOOLS: ToolDef[] = [
       required: ["command"],
     },
   },
+  {
+    name: "attach_file",
+    description: "Attach a file from the local filesystem to the chat so the user can view or save it. Use this to send generated images, documents, or data to the user.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Absolute path to the file to attach" },
+      },
+      required: ["path"],
+    },
+  },
 ];
 
 /** Tools that change the machine — require explicit user confirmation. */
@@ -119,6 +130,10 @@ export async function executeTool(name: string, args: ToolArgs): Promise<string>
       case "run_bash": {
         const r = await api.toolRunBash(String(args.command), args.cwd ? String(args.cwd) : undefined);
         return `exit ${r.code}\n${r.stdout}${r.stderr ? `\n[stderr]\n${r.stderr}` : ""}`;
+      }
+      case "attach_file": {
+        const result = await api.toolAttachFile(String(args.path));
+        return result;
       }
       default:
         return `unknown tool: ${name}`;
@@ -234,7 +249,8 @@ Available tools (Action Input is JSON):
 - grep {"pattern":"...","path"?:"..."}
 - write_file {"path":"...","content":"..."}
 - edit_file {"path":"...","old_string":"...","new_string":"..."}
-- run_bash {"command":"...","cwd"?:"..."}`;
+- run_bash {"command":"...","cwd"?:"..."}
+- attach_file {"path":"..."}`;
 
 interface ReActParse {
   thought?: string;
@@ -321,6 +337,7 @@ function summarizeArgs(name: string, args: ToolArgs): string {
     case "list_dir":
     case "write_file":
     case "edit_file":
+    case "attach_file":
       return `→ ${args.path ?? ""}`;
     case "grep":
       return `→ "${args.pattern ?? ""}"`;

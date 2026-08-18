@@ -67,9 +67,25 @@ impl Connection {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Attachment {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub kind: String, // "image" | "file"
+    #[serde(rename = "mimeType")]
+    pub mime_type: String,
+    pub name: String,
+    pub data: Option<String>,
+    pub path: Option<String>,
+    #[serde(rename = "extractedText")]
+    pub extracted_text: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: String,
     pub content: String,
+    #[serde(default)]
+    pub attachments: Option<Vec<Attachment>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

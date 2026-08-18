@@ -138,6 +138,20 @@ pub fn tool_run_bash(command: String, cwd: Option<String>) -> Result<tools::Bash
 }
 
 #[tauri::command]
+pub fn tool_attach_file(path: String) -> Result<String, String> {
+    if std::path::Path::new(&path).exists() {
+        Ok(format!("File {} successfully attached.", path))
+    } else {
+        Err(format!("File not found: {}", path))
+    }
+}
+
+#[tauri::command]
+pub fn extract_pdf_text(path: String) -> Result<String, String> {
+    pdf_extract::extract_text(&path).map_err(|e| format!("Failed to extract PDF: {}", e))
+}
+
+#[tauri::command]
 pub async fn chat_stream(
     connection: Connection,
     params: ChatParams,

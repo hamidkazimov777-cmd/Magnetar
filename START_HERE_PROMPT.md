@@ -22,6 +22,7 @@
   GigaChat (OAuth 9443, **Russian CA встроен**, mutex); агентские инструменты
   (read/write/edit/list/grep/bash + подтверждения; native tool-use и ReAct);
   экономия токенов (rolling-summary, prompt caching, обрезка вывода, retrieval).
+- Поддержка прикрепления файлов, изображений (Drag&Drop) и мультимодальность для GigaChat и OpenAI-совместимых.
 - Адаптивный роутер модели, межмодельный handoff, i18n RU/EN/ES, встроенный гайд.
 - Ребрендинг: фиолетовая тема, знак `LogoMark`, космический сплэш, иконка приложения.
 
