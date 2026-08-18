@@ -23,6 +23,12 @@ const OAUTH_URL: &str = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth";
 const API_BASE: &str = "https://gigachat.devices.sberbank.ru/api/v1";
 const USER_AGENT: &str = "Magnetar/0.1";
 
+/// Russian Trusted Root CA (+ Sub CA), НУЦ Минцифры — bundled so GigaChat works
+/// out of the box without the user hunting for a PEM. Trusted only inside this
+/// reqwest client, never installed system-wide. Root SHA-256:
+/// D2:6D:2D:02:31:B7:C3:9F:92:CC:73:85:12:BA:54:10:35:19:E4:40:5D:68:B5:BD:70:3E:97:88:CA:8E:CF:31
+const BUNDLED_CA: &[u8] = include_bytes!("../../certs/russian_trusted_ca.pem");
+
 /// Freemium = one request at a time. Serialize every GigaChat network call.
 static GIGA_LOCK: Lazy<AsyncMutex<()>> = Lazy::new(|| AsyncMutex::new(()));
 
@@ -48,15 +54,17 @@ impl GigaChat {
     pub fn new(conn: Connection, auth_key: String) -> Result<Self, ProviderError> {
         let mut builder = reqwest::Client::builder().user_agent(USER_AGENT);
 
-        if let Some(path) = conn.ca_path.as_ref().filter(|p| !p.is_empty()) {
-            let pem = std::fs::read(path)
-                .map_err(|e| ProviderError::Api(format!("cannot read CA at {path}: {e}")))?;
-            // Russian trust bundle usually holds root + sub CA.
-            let certs = reqwest::Certificate::from_pem_bundle(&pem)
-                .map_err(|e| ProviderError::Api(format!("bad CA PEM: {e}")))?;
-            for cert in certs {
-                builder = builder.add_root_certificate(cert);
-            }
+        // Use a user-supplied PEM if given, otherwise the bundled Russian CA.
+        let pem: Vec<u8> = match conn.ca_path.as_ref().filter(|p| !p.is_empty()) {
+            Some(path) => std::fs::read(path)
+                .map_err(|e| ProviderError::Api(format!("cannot read CA at {path}: {e}")))?,
+            None => BUNDLED_CA.to_vec(),
+        };
+        // Russian trust bundle holds root + sub CA.
+        let certs = reqwest::Certificate::from_pem_bundle(&pem)
+            .map_err(|e| ProviderError::Api(format!("bad CA PEM: {e}")))?;
+        for cert in certs {
+            builder = builder.add_root_certificate(cert);
         }
 
         let http = builder
