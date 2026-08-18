@@ -6,6 +6,8 @@
   "permissions": [
     "core:default",
     "core:window:allow-show",
-    "opener:default"
+    "opener:default",
+    "dialog:default",
+    "fs:default"
   ]
 }
