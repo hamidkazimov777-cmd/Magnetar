@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Loader2 } from "lucide-react";
 import { api } from "../lib/api";
 import { useStore } from "../lib/store";
+import { useT } from "../lib/i18n";
 import type { ModelInfo } from "../lib/types";
 import { cn } from "../lib/cn";
 
 export function ModelSwitcher() {
+  const t = useT();
   const connections = useStore((s) => s.connections);
   const activeConnectionId = useStore((s) => s.activeConnectionId);
   const activeModel = useStore((s) => s.activeModel);
@@ -62,7 +64,7 @@ export function ModelSwitcher() {
         className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-2)]"
       >
         <span className="max-w-[240px] truncate font-medium">
-          {activeModel ?? "Select model"}
+          {activeModel ?? t("selectModel")}
         </span>
         <ChevronDown size={15} className="text-[var(--color-text-dim)]" />
       </button>
@@ -72,7 +74,7 @@ export function ModelSwitcher() {
           {connections.length > 1 && (
             <div className="border-b border-[var(--color-border)] p-2">
               <div className="px-2 pb-1 text-xs text-[var(--color-text-dim)]">
-                Connection
+                {t("connection")}
               </div>
               {connections.map((c) => (
                 <button
@@ -93,7 +95,7 @@ export function ModelSwitcher() {
           <div className="max-h-72 overflow-y-auto p-2">
             {loading && (
               <div className="flex items-center gap-2 px-2 py-3 text-sm text-[var(--color-text-dim)]">
-                <Loader2 size={15} className="animate-spin" /> Loading models…
+                <Loader2 size={15} className="animate-spin" /> {t("loadingModels")}
               </div>
             )}
             {error && (
@@ -119,7 +121,7 @@ export function ModelSwitcher() {
               ))}
             {!loading && !error && models.length === 0 && (
               <div className="px-2 py-3 text-sm text-[var(--color-text-dim)]">
-                No models returned.
+                {t("noModels")}
               </div>
             )}
           </div>

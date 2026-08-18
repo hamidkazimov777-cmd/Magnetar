@@ -4,12 +4,14 @@ import { api } from "../lib/api";
 import { useStore } from "../lib/store";
 import { buildCatalog, recommend, type Recommendation } from "../lib/adaptive";
 import { buildOutgoing, maybeSummarize } from "../lib/handoff";
+import { useT } from "../lib/i18n";
 import { Composer } from "./Composer";
 import { Message } from "./Message";
 import { ModelSwitcher } from "./ModelSwitcher";
 import { cn } from "../lib/cn";
 
 export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
+  const t = useT();
   const connections = useStore((s) => s.connections);
   const models = useStore((s) => s.models);
   const adaptive = useStore((s) => s.adaptive);
@@ -107,14 +109,13 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
         model,
       });
       // Auto-route within reach; surface a cross-connection upgrade as opt-in.
+      const reason = t(`reason_${rec.tier}`);
       if (rec.pick && rec.pick.model !== model) {
         connId = rec.pick.connectionId;
         model = rec.pick.model;
         setActive(connId, model);
-        setNote(`Адаптивно: ${model} — ${rec.reason}`);
-      } else {
-        setNote(`Адаптивно: ${model} — ${rec.reason}`);
       }
+      setNote(t("adaptiveUsing", { model, reason }));
       if (rec.upgrade) setUpgrade(rec.upgrade);
     }
 
@@ -137,13 +138,13 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
           <ModelSwitcher />
         ) : (
           <span className="px-2 text-sm text-[var(--color-text-dim)]">
-            Нет подключения
+            {t("noConnection")}
           </span>
         )}
 
         <button
           onClick={() => setAdaptive(!adaptive)}
-          title="Адаптивный режим: Magnetar подбирает подходящую модель под запрос"
+          title={t("adaptiveHint")}
           className={cn(
             "flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm transition",
             adaptive
@@ -152,7 +153,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
           )}
         >
           <Sparkles size={15} />
-          Адаптивный
+          {t("adaptive")}
         </button>
       </header>
 
@@ -182,13 +183,16 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
             <button
               onClick={() => {
                 setActive(upgrade.connectionId, upgrade.model);
-                setNote(`Переключено на ${upgrade.model}`);
+                setNote(t("switchedTo", { model: upgrade.model }));
                 setUpgrade(undefined);
               }}
               className="mb-2 flex items-center gap-1.5 rounded-lg border border-[var(--color-accent)]/50 bg-[var(--color-accent)]/10 px-2.5 py-1.5 text-xs text-[var(--color-accent-strong)] hover:bg-[var(--color-accent)]/20"
             >
               <ArrowUpRight size={13} />
-              Задача сложная — подключить {upgrade.model} ({upgrade.connectionName})?
+              {t("upgradeSuggest", {
+                model: upgrade.model,
+                conn: upgrade.connectionName,
+              })}
             </button>
           )}
         </div>
@@ -211,6 +215,7 @@ function EmptyState({
   ready: boolean;
   onOpenSettings: () => void;
 }) {
+  const t = useT();
   return (
     <div className="grid min-h-[50vh] place-items-center text-center">
       <div>
@@ -219,16 +224,14 @@ function EmptyState({
         </div>
         <h1 className="text-xl font-semibold">Magnetar</h1>
         <p className="mt-1 text-sm text-[var(--color-text-dim)]">
-          {ready
-            ? "Спроси что угодно. Модель можно переключать на лету сверху."
-            : "Добавь подключение и вставь API-ключ, чтобы начать."}
+          {ready ? t("emptyReady") : t("emptyNotReady")}
         </p>
         {!ready && (
           <button
             onClick={onOpenSettings}
             className="mt-4 rounded-xl bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-[var(--color-accent-fg)]"
           >
-            Добавить подключение
+            {t("addConnection")}
           </button>
         )}
       </div>

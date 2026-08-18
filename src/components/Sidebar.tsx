@@ -1,13 +1,17 @@
 import { MessageSquarePlus, Settings, Trash2 } from "lucide-react";
 import { useStore } from "../lib/store";
+import { useT, LANGS } from "../lib/i18n";
 import { cn } from "../lib/cn";
 
 export function Sidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
+  const t = useT();
   const sessions = useStore((s) => s.sessions);
   const activeSessionId = useStore((s) => s.activeSessionId);
   const newSession = useStore((s) => s.newSession);
   const selectSession = useStore((s) => s.selectSession);
   const deleteSession = useStore((s) => s.deleteSession);
+  const lang = useStore((s) => s.lang);
+  const setLang = useStore((s) => s.setLang);
 
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)]">
@@ -27,7 +31,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
           className="flex w-full items-center gap-2 rounded-xl border border-[var(--color-border)] px-3 py-2 text-sm hover:bg-[var(--color-surface-2)]"
         >
           <MessageSquarePlus size={16} />
-          New chat
+          {t("newChat")}
         </button>
       </div>
 
@@ -60,18 +64,34 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
         ))}
         {sessions.length === 0 && (
           <p className="px-3 py-6 text-center text-xs text-[var(--color-text-dim)]">
-            No chats yet.
+            {t("noChats")}
           </p>
         )}
       </div>
 
-      <div className="border-t border-[var(--color-border)] p-3">
+      <div className="space-y-2 border-t border-[var(--color-border)] p-3">
+        <div className="flex gap-1">
+          {LANGS.map((l) => (
+            <button
+              key={l.code}
+              onClick={() => setLang(l.code)}
+              className={cn(
+                "flex-1 rounded-lg border px-1.5 py-1 text-xs",
+                lang === l.code
+                  ? "border-[var(--color-accent)] text-[var(--color-accent-strong)]"
+                  : "border-[var(--color-border)] text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)]",
+              )}
+            >
+              {l.code.toUpperCase()}
+            </button>
+          ))}
+        </div>
         <button
           onClick={onOpenSettings}
           className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
         >
           <Settings size={16} />
-          Settings & keys
+          {t("settingsKeys")}
         </button>
       </div>
     </aside>

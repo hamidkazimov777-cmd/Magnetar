@@ -7,9 +7,11 @@ import {
   OPENAI_COMPAT_PRESETS,
   type ProviderKind,
 } from "../lib/types";
+import { useT } from "../lib/i18n";
 import { cn } from "../lib/cn";
 
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
+  const t = useT();
   const connections = useStore((s) => s.connections);
   const addConnection = useStore((s) => s.addConnection);
   const removeConnection = useStore((s) => s.removeConnection);
@@ -47,11 +49,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const add = async () => {
     setError(null);
     if (!name.trim() || !apiKey.trim()) {
-      setError("Заполни имя и ключ.");
+      setError(t("errFillNameKey"));
       return;
     }
     if (kind === "openai_compat" && !baseUrl.trim()) {
-      setError("Нужен base URL.");
+      setError(t("errNeedBaseUrl"));
       return;
     }
     setBusy(true);
@@ -95,7 +97,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-[var(--color-border)] px-5 py-4">
-          <h2 className="text-base font-semibold">Подключения</h2>
+          <h2 className="text-base font-semibold">{t("connectionsTitle")}</h2>
           <button
             onClick={onClose}
             className="rounded-lg p-1.5 text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)]"
@@ -133,7 +135,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                       )}
                     >
                       {keyed[c.id] ? <Check size={13} /> : <KeyRound size={13} />}
-                      {keyed[c.id] ? "Ключ в Keychain" : "Нет ключа"}
+                      {keyed[c.id] ? t("keyInKeychain") : t("noKey")}
                     </span>
                     <button
                       onClick={() => remove(c.id)}
@@ -148,14 +150,14 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           )}
 
           <div className="space-y-3 rounded-xl border border-[var(--color-border)] p-4">
-            <div className="text-sm font-medium">Добавить подключение</div>
+            <div className="text-sm font-medium">{t("addConnection")}</div>
 
             {/* Provider kind */}
             <div className="flex gap-1.5">
               {(
                 [
-                  ["openai_compat", "OpenAI-совместимый"],
-                  ["gigachat", "GigaChat"],
+                  ["openai_compat", t("providerOpenai")],
+                  ["gigachat", t("providerGiga")],
                 ] as const
               ).map(([k, label]) => (
                 <button
@@ -194,7 +196,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               </div>
             )}
 
-            <Field label="Название">
+            <Field label={t("fieldName")}>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -203,7 +205,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             </Field>
 
             {kind === "openai_compat" && (
-              <Field label="Base URL">
+              <Field label={t("fieldBaseUrl")}>
                 <input
                   value={baseUrl}
                   onChange={(e) => setBaseUrl(e.target.value)}
@@ -214,9 +216,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             )}
 
             <Field
-              label={
-                kind === "gigachat" ? "Authorization key (Basic)" : "API key"
-              }
+              label={kind === "gigachat" ? t("fieldGigaAuth") : t("fieldApiKey")}
             >
               <input
                 type="password"
@@ -229,7 +229,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
 
             {kind === "gigachat" && (
               <>
-                <Field label="Scope">
+                <Field label={t("fieldScope")}>
                   <input
                     value={scope}
                     onChange={(e) => setScope(e.target.value)}
@@ -237,7 +237,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                     className={inputCls}
                   />
                 </Field>
-                <Field label="Путь к Russian Trusted Root CA (PEM)">
+                <Field label={t("fieldCaPath")}>
                   <input
                     value={caPath}
                     onChange={(e) => setCaPath(e.target.value)}
@@ -246,14 +246,13 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                   />
                 </Field>
                 <p className="text-xs text-[var(--color-text-dim)]">
-                  Без сертификата возможна ошибка TLS. OAuth идёт на порт 9443,
-                  токен кэшируется, запросы сериализуются (freemium — 1 за раз).
+                  {t("gigaNote")}
                 </p>
               </>
             )}
 
             <p className="text-xs text-[var(--color-text-dim)]">
-              Ключи хранятся в macOS Keychain, не в открытом виде на диске.
+              {t("keychainNote")}
             </p>
 
             {error && <div className="text-sm text-red-400">{error}</div>}
@@ -268,7 +267,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               ) : (
                 <Plus size={15} />
               )}
-              Добавить
+              {t("addConnectionBtn")}
             </button>
           </div>
         </div>

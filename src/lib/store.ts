@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { db, type SessionMetaRow } from "./db";
+import type { Lang } from "./i18n";
 import type { ChatMessage, Connection, ModelInfo, Session } from "./types";
 
 const uid = () =>
@@ -33,6 +34,8 @@ interface State {
   activeModel?: string;
   models: Record<string, ModelInfo[]>;
   adaptive: boolean;
+  lang: Lang;
+  setLang: (lang: Lang) => void;
 
   sessions: Session[];
   activeSessionId?: string;
@@ -68,6 +71,8 @@ export const useStore = create<State>()(
       connections: [],
       models: {},
       adaptive: false,
+      lang: "ru",
+      setLang: (lang) => set({ lang }),
       sessions: [],
       hydrated: false,
 
@@ -282,6 +287,7 @@ export const useStore = create<State>()(
         activeConnectionId: s.activeConnectionId,
         activeModel: s.activeModel,
         adaptive: s.adaptive,
+        lang: s.lang,
       }),
     },
   ),

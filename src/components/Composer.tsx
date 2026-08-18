@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { ArrowUp, Square } from "lucide-react";
+import { useT } from "../lib/i18n";
 import { cn } from "../lib/cn";
 
 export function Composer({
@@ -13,6 +14,7 @@ export function Composer({
   onSend: (text: string) => void;
   onStop: () => void;
 }) {
+  const t = useT();
   const [text, setText] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
 
@@ -47,7 +49,7 @@ export function Composer({
           value={text}
           rows={1}
           disabled={disabled}
-          placeholder={disabled ? "Add a connection to start…" : "Message Magnetar…"}
+          placeholder={disabled ? t("addConnFirst") : t("messagePlaceholder")}
           onChange={(e) => {
             setText(e.target.value);
             grow();
@@ -80,7 +82,7 @@ export function Composer({
         )}
       </div>
       <p className="mt-2 text-center text-xs text-[var(--color-text-dim)]">
-        Enter to send · Shift+Enter for newline
+        {t("sendHint")}
       </p>
     </div>
   );
