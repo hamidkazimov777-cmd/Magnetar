@@ -4,6 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Magnetar</title>
+    <!-- Paint dark on the very first frame to avoid the white webview flash
+         before the bundled CSS/JS loads. -->
+    <style>
+      html,
+      body,
+      #root {
+        margin: 0;
+        height: 100%;
+        background: #050507;
+      }
+    </style>
   </head>
 
   <body>
