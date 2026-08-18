@@ -163,4 +163,28 @@ export const api = {
     invoke<string>("tool_attach_file", { path }),
   extractPdfText: (path: string) =>
     invoke<string>("extract_pdf_text", { path }),
+
+  // ---- Embedded terminal (PTY) ----
+  ptySpawn: (
+    id: string,
+    cwd: string | undefined,
+    cols: number,
+    rows: number,
+    onData: (data: string) => void,
+  ) => {
+    const channel = new Channel<string>();
+    channel.onmessage = onData;
+    return invoke<void>("pty_spawn", {
+      id,
+      cwd: cwd ?? null,
+      cols,
+      rows,
+      onData: channel,
+    });
+  },
+  ptyWrite: (id: string, data: string) =>
+    invoke<void>("pty_write", { id, data }),
+  ptyResize: (id: string, cols: number, rows: number) =>
+    invoke<void>("pty_resize", { id, cols, rows }),
+  ptyKill: (id: string) => invoke<void>("pty_kill", { id }),
 };

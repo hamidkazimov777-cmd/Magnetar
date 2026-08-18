@@ -232,6 +232,34 @@ pub fn git_exec(cwd: String, args: Vec<String>) -> Result<tools::BashResult, Str
     tools::git_exec(&cwd, args)
 }
 
+// ---- Embedded terminal (PTY) ----------------------------------------------
+
+#[tauri::command]
+pub fn pty_spawn(
+    id: String,
+    cwd: Option<String>,
+    cols: u16,
+    rows: u16,
+    on_data: Channel<String>,
+) -> Result<(), String> {
+    crate::pty::spawn(id, cwd, cols, rows, on_data)
+}
+
+#[tauri::command]
+pub fn pty_write(id: String, data: String) -> Result<(), String> {
+    crate::pty::write(&id, &data)
+}
+
+#[tauri::command]
+pub fn pty_resize(id: String, cols: u16, rows: u16) -> Result<(), String> {
+    crate::pty::resize(&id, cols, rows)
+}
+
+#[tauri::command]
+pub fn pty_kill(id: String) -> Result<(), String> {
+    crate::pty::kill(&id)
+}
+
 #[tauri::command]
 pub async fn chat_stream(
     connection: Connection,

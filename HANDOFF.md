@@ -665,4 +665,26 @@ GUI + API-ключа (headless не прогнать) — за пользова�
 кода (RAG), зрелость памяти, дистрибуция (Apple Silicon/подпись — блокируется
 Apple-аккаунтом).
 
-<!-- Следующий ассистент: добавь «Запись 20 — дата — модель — тема» здесь. -->
+### Запись 20 — 2026-08-18 — Claude (Opus 4.8) — встроенный терминал (PTY)
+
+- **Backend `pty.rs`** — настоящий PTY через крейт `portable-pty`. Глобальный
+  реестр сессий `SESSIONS: Lazy<Mutex<HashMap<id, PtyHandle{master,writer,child}>>>`.
+  Команды: `pty_spawn(id,cwd,cols,rows,on_data: Channel<String>)` — открывает pty,
+  запускает `$SHELL` (fallback zsh) с `TERM=xterm-256color` в `cwd`, поток читает
+  вывод master и шлёт в канал; `pty_write(id,data)`, `pty_resize(id,cols,rows)`,
+  `pty_kill(id)`. Зарегистрированы в `lib.rs`.
+- **Frontend `TerminalView.tsx`** — `@xterm/xterm` + `@xterm/addon-fit` (офлайн),
+  тема под фиолетовый бренд, шрифт JetBrains Mono. На маунт: генерит id, spawn,
+  `term.onData → pty_write`, ResizeObserver → fit + `pty_resize`; на размонтирование
+  `pty_kill` + dispose. Работает в `workspaceRoot`. Вкладка `terminal` в Sidebar/App,
+  i18n `terminal` (ru/en/es).
+
+Теперь Magnetar имеет полноценную IDE-триаду: **редактор + git + терминал** поверх
+канона/агента/workspace. 
+
+**Остаток дорожной карты:** индексация кода (RAG/embeddings — нужен провайдер
+эмбеддингов), зрелость памяти (дедуп brain/graph), дистрибуция (Apple Silicon
+`aarch64` — можно кросс-собрать; подпись/нотаризация — блокируется Apple Developer
+аккаунтом). Мелочи: табы нескольких файлов в редакторе, авто-refresh дерева.
+
+<!-- Следующий ассистент: добавь «Запись 21 — дата — модель — тема» здесь. -->

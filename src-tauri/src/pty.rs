@@ -1,0 +1,115 @@
+//! Embedded terminal via a real PTY (portable-pty). Each session streams its
+//! output to the frontend over a Tauri channel; input/resize/kill go back
+//! through commands keyed by a session id.
+
+use once_cell::sync::Lazy;
+use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
+use std::collections::HashMap;
+use std::io::{Read, Write};
+use std::sync::Mutex;
+use tauri::ipc::Channel;
+
+struct PtyHandle {
+    master: Box<dyn MasterPty + Send>,
+    writer: Box<dyn Write + Send>,
+    child: Box<dyn portable_pty::Child + Send + Sync>,
+}
+
+static SESSIONS: Lazy<Mutex<HashMap<String, PtyHandle>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+pub fn spawn(
+    id: String,
+    cwd: Option<String>,
+    cols: u16,
+    rows: u16,
+    on_data: Channel<String>,
+) -> Result<(), String> {
+    let pty_system = native_pty_system();
+    let pair = pty_system
+        .openpty(PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .map_err(|e| e.to_string())?;
+
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+    let mut cmd = CommandBuilder::new(shell);
+    if let Some(dir) = cwd.filter(|d| !d.is_empty()) {
+        cmd.cwd(dir);
+    }
+    cmd.env("TERM", "xterm-256color");
+
+    let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
+    // Slave no longer needed by us.
+    drop(pair.slave);
+
+    let mut reader = pair
+        .master
+        .try_clone_reader()
+        .map_err(|e| e.to_string())?;
+    let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
+
+    // Stream output → frontend.
+    std::thread::spawn(move || {
+        let mut buf = [0u8; 4096];
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    let s = String::from_utf8_lossy(&buf[..n]).into_owned();
+                    if on_data.send(s).is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    SESSIONS.lock().map_err(|e| e.to_string())?.insert(
+        id,
+        PtyHandle {
+            master: pair.master,
+            writer,
+            child,
+        },
+    );
+    Ok(())
+}
+
+pub fn write(id: &str, data: &str) -> Result<(), String> {
+    let mut m = SESSIONS.lock().map_err(|e| e.to_string())?;
+    if let Some(h) = m.get_mut(id) {
+        h.writer
+            .write_all(data.as_bytes())
+            .map_err(|e| e.to_string())?;
+        h.writer.flush().ok();
+    }
+    Ok(())
+}
+
+pub fn resize(id: &str, cols: u16, rows: u16) -> Result<(), String> {
+    let m = SESSIONS.lock().map_err(|e| e.to_string())?;
+    if let Some(h) = m.get(id) {
+        h.master
+            .resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+pub fn kill(id: &str) -> Result<(), String> {
+    let mut m = SESSIONS.lock().map_err(|e| e.to_string())?;
+    if let Some(mut h) = m.remove(id) {
+        let _ = h.child.kill();
+    }
+    Ok(())
+}

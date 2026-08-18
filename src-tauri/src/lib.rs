@@ -3,6 +3,7 @@ mod commands;
 mod db;
 mod keychain;
 mod providers;
+mod pty;
 mod tools;
 mod workspace;
 
@@ -47,6 +48,10 @@ pub fn run() {
             commands::extract_pdf_text,
             commands::editor_read_file,
             commands::git_exec,
+            commands::pty_spawn,
+            commands::pty_write,
+            commands::pty_resize,
+            commands::pty_kill,
             commands::list_projects,
             commands::save_project,
             commands::delete_project,
