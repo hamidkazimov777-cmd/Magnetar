@@ -142,3 +142,7 @@ React/TS/Tailwind), BYOK-чат с ИИ, код и доступ к машине.
 - Для проверки пользователя: Settings → «Проверить» на нужном подключении. Это
   делает настоящий `/models` и короткий completion, показывает конкретную ошибку
   и активирует выбранную модель при успехе.
+- Актуальный QA bundle после commit `1d2e5bd`:
+  `src-tauri/target/release/bundle/macos/Magnetar.app` (упакован в 01:52:07,
+  2026-08-19). Для новой DMG после QA запускать `npx tauri bundle --bundles dmg`
+  с уже собранным release binary.

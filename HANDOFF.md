@@ -916,3 +916,13 @@ base_url/scope/ca_path). Backend: `workspace.rs` (`ConnectionRow` + list/save/de
 Пользователь должен запустить новую сборку и нажать «Проверить» на каждом
 подключении; при ошибке UI покажет фактический ответ API, который нужен для
 диагностики endpoint/ключа/модели.
+
+### Запись 29 — 2026-08-19 — Codex — актуальный QA bundle после IDE-shell
+
+**Production `.app` обновлён и готов к ручной проверке.** После release-компиляции
+штатная Tauri-упаковка `npx tauri bundle --bundles app` успешно создала
+`src-tauri/target/release/bundle/macos/Magnetar.app`.
+
+Исполняемый x86_64 binary имеет timestamp 01:52:07 (2026-08-19), то есть содержит
+commit `1d2e5bd` с IDE-shell и автоматическим выбором connection/model. DMG в этот
+проход не пересобирался; для UI QA открывать именно `.app`.
