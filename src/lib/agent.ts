@@ -170,11 +170,46 @@ export async function runAgent(
   model: string,
   history: ChatMessage[],
   h: AgentHandlers,
+  isTeam = false,
 ): Promise<void> {
+  if (isTeam) {
+    return runTeamAgent(connection, model, history, h);
+  }
   if (connection.kind === "openai_compat") {
     return runAgentNative(connection, model, history, h);
   }
   return runAgentReAct(connection, model, history, h);
+}
+
+export async function runTeamAgent(
+  connection: Connection,
+  model: string,
+  history: ChatMessage[],
+  h: AgentHandlers,
+): Promise<void> {
+  if (h.cancelled?.()) return;
+
+  h.onText("🏛️ **Architect** is analyzing the request and creating a plan...\n\n");
+  const architectSystem = "You are the Architect. Analyze the user request, break it down into a clear technical plan with steps. Do not execute code. Just output the plan.";
+  const plan = await api.complete(connection, model, history, architectSystem);
+  
+  if (h.cancelled?.()) return;
+  h.onText(`${plan}\n\n---\n\n🛠️ **Developer** is implementing the plan...\n\n`);
+  
+  const devHistory = [...history, { id: "plan", role: "assistant", content: plan, createdAt: 0 }];
+  // Run developer
+  if (connection.kind === "openai_compat") {
+    await runAgentNative(connection, model, devHistory as ChatMessage[], h);
+  } else {
+    await runAgentReAct(connection, model, devHistory as ChatMessage[], h);
+  }
+
+  if (h.cancelled?.()) return;
+  h.onText("\n\n---\n\n👀 **Reviewer** is checking the changes...\n\n");
+  const reviewerSystem = "You are the Reviewer. Check what the developer did based on the plan, suggest any improvements, or confirm it looks good. Be concise.";
+  const review = await api.complete(connection, model, devHistory as ChatMessage[], reviewerSystem);
+  
+  h.onText(review);
 }
 
 /** Native OpenAI tool-use loop. */

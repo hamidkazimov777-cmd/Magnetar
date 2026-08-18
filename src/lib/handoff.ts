@@ -13,14 +13,45 @@ const BASE_SYSTEM = `You are Magnetar, a local coding agent. You may be a differ
  *  summary + a note when the model just changed) and the message tail. When a
  *  summary exists we send only the tail after it, which keeps token cost down
  *  AND carries context across model switches. */
-export function buildOutgoing(
+export async function buildOutgoing(
   session: Session,
   currentModel: string,
-): { system: string; messages: ChatMessage[] } {
+): Promise<{ system: string; messages: ChatMessage[] }> {
   const msgs = session.messages;
 
   let sendFrom = 0;
   const parts: string[] = [BASE_SYSTEM];
+
+  if (session.projectId) {
+    const p = useStore.getState().projects.find((x) => x.id === session.projectId);
+    if (p) {
+      parts.push(`\n## Project Context: ${p.name}`);
+      if (p.description) parts.push(`Description: ${p.description}`);
+      if (p.techStack) parts.push(`Tech Stack: ${p.techStack}`);
+      if (p.codingStandards) parts.push(`Coding Standards: ${p.codingStandards}`);
+      if (p.architectureNotes) parts.push(`Architecture: ${p.architectureNotes}`);
+      if (p.decisions) parts.push(`Decisions: ${p.decisions}`);
+    }
+
+    // Knowledge Graph Subgraph
+    try {
+      const nodes = await import("./db").then(m => m.db.listKnowledgeNodes(session.projectId!));
+      if (nodes.length > 0) {
+        // Very basic retrieval: just include nodes whose title appears in recent messages
+        const recentText = msgs.slice(-3).map(m => m.content).join(" ").toLowerCase();
+        const relevantNodes = nodes.filter(n => recentText.includes(n.title.toLowerCase()));
+        
+        if (relevantNodes.length > 0) {
+          parts.push(`\n## Related Knowledge (Subgraph)`);
+          relevantNodes.forEach(n => {
+            parts.push(`- **${n.title}** (${n.nodeType}): ${n.summary || "No summary"}`);
+          });
+        }
+      }
+    } catch {
+      // Ignore DB errors for graph retrieval
+    }
+  }
 
   if (session.summary && session.summaryUpToId) {
     const idx = msgs.findIndex((m) => m.id === session.summaryUpToId);
@@ -102,5 +133,132 @@ export async function maybeSummarize(
     if (summary.trim()) setSummary(summary.trim(), upToId);
   } catch {
     // ignore — non-critical
+  }
+
+  // Also try to extract project brain updates if this session belongs to a project.
+  if (session.projectId) {
+    void maybeExtractProjectBrain(transcript, session.projectId, useConn, useModel).catch(() => {});
+    void maybeBuildKnowledgeGraph(transcript, session.projectId, useConn, useModel).catch(() => {});
+  }
+}
+
+async function maybeExtractProjectBrain(transcript: string, projectId: string, conn: Connection, model: string) {
+  const p = useStore.getState().projects.find((x) => x.id === projectId);
+  if (!p) return;
+
+  const instruction: ChatMessage = {
+    id: "ext",
+    role: "user",
+    content: `Analyze this recent conversation transcript and extract any NEW architectural decisions, tech stack additions, or coding standards that were established.
+Format your response as a JSON object (without markdown blocks) with keys: "techStack", "architectureNotes", "codingStandards", "decisions".
+If there are no new updates for a category, omit the key or return null. Keep notes terse.
+\n\n---\n${transcript}`,
+    createdAt: 0,
+  };
+
+  try {
+    const res = await api.complete(
+      conn,
+      model,
+      [instruction],
+      "You are an expert tech lead summarizing architectural decisions. Always return raw JSON.",
+    );
+    
+    // Attempt to parse JSON and update project
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(res.trim().replace(/^```json/, "").replace(/```$/, ""));
+    } catch {
+      return;
+    }
+
+    if (!parsed) return;
+
+    let updated = false;
+    const newP = { ...p };
+    
+    if (parsed.techStack && !p.techStack?.includes(parsed.techStack)) {
+      newP.techStack = p.techStack ? `${p.techStack}\n- ${parsed.techStack}` : `- ${parsed.techStack}`;
+      updated = true;
+    }
+    if (parsed.architectureNotes && !p.architectureNotes?.includes(parsed.architectureNotes)) {
+      newP.architectureNotes = p.architectureNotes ? `${p.architectureNotes}\n- ${parsed.architectureNotes}` : `- ${parsed.architectureNotes}`;
+      updated = true;
+    }
+    if (parsed.codingStandards && !p.codingStandards?.includes(parsed.codingStandards)) {
+      newP.codingStandards = p.codingStandards ? `${p.codingStandards}\n- ${parsed.codingStandards}` : `- ${parsed.codingStandards}`;
+      updated = true;
+    }
+    if (parsed.decisions && !p.decisions?.includes(parsed.decisions)) {
+      newP.decisions = p.decisions ? `${p.decisions}\n- ${parsed.decisions}` : `- ${parsed.decisions}`;
+      updated = true;
+    }
+
+    if (updated) {
+      newP.updatedAt = Date.now();
+      useStore.getState().updateProject(newP);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+async function maybeBuildKnowledgeGraph(transcript: string, projectId: string, conn: Connection, model: string) {
+  const instruction: ChatMessage = {
+    id: "kg",
+    role: "user",
+    content: `Analyze this conversation transcript and extract key named entities, concepts, or files (Knowledge Nodes) and their relationships (Knowledge Edges).
+Format your response as a JSON object with keys: "nodes" (array of {title: string, nodeType: string, summary: string}) and "edges" (array of {source: string, target: string, relation: string}).
+Keep the extraction minimal and focused on important architecture, tools, or domain concepts.
+\n\n---\n${transcript}`,
+    createdAt: 0,
+  };
+
+  try {
+    const res = await api.complete(conn, model, [instruction], "You are an expert knowledge graph builder. Always return raw JSON.");
+    
+    let parsed: { nodes?: any[], edges?: any[] } | null = null;
+    try {
+      parsed = JSON.parse(res.trim().replace(/^```json/, "").replace(/```$/, ""));
+    } catch {
+      return;
+    }
+
+    if (!parsed) return;
+
+    if (parsed.nodes && Array.isArray(parsed.nodes)) {
+      const db = await import("./db").then(m => m.db);
+      for (const n of parsed.nodes) {
+        if (n.title && n.nodeType) {
+          // Use the title as the ID for simpler edge mapping
+          const id = n.title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+          await db.saveKnowledgeNode({
+            id,
+            projectId,
+            title: n.title,
+            nodeType: n.nodeType,
+            summary: n.summary || "",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          }).catch(() => {});
+        }
+      }
+
+      if (parsed.edges && Array.isArray(parsed.edges)) {
+        for (const e of parsed.edges) {
+          if (e.source && e.target && e.relation) {
+            const sourceId = e.source.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+            const targetId = e.target.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+            await db.saveKnowledgeEdge({
+              source: sourceId,
+              target: targetId,
+              relation: e.relation,
+            }).catch(() => {});
+          }
+        }
+      }
+    }
+  } catch {
+    // ignore
   }
 }

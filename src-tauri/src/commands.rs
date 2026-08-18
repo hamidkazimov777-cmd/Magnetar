@@ -1,6 +1,9 @@
 //! Tauri command surface — the bridge the React frontend calls via `invoke`.
 
 use crate::canon::{self, MessageRow, SessionMeta};
+use crate::workspace::{
+    self, KnowledgeEdge, KnowledgeNode, Project, Task, TimelineEvent,
+};
 use crate::keychain;
 use crate::providers::{
     build_provider, AgentStep, ChatParams, Connection, ModelInfo, StreamEvent, ToolDef,
@@ -41,6 +44,68 @@ pub fn upsert_message(message: MessageRow) -> Result<(), String> {
 #[tauri::command]
 pub fn delete_session(id: String) -> Result<(), String> {
     canon::delete_session(&id)
+}
+
+// ---- Workspace (Projects, Tasks, Knowledge, Timeline) ----------------------
+
+#[tauri::command]
+pub fn list_projects() -> Result<Vec<Project>, String> {
+    workspace::list_projects()
+}
+
+#[tauri::command]
+pub fn save_project(project: Project) -> Result<(), String> {
+    workspace::save_project(project)
+}
+
+#[tauri::command]
+pub fn delete_project(id: String) -> Result<(), String> {
+    workspace::delete_project(&id)
+}
+
+#[tauri::command]
+pub fn list_tasks(project_id: String) -> Result<Vec<Task>, String> {
+    workspace::list_tasks(&project_id)
+}
+
+#[tauri::command]
+pub fn save_task(task: Task) -> Result<(), String> {
+    workspace::save_task(task)
+}
+
+#[tauri::command]
+pub fn delete_task(id: String) -> Result<(), String> {
+    workspace::delete_task(&id)
+}
+
+#[tauri::command]
+pub fn list_knowledge_nodes(project_id: String) -> Result<Vec<KnowledgeNode>, String> {
+    workspace::list_knowledge_nodes(&project_id)
+}
+
+#[tauri::command]
+pub fn save_knowledge_node(node: KnowledgeNode) -> Result<(), String> {
+    workspace::save_knowledge_node(node)
+}
+
+#[tauri::command]
+pub fn list_knowledge_edges(project_id: String) -> Result<Vec<KnowledgeEdge>, String> {
+    workspace::list_knowledge_edges(&project_id)
+}
+
+#[tauri::command]
+pub fn save_knowledge_edge(edge: KnowledgeEdge) -> Result<(), String> {
+    workspace::save_knowledge_edge(edge)
+}
+
+#[tauri::command]
+pub fn list_timeline_events(project_id: String) -> Result<Vec<TimelineEvent>, String> {
+    workspace::list_timeline_events(&project_id)
+}
+
+#[tauri::command]
+pub fn save_timeline_event(event: TimelineEvent) -> Result<(), String> {
+    workspace::save_timeline_event(event)
 }
 
 // ---- Secrets (Keychain) ----------------------------------------------------

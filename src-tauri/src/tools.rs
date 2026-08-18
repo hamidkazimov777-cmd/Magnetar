@@ -5,6 +5,7 @@
 
 use serde::Serialize;
 use std::io::Read;
+use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
@@ -214,8 +215,12 @@ pub fn run_bash(command: &str, cwd: Option<&str>) -> Result<BashResult, String> 
     if let Some(dir) = cwd.filter(|d| !d.is_empty()) {
         cmd.current_dir(dir);
     }
+    // Put the command in its own process group (pgid == child pid) so we can
+    // kill the WHOLE tree (e.g. `npm run dev` → node) on Stop/timeout, not just
+    // the bash wrapper.
+    cmd.process_group(0);
     let mut child = cmd.spawn().map_err(|e| e.to_string())?;
-    
+
     let pid = child.id();
     if let Ok(mut m) = BASH_PROCESSES.lock() {
         m.insert(pid, pid);
@@ -246,6 +251,8 @@ pub fn run_bash(command: &str, cwd: Option<&str>) -> Result<BashResult, String> 
     {
         Some(status) => (status.code().unwrap_or(-1), false),
         None => {
+            // Kill the whole process group on timeout.
+            unsafe { libc::kill(-(pid as i32), libc::SIGKILL) };
             let _ = child.kill();
             let _ = child.wait();
             (-1, true)
@@ -275,17 +282,20 @@ pub fn run_bash(command: &str, cwd: Option<&str>) -> Result<BashResult, String> 
 }
 
 pub fn kill_bash(pid: Option<u32>) -> Result<(), String> {
+    // Negative pid = kill the whole process group (pgid == the bash pid we set
+    // via process_group(0)), so children like node/npm die too.
     if let Some(p) = pid {
-        // Kill specific process
         unsafe {
-            libc::kill(p as i32, libc::SIGKILL);
+            libc::kill(-(p as i32), libc::SIGKILL);
+        }
+        if let Ok(mut m) = BASH_PROCESSES.lock() {
+            m.remove(&p);
         }
     } else {
-        // Kill all running bash processes tracked
         if let Ok(mut m) = BASH_PROCESSES.lock() {
             for (&p, _) in m.iter() {
                 unsafe {
-                    libc::kill(p as i32, libc::SIGKILL);
+                    libc::kill(-(p as i32), libc::SIGKILL);
                 }
             }
             m.clear();

@@ -4,10 +4,15 @@ import { ChatView } from "./components/ChatView";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { GuideDialog } from "./components/GuideDialog";
 import { Splash } from "./components/Splash";
+import { ProjectsView } from "./components/ProjectsView";
+import { RoadmapView } from "./components/RoadmapView";
+import { KnowledgeGraphView } from "./components/KnowledgeGraphView";
+import { TimelineView } from "./components/TimelineView";
 import { useStore } from "./lib/store";
 import { api } from "./lib/api";
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState("chats");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
@@ -47,10 +52,17 @@ export default function App() {
   return (
     <div className="flex h-screen w-screen overflow-hidden">
       <Sidebar
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenGuide={() => setGuideOpen(true)}
       />
-      <ChatView onOpenSettings={() => setSettingsOpen(true)} />
+      {activeTab === "chats" && <ChatView onOpenSettings={() => setSettingsOpen(true)} />}
+      {activeTab === "projects" && <ProjectsView />}
+      {activeTab === "roadmap" && <RoadmapView />}
+      {activeTab === "knowledge" && <KnowledgeGraphView />}
+      {activeTab === "timeline" && <TimelineView />}
+
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       {guideOpen && <GuideDialog onClose={() => setGuideOpen(false)} />}
       {showSplash && <Splash onDone={() => setShowSplash(false)} />}

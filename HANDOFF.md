@@ -515,4 +515,38 @@ ReAct-протокол текстом. Затем **Фаза 5** — доп. э�
 - Установлены базовые компоненты `button` и `dialog`.
 - Кастомные модальные окна в `SettingsDialog.tsx` и окно подтверждения (`confirm`) в `ChatView.tsx` переписаны на `Dialog` из `shadcn/ui` для улучшения доступности (a11y) и визуальной консистентности.
 
-<!-- Следующий ассистент: добавь «Запись 15 — дата — модель — тема» здесь. -->
+### Запись 15 — 2026-08-18 — Antigravity — MVP V2 (Universal AI Workspace) Completed
+**Статус: реализовано (`cargo check` ✅, `tsc` ✅, `npm run build` ✅).**
+
+**Сделано:**
+1. **База данных и Структура (Phase 1)**: 
+   - Добавлены таблицы `projects`, `knowledge_nodes`, `knowledge_edges`, `tasks`, `timeline_events`.
+   - Сессии (чаты) теперь могут привязываться к проекту (`project_id`).
+   - Реализованы CRUD-команды в `workspace.rs`.
+2. **Frontend UI Shell (Phase 2)**: 
+   - Обновлен Zustand (`store.ts`) для управления состоянием проектов и текущего проекта.
+   - Добавлен новый `Sidebar.tsx` для навигации (Chats, Projects, Roadmap, Knowledge Graph, Timeline, Settings).
+   - `App.tsx` переписан на маршрутизацию по табам.
+3. **Project Brain (Phase 3)**:
+   - Внедрена вкладка `ProjectsView.tsx` для создания и редактирования контекста проекта (описание, стек, правила).
+   - В `handoff.ts` (`buildOutgoing`) добавлен инжект контекста активного проекта.
+   - Фоновая экстракция (анализ транскриптов и обновление контекста проекта).
+4. **Knowledge Graph (Phase 4)**:
+   - Создана `KnowledgeGraphView.tsx`.
+   - Инъекция локальных подграфов в `buildOutgoing`.
+   - Фоновый процесс сборки графа (`maybeBuildKnowledgeGraph`).
+5. **AI Project Manager & Roadmap (Phase 5)**:
+   - Создана `RoadmapView.tsx` в виде Kanban-доски.
+   - Управление задачами (Todo, In Progress, Done).
+6. **Multi-Agent Team & Timeline (Phase 6)**:
+   - Реализована `TimelineView.tsx` для истории событий проекта.
+   - В `agent.ts` добавлен `runTeamAgent` с последовательным вызовом "Architect -> Developer -> Reviewer".
+   - Запуск Team Mode через команду `/team` в чате.
+7. **AI CTO Mode (Phase 7)**:
+   - Кнопка "Run Audit" добавлена в `ProjectsView.tsx`.
+   - Обработка команды `/cto` в чате для глубокого анализа технического долга и создания задач.
+
+**Текущее состояние:**
+Код собирается без ошибок (`cargo check`, `tsc`, `npm run build`). Все требования V2 реализованы. Приложение можно тестировать (`npm run tauri dev`).
+
+<!-- Следующий ассистент: добавь «Запись 16 — дата — модель — тема» здесь. -->

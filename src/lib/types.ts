@@ -55,8 +55,61 @@ export interface Session {
   summary?: string;
   /** Id of the last message covered by `summary`. */
   summaryUpToId?: string;
+  projectId?: string;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description?: string;
+  techStack?: string;
+  architectureNotes?: string;
+  codingStandards?: string;
+  decisions?: string;
+  activeGoals?: string;
+  roadmap?: string;
+  risks?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Task {
+  id: string;
+  projectId: string;
+  title: string;
+  description?: string;
+  status: "TODO" | "IN_PROGRESS" | "BLOCKED" | "DONE" | string;
+  priority: string;
+  owner?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface KnowledgeNode {
+  id: string;
+  projectId: string;
+  title: string;
+  nodeType: string;
+  summary?: string;
+  metadata?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface KnowledgeEdge {
+  source: string;
+  target: string;
+  relation: string;
+}
+
+export interface TimelineEvent {
+  id: string;
+  projectId: string;
+  eventType: "Decision" | "TaskCreated" | "TaskCompleted" | "FileChanged" | "ArchitectureUpdate" | "AgentAction" | string;
+  content: string;
+  createdAt: number;
 }
 
 /** Stream events mirrored from the Rust `StreamEvent` enum. */

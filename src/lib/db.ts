@@ -8,6 +8,7 @@ export interface SessionMetaRow {
   model: string | null;
   summary: string | null;
   summaryUpToId: string | null;
+  projectId: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -29,4 +30,22 @@ export const db = {
   upsertMessage: (message: MessageRow) =>
     invoke<void>("upsert_message", { message }),
   deleteSession: (id: string) => invoke<void>("delete_session", { id }),
+
+  // Workspace
+  listProjects: () => invoke<import("./types").Project[]>("list_projects"),
+  saveProject: (project: import("./types").Project) => invoke<void>("save_project", { project }),
+  deleteProject: (id: string) => invoke<void>("delete_project", { id }),
+
+  listTasks: (projectId: string) => invoke<import("./types").Task[]>("list_tasks", { projectId }),
+  saveTask: (task: import("./types").Task) => invoke<void>("save_task", { task }),
+  deleteTask: (id: string) => invoke<void>("delete_task", { id }),
+
+  listKnowledgeNodes: (projectId: string) => invoke<import("./types").KnowledgeNode[]>("list_knowledge_nodes", { projectId }),
+  saveKnowledgeNode: (node: import("./types").KnowledgeNode) => invoke<void>("save_knowledge_node", { node }),
+
+  listKnowledgeEdges: (projectId: string) => invoke<import("./types").KnowledgeEdge[]>("list_knowledge_edges", { projectId }),
+  saveKnowledgeEdge: (edge: import("./types").KnowledgeEdge) => invoke<void>("save_knowledge_edge", { edge }),
+
+  listTimelineEvents: (projectId: string) => invoke<import("./types").TimelineEvent[]>("list_timeline_events", { projectId }),
+  saveTimelineEvent: (event: import("./types").TimelineEvent) => invoke<void>("save_timeline_event", { event }),
 };

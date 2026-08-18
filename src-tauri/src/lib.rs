@@ -4,6 +4,7 @@ mod db;
 mod keychain;
 mod providers;
 mod tools;
+mod workspace;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -44,6 +45,18 @@ pub fn run() {
             commands::tool_kill_bash,
             commands::tool_attach_file,
             commands::extract_pdf_text,
+            commands::list_projects,
+            commands::save_project,
+            commands::delete_project,
+            commands::list_tasks,
+            commands::save_task,
+            commands::delete_task,
+            commands::list_knowledge_nodes,
+            commands::save_knowledge_node,
+            commands::list_knowledge_edges,
+            commands::save_knowledge_edge,
+            commands::list_timeline_events,
+            commands::save_timeline_event,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

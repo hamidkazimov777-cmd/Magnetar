@@ -48,29 +48,36 @@ fn maybe_cache_system(messages: &mut [Value], enabled: bool) {
 }
 
 fn format_message(m: &crate::providers::ChatMessage) -> Value {
-    let mut has_images = false;
+    // Fold any non-image file text (e.g. extracted PDF/txt) into the message text
+    // so plain chat "attach a PDF and ask" works, not just images.
+    let mut text = m.content.clone();
     if let Some(atts) = &m.attachments {
-        if atts.iter().any(|a| a.kind == "image" && a.data.is_some()) {
-            has_images = true;
+        for a in atts {
+            if a.kind != "image" {
+                if let Some(t) = &a.extracted_text {
+                    if !t.is_empty() {
+                        text.push_str(&format!("\n\n[Attached file: {}]\n{}", a.name, t));
+                    }
+                }
+            }
         }
     }
 
+    let has_images = m
+        .attachments
+        .as_ref()
+        .map(|atts| atts.iter().any(|a| a.kind == "image" && a.data.is_some()))
+        .unwrap_or(false);
+
     if !has_images {
-        json!({ "role": m.role, "content": m.content })
+        json!({ "role": m.role, "content": text })
     } else {
-        let mut content = vec![json!({
-            "type": "text",
-            "text": m.content
-        })];
+        let mut content = vec![json!({ "type": "text", "text": text })];
         if let Some(atts) = &m.attachments {
             for a in atts {
                 if a.kind == "image" {
                     if let Some(data) = &a.data {
-                        // data is expected to be base64 without data:image/... prefix on rust side, or with prefix?
-                        // Actually frontend can provide data URL directly. Let's assume data is the full data URL.
-                        // Or if it's just base64, we need mime_type.
-                        // Let's assume frontend sends full data URL or just base64. 
-                        // If it doesn't start with data:, we prepend it.
+                        // Frontend may send a full data: URL or bare base64.
                         let url = if data.starts_with("data:") {
                             data.clone()
                         } else {
@@ -78,9 +85,7 @@ fn format_message(m: &crate::providers::ChatMessage) -> Value {
                         };
                         content.push(json!({
                             "type": "image_url",
-                            "image_url": {
-                                "url": url
-                            }
+                            "image_url": { "url": url }
                         }));
                     }
                 }

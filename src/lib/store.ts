@@ -21,6 +21,7 @@ function metaOf(s: Session): SessionMetaRow {
     model: s.model ?? null,
     summary: s.summary ?? null,
     summaryUpToId: s.summaryUpToId ?? null,
+    projectId: s.projectId ?? null,
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
   };
@@ -42,6 +43,15 @@ interface State {
   sessions: Session[];
   activeSessionId?: string;
   hydrated: boolean;
+
+  projects: import("./types").Project[];
+  activeProjectId?: string;
+
+  loadProjects: () => Promise<void>;
+  setActiveProject: (id: string | undefined) => void;
+  addProject: (p: import("./types").Project) => void;
+  updateProject: (p: import("./types").Project) => void;
+  deleteProject: (id: string) => void;
 
   hydrate: () => Promise<void>;
 
@@ -78,10 +88,13 @@ export const useStore = create<State>()(
       lang: "ru",
       setLang: (lang) => set({ lang }),
       sessions: [],
+      projects: [],
       hydrated: false,
 
       hydrate: async () => {
         try {
+          const projects = await db.listProjects();
+          set({ projects });
           const metas = await db.listSessions();
           const sessions: Session[] = await Promise.all(
             metas.map(async (m) => {
@@ -93,6 +106,7 @@ export const useStore = create<State>()(
                 model: m.model ?? undefined,
                 summary: m.summary ?? undefined,
                 summaryUpToId: m.summaryUpToId ?? undefined,
+                projectId: m.projectId ?? undefined,
                 createdAt: m.createdAt,
                 updatedAt: m.updatedAt,
                 messages: rows.map((r) => ({
@@ -113,6 +127,34 @@ export const useStore = create<State>()(
         } catch {
           set({ hydrated: true });
         }
+      },
+
+      loadProjects: async () => {
+        const projects = await db.listProjects();
+        set({ projects });
+      },
+
+      setActiveProject: (id) => set({ activeProjectId: id }),
+
+      addProject: (p) => {
+        void db.saveProject(p).catch(() => {});
+        set((s) => ({ projects: [p, ...s.projects], activeProjectId: p.id }));
+      },
+
+      updateProject: (p) => {
+        void db.saveProject(p).catch(() => {});
+        set((s) => ({ projects: s.projects.map((x) => (x.id === p.id ? p : x)) }));
+      },
+
+      deleteProject: (id) => {
+        void db.deleteProject(id).catch(() => {});
+        set((s) => {
+          const projects = s.projects.filter((x) => x.id !== id);
+          return {
+            projects,
+            activeProjectId: s.activeProjectId === id ? undefined : s.activeProjectId,
+          };
+        });
       },
 
       setModels: (connectionId, models) =>
@@ -168,6 +210,7 @@ export const useStore = create<State>()(
           messages: [],
           connectionId: get().activeConnectionId,
           model: get().activeModel,
+          projectId: get().activeProjectId,
           createdAt: now(),
           updatedAt: now(),
         };
@@ -293,6 +336,7 @@ export const useStore = create<State>()(
         adaptive: s.adaptive,
         agentMode: s.agentMode,
         lang: s.lang,
+        activeProjectId: s.activeProjectId,
       }),
     },
   ),

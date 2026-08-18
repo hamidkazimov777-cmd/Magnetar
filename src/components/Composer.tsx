@@ -4,6 +4,7 @@ import { useT } from "../lib/i18n";
 import { cn } from "../lib/cn";
 import { open } from "@tauri-apps/plugin-dialog";
 import { readFile } from "@tauri-apps/plugin-fs";
+import { api } from "../lib/api";
 import type { Attachment } from "../lib/types";
 
 function arrayBufferToBase64(buffer: ArrayBuffer) {
@@ -52,23 +53,42 @@ export function Composer({
       const selected = await open({
         multiple: true,
         filters: [{
-          name: "Images",
-          extensions: ["png", "jpg", "jpeg", "webp"]
+          name: "Images & PDF",
+          extensions: ["png", "jpg", "jpeg", "webp", "gif", "pdf"]
         }]
       });
       if (selected && Array.isArray(selected)) {
         const newAtts: Attachment[] = [];
         for (const file of selected) {
-          const contents = await readFile(file);
           const mime = getMimeType(file);
-          const base64 = arrayBufferToBase64(contents);
-          newAtts.push({
-            id: crypto.randomUUID(),
-            type: "image",
-            mimeType: mime,
-            name: file.split(/[/\\]/).pop() || file,
-            data: base64
-          });
+          const name = file.split(/[/\\]/).pop() || file;
+          if (mime === "application/pdf") {
+            // Extract text locally so the model can read the PDF.
+            let extractedText = "";
+            try {
+              extractedText = await api.extractPdfText(file);
+            } catch (err) {
+              console.error("pdf extract failed", err);
+            }
+            newAtts.push({
+              id: crypto.randomUUID(),
+              type: "file",
+              mimeType: mime,
+              name,
+              path: file,
+              extractedText,
+            });
+          } else {
+            const contents = await readFile(file);
+            const base64 = arrayBufferToBase64(contents);
+            newAtts.push({
+              id: crypto.randomUUID(),
+              type: "image",
+              mimeType: mime,
+              name,
+              data: base64,
+            });
+          }
         }
         setAttachments(prev => [...prev, ...newAtts]);
       }

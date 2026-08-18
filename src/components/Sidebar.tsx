@@ -1,13 +1,17 @@
-import { BookOpen, MessageSquarePlus, Settings, Trash2 } from "lucide-react";
+import { BookOpen, MessageSquarePlus, Settings, Trash2, FolderGit2, MessageSquare, ListTodo, Network, Clock } from "lucide-react";
 import { useStore } from "../lib/store";
 import { useT, LANGS } from "../lib/i18n";
 import { LogoMark } from "./Logo";
 import { cn } from "../lib/cn";
 
 export function Sidebar({
+  activeTab,
+  onTabChange,
   onOpenSettings,
   onOpenGuide,
 }: {
+  activeTab: string;
+  onTabChange: (tab: string) => void;
   onOpenSettings: () => void;
   onOpenGuide: () => void;
 }) {
@@ -35,17 +39,82 @@ export function Sidebar({
         </span>
       </div>
 
-      <div className="p-3">
+      <div className="space-y-1 p-3">
         <button
-          onClick={() => newSession()}
-          className="flex w-full items-center gap-2 rounded-xl border border-[var(--color-border)] px-3 py-2 text-sm hover:bg-[var(--color-surface-2)]"
+          onClick={() => onTabChange("chats")}
+          className={cn(
+            "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm",
+            activeTab === "chats"
+              ? "bg-[var(--color-surface-2)] text-[var(--color-text)]"
+              : "text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
+          )}
         >
-          <MessageSquarePlus size={16} />
-          {t("newChat")}
+          <MessageSquare size={16} />
+          {t("chats") || "Chats"}
+        </button>
+        <button
+          onClick={() => onTabChange("projects")}
+          className={cn(
+            "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm",
+            activeTab === "projects"
+              ? "bg-[var(--color-surface-2)] text-[var(--color-text)]"
+              : "text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
+          )}
+        >
+          <FolderGit2 size={16} />
+          {t("projects") || "Projects"}
+        </button>
+        <button
+          onClick={() => onTabChange("roadmap")}
+          className={cn(
+            "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm",
+            activeTab === "roadmap"
+              ? "bg-[var(--color-surface-2)] text-[var(--color-text)]"
+              : "text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
+          )}
+        >
+          <ListTodo size={16} />
+          {t("roadmap") || "Roadmap"}
+        </button>
+        <button
+          onClick={() => onTabChange("knowledge")}
+          className={cn(
+            "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm",
+            activeTab === "knowledge"
+              ? "bg-[var(--color-surface-2)] text-[var(--color-text)]"
+              : "text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
+          )}
+        >
+          <Network size={16} />
+          {t("knowledgeGraph") || "Knowledge Graph"}
+        </button>
+        <button
+          onClick={() => onTabChange("timeline")}
+          className={cn(
+            "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm",
+            activeTab === "timeline"
+              ? "bg-[var(--color-surface-2)] text-[var(--color-text)]"
+              : "text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
+          )}
+        >
+          <Clock size={16} />
+          {t("timeline") || "Timeline"}
         </button>
       </div>
 
-      <div className="flex-1 space-y-0.5 overflow-y-auto px-2">
+      {activeTab === "chats" && (
+        <>
+          <div className="px-3 pb-2">
+            <button
+              onClick={() => newSession()}
+              className="flex w-full items-center gap-2 rounded-xl border border-[var(--color-border)] px-3 py-2 text-sm hover:bg-[var(--color-surface-2)] text-[var(--color-text)]"
+            >
+              <MessageSquarePlus size={16} />
+              {t("newChat")}
+            </button>
+          </div>
+
+          <div className="flex-1 space-y-0.5 overflow-y-auto px-2">
         {sessions.map((s) => (
           <div
             key={s.id}
@@ -77,7 +146,11 @@ export function Sidebar({
             {t("noChats")}
           </p>
         )}
-      </div>
+          </div>
+        </>
+      )}
+      
+      {activeTab !== "chats" && <div className="flex-1" />}
 
       <div className="space-y-2 border-t border-[var(--color-border)] p-3">
         <div className="flex gap-1">

@@ -83,7 +83,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     const current = useStore.getState().sessions.find((s) => s.id === sessionId)!;
     // Handoff-aware context: identity + rolling summary + tail, with a note when
     // the model changed since the previous turn.
-    const { system, messages: outgoing } = buildOutgoing(current, model);
+    const { system, messages: outgoing } = await buildOutgoing(current, model);
     const history = outgoing.filter((m) => m.id !== assistantId);
 
     setStreaming(true);
@@ -122,7 +122,14 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     let sessionId = useStore.getState().activeSessionId;
     if (!sessionId) sessionId = newSession();
 
-    addMessage(sessionId, { role: "user", content: text, attachments });
+    const isTeam = text.startsWith("/team ");
+    const isCto = text.startsWith("/cto");
+    
+    let content = text;
+    if (isTeam) content = text.replace("/team ", "").trim();
+    if (isCto) content = text.replace("/cto", "Perform a comprehensive CTO audit of this project. Check for tech debt, architectural flaws, and suggest concrete tasks for the Roadmap.").trim();
+
+    addMessage(sessionId, { role: "user", content, attachments });
     const assistantId = addMessage(sessionId, { role: "assistant", content: "", model });
     const history = (
       useStore.getState().sessions.find((s) => s.id === sessionId)?.messages ?? []
@@ -131,12 +138,16 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     agentCancelRef.current = false;
     setStreaming(true);
     try {
-      await runAgent(connection, model, history, {
-        confirm: (name, args) =>
-          new Promise<boolean>((resolve) => setConfirm({ name, args, resolve })),
-        onText: (t) => appendToMessage(sessionId!, assistantId, t),
-        cancelled: () => agentCancelRef.current,
-      });
+      if (agentMode || isTeam || isCto) {
+        await runAgent(connection, model, history, {
+          confirm: (name, args) =>
+            new Promise<boolean>((resolve) => setConfirm({ name, args, resolve })),
+          onText: (t) => appendToMessage(sessionId!, assistantId, t),
+          cancelled: () => agentCancelRef.current,
+        }, isTeam);
+      } else {
+        await runSend(text, attachments, connId, model);
+      }
     } catch (e) {
       appendToMessage(sessionId!, assistantId, `\n\n⚠️ ${String(e)}`);
     } finally {
