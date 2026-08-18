@@ -1,4 +1,4 @@
-import { BookOpen, MessageSquarePlus, Settings, Trash2, FolderGit2, MessageSquare, ListTodo, Network, Clock } from "lucide-react";
+import { BookOpen, MessageSquarePlus, Settings, Trash2, FolderGit2, MessageSquare, ListTodo, Network, Clock, Globe } from "lucide-react";
 import { useStore } from "../lib/store";
 import { useT, LANGS } from "../lib/i18n";
 import { LogoMark } from "./Logo";
@@ -99,6 +99,18 @@ export function Sidebar({
         >
           <Clock size={16} />
           {t("timeline") || "Timeline"}
+        </button>
+        <button
+          onClick={() => onTabChange("subscriptions")}
+          className={cn(
+            "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm",
+            activeTab === "subscriptions"
+              ? "bg-[var(--color-surface-2)] text-[var(--color-text)]"
+              : "text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
+          )}
+        >
+          <Globe size={16} />
+          {t("subscriptions")}
         </button>
       </div>
 

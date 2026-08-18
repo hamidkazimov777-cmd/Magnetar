@@ -8,6 +8,7 @@ import { ProjectsView } from "./components/ProjectsView";
 import { RoadmapView } from "./components/RoadmapView";
 import { KnowledgeGraphView } from "./components/KnowledgeGraphView";
 import { TimelineView } from "./components/TimelineView";
+import { SubscriptionsView } from "./components/SubscriptionsView";
 import { useStore } from "./lib/store";
 import { api } from "./lib/api";
 
@@ -62,6 +63,7 @@ export default function App() {
       {activeTab === "roadmap" && <RoadmapView />}
       {activeTab === "knowledge" && <KnowledgeGraphView />}
       {activeTab === "timeline" && <TimelineView />}
+      {activeTab === "subscriptions" && <SubscriptionsView />}
 
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       {guideOpen && <GuideDialog onClose={() => setGuideOpen(false)} />}
