@@ -2,7 +2,10 @@
 
 use crate::canon::{self, MessageRow, SessionMeta};
 use crate::keychain;
-use crate::providers::{build_provider, ChatParams, Connection, ModelInfo, StreamEvent};
+use crate::providers::{
+    build_provider, AgentStep, ChatParams, Connection, ModelInfo, StreamEvent, ToolDef,
+};
+use crate::tools;
 use tauri::ipc::Channel;
 
 // ---- Canon (SQLite) --------------------------------------------------------
@@ -69,6 +72,57 @@ pub async fn complete(connection: Connection, params: ChatParams) -> Result<Stri
     let key = resolve_key(&connection)?;
     let provider = build_provider(&connection, key).map_err(|e| e.to_string())?;
     provider.complete(params).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn agent_step(
+    connection: Connection,
+    model: String,
+    messages: Vec<serde_json::Value>,
+    tools: Vec<ToolDef>,
+) -> Result<AgentStep, String> {
+    let key = resolve_key(&connection)?;
+    let provider = build_provider(&connection, key).map_err(|e| e.to_string())?;
+    provider
+        .agent_step(model, messages, tools)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+// ---- Agent tools -----------------------------------------------------------
+
+#[tauri::command]
+pub fn tool_read_file(path: String) -> Result<tools::ReadResult, String> {
+    tools::read_file(&path)
+}
+
+#[tauri::command]
+pub fn tool_list_dir(path: String) -> Result<Vec<tools::DirEntry>, String> {
+    tools::list_dir(&path)
+}
+
+#[tauri::command]
+pub fn tool_grep(pattern: String, path: Option<String>) -> Result<Vec<tools::GrepHit>, String> {
+    tools::grep(&pattern, path.as_deref().unwrap_or("."))
+}
+
+#[tauri::command]
+pub fn tool_write_file(path: String, content: String) -> Result<usize, String> {
+    tools::write_file(&path, &content)
+}
+
+#[tauri::command]
+pub fn tool_edit_file(
+    path: String,
+    old_string: String,
+    new_string: String,
+) -> Result<tools::EditResult, String> {
+    tools::edit_file(&path, &old_string, &new_string)
+}
+
+#[tauri::command]
+pub fn tool_run_bash(command: String, cwd: Option<String>) -> Result<tools::BashResult, String> {
+    tools::run_bash(&command, cwd.as_deref())
 }
 
 #[tauri::command]

@@ -34,6 +34,8 @@ interface State {
   activeModel?: string;
   models: Record<string, ModelInfo[]>;
   adaptive: boolean;
+  agentMode: boolean;
+  setAgentMode: (on: boolean) => void;
   lang: Lang;
   setLang: (lang: Lang) => void;
 
@@ -71,6 +73,8 @@ export const useStore = create<State>()(
       connections: [],
       models: {},
       adaptive: false,
+      agentMode: false,
+      setAgentMode: (on) => set({ agentMode: on }),
       lang: "ru",
       setLang: (lang) => set({ lang }),
       sessions: [],
@@ -287,6 +291,7 @@ export const useStore = create<State>()(
         activeConnectionId: s.activeConnectionId,
         activeModel: s.activeModel,
         adaptive: s.adaptive,
+        agentMode: s.agentMode,
         lang: s.lang,
       }),
     },

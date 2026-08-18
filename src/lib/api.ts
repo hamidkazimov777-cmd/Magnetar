@@ -1,6 +1,21 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
 import type { ChatMessage, Connection, ModelInfo, StreamEvent } from "./types";
 
+export interface ToolDef {
+  name: string;
+  description: string;
+  parameters: unknown;
+}
+export interface ToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+export interface AgentStep {
+  content: string | null;
+  tool_calls: ToolCall[];
+}
+
 /** Rust `Connection` uses snake_case keys. */
 function toRustConn(c: Connection) {
   return {
@@ -82,4 +97,44 @@ export const api = {
       stopped = true;
     };
   },
+
+  // ---- Agent (tool-use) ----
+  agentStep: (
+    connection: Connection,
+    model: string,
+    messages: unknown[],
+    tools: ToolDef[],
+  ) =>
+    invoke<AgentStep>("agent_step", {
+      connection: toRustConn(connection),
+      model,
+      messages,
+      tools,
+    }),
+
+  toolReadFile: (path: string) =>
+    invoke<{ content: string; truncated: boolean; bytes: number }>(
+      "tool_read_file",
+      { path },
+    ),
+  toolListDir: (path: string) =>
+    invoke<{ name: string; isDir: boolean }[]>("tool_list_dir", { path }),
+  toolGrep: (pattern: string, path?: string) =>
+    invoke<{ file: string; line: number; text: string }[]>("tool_grep", {
+      pattern,
+      path: path ?? null,
+    }),
+  toolWriteFile: (path: string, content: string) =>
+    invoke<number>("tool_write_file", { path, content }),
+  toolEditFile: (path: string, oldString: string, newString: string) =>
+    invoke<{ replaced: number; diff: string }>("tool_edit_file", {
+      path,
+      oldString,
+      newString,
+    }),
+  toolRunBash: (command: string, cwd?: string) =>
+    invoke<{ stdout: string; stderr: string; code: number; truncated: boolean }>(
+      "tool_run_bash",
+      { command, cwd: cwd ?? null },
+    ),
 };

@@ -3,7 +3,7 @@
 //! destructive tools (write_file, edit_file, run_bash) are gated by an explicit
 //! user confirmation in the UI before the frontend invokes them.
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::path::Path;
 
 /// Hard caps so a single tool call can't blow up the context window.
@@ -187,38 +187,4 @@ pub fn run_bash(command: &str, cwd: Option<&str>) -> Result<BashResult, String> 
         code: out.status.code().unwrap_or(-1),
         truncated: t1 || t2,
     })
-}
-
-// ---- Tool argument shapes (deserialized from the model's JSON) --------------
-
-#[derive(Debug, Deserialize)]
-pub struct PathArg {
-    pub path: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct WriteArg {
-    pub path: String,
-    pub content: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct EditArg {
-    pub path: String,
-    pub old_string: String,
-    pub new_string: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct GrepArg {
-    pub pattern: String,
-    #[serde(default)]
-    pub path: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct BashArg {
-    pub command: String,
-    #[serde(default)]
-    pub cwd: Option<String>,
 }

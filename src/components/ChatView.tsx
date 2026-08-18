@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Sparkles, ArrowUpRight } from "lucide-react";
+import { Sparkles, ArrowUpRight, Bot, TriangleAlert } from "lucide-react";
 import { api } from "../lib/api";
 import { useStore } from "../lib/store";
 import { buildCatalog, recommend, type Recommendation } from "../lib/adaptive";
 import { buildOutgoing, maybeSummarize } from "../lib/handoff";
+import { runAgent } from "../lib/agent";
 import { useT } from "../lib/i18n";
 import { Composer } from "./Composer";
 import { Message } from "./Message";
@@ -16,6 +17,8 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
   const models = useStore((s) => s.models);
   const adaptive = useStore((s) => s.adaptive);
   const setAdaptive = useStore((s) => s.setAdaptive);
+  const agentMode = useStore((s) => s.agentMode);
+  const setAgentMode = useStore((s) => s.setAgentMode);
   const activeConnectionId = useStore((s) => s.activeConnectionId);
   const activeModel = useStore((s) => s.activeModel);
   const sessions = useStore((s) => s.sessions);
@@ -30,6 +33,11 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
   const [streaming, setStreaming] = useState(false);
   const [upgrade, setUpgrade] = useState<Recommendation["upgrade"]>();
   const [note, setNote] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<{
+    name: string;
+    args: Record<string, unknown>;
+    resolve: (ok: boolean) => void;
+  } | null>(null);
   const stopRef = useRef<null | (() => void)>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -94,6 +102,33 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     stopRef.current = stop;
   };
 
+  const runAgentPath = async (text: string, connId: string, model: string) => {
+    const connection = useStore.getState().connections.find((c) => c.id === connId);
+    if (!connection) return;
+    let sessionId = useStore.getState().activeSessionId;
+    if (!sessionId) sessionId = newSession();
+
+    addMessage(sessionId, { role: "user", content: text });
+    const assistantId = addMessage(sessionId, { role: "assistant", content: "", model });
+    const history = (
+      useStore.getState().sessions.find((s) => s.id === sessionId)?.messages ?? []
+    ).filter((m) => m.id !== assistantId);
+
+    setStreaming(true);
+    try {
+      await runAgent(connection, model, history, {
+        confirm: (name, args) =>
+          new Promise<boolean>((resolve) => setConfirm({ name, args, resolve })),
+        onText: (t) => appendToMessage(sessionId!, assistantId, t),
+      });
+    } catch (e) {
+      appendToMessage(sessionId!, assistantId, `\n\n⚠️ ${String(e)}`);
+    } finally {
+      setStreaming(false);
+      useStore.getState().persistMessage(sessionId!, assistantId);
+    }
+  };
+
   const send = async (text: string) => {
     if (!conn || !activeModel) return;
     setUpgrade(undefined);
@@ -119,7 +154,8 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
       if (rec.upgrade) setUpgrade(rec.upgrade);
     }
 
-    await runSend(text, connId, model);
+    if (agentMode) await runAgentPath(text, connId, model);
+    else await runSend(text, connId, model);
   };
 
   const stop = () => {
@@ -142,19 +178,34 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
           </span>
         )}
 
-        <button
-          onClick={() => setAdaptive(!adaptive)}
-          title={t("adaptiveHint")}
-          className={cn(
-            "flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm transition",
-            adaptive
-              ? "border-[var(--color-accent)] bg-[var(--color-accent)]/15 text-[var(--color-accent-strong)]"
-              : "border-[var(--color-border)] text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)]",
-          )}
-        >
-          <Sparkles size={15} />
-          {t("adaptive")}
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setAgentMode(!agentMode)}
+            title={t("agentHint")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm transition",
+              agentMode
+                ? "border-[var(--color-accent)] bg-[var(--color-accent)]/15 text-[var(--color-accent-strong)]"
+                : "border-[var(--color-border)] text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)]",
+            )}
+          >
+            <Bot size={15} />
+            {t("agent")}
+          </button>
+          <button
+            onClick={() => setAdaptive(!adaptive)}
+            title={t("adaptiveHint")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm transition",
+              adaptive
+                ? "border-[var(--color-accent)] bg-[var(--color-accent)]/15 text-[var(--color-accent-strong)]"
+                : "border-[var(--color-border)] text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)]",
+            )}
+          >
+            <Sparkles size={15} />
+            {t("adaptive")}
+          </button>
+        </div>
       </header>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
@@ -204,6 +255,43 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
         onSend={send}
         onStop={stop}
       />
+
+      {confirm && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl">
+            <div className="flex items-center gap-2 border-b border-[var(--color-border)] px-5 py-3.5">
+              <TriangleAlert size={17} className="text-[var(--color-accent-strong)]" />
+              <h3 className="text-sm font-semibold">{t("confirmTitle")}</h3>
+            </div>
+            <div className="space-y-2 px-5 py-4">
+              <div className="text-sm font-medium">{confirm.name}</div>
+              <pre className="max-h-56 overflow-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3 text-xs">
+                {JSON.stringify(confirm.args, null, 2)}
+              </pre>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-[var(--color-border)] px-5 py-3">
+              <button
+                onClick={() => {
+                  confirm.resolve(false);
+                  setConfirm(null);
+                }}
+                className="rounded-lg border border-[var(--color-border)] px-3.5 py-1.5 text-sm text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)]"
+              >
+                {t("confirmDecline")}
+              </button>
+              <button
+                onClick={() => {
+                  confirm.resolve(true);
+                  setConfirm(null);
+                }}
+                className="rounded-lg bg-[var(--color-accent)] px-3.5 py-1.5 text-sm font-medium text-[var(--color-accent-fg)]"
+              >
+                {t("confirmApprove")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

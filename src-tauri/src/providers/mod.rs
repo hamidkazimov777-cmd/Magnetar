@@ -87,6 +87,30 @@ pub struct ModelInfo {
     pub label: Option<String>,
 }
 
+/// A tool the model may call (OpenAI function schema).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolDef {
+    pub name: String,
+    pub description: String,
+    pub parameters: serde_json::Value,
+}
+
+/// A tool call the model asked for.
+#[derive(Debug, Clone, Serialize)]
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    /// Raw JSON string of arguments (as the model emitted it).
+    pub arguments: String,
+}
+
+/// One turn of the agent loop: either final text, or tool calls to run.
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentStep {
+    pub content: Option<String>,
+    pub tool_calls: Vec<ToolCall>,
+}
+
 /// Streaming events pushed to the frontend over a Tauri IPC channel.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -107,6 +131,18 @@ pub trait Provider: Send + Sync {
     /// Single-shot, non-streaming completion. Used by the adaptive router
     /// (prompt classification) and the handoff summarizer — short, cheap calls.
     async fn complete(&self, params: ChatParams) -> Result<String, ProviderError>;
+
+    /// One step of an agentic tool-use loop. `messages` are raw OpenAI-format
+    /// message objects (so the caller can append assistant tool_calls and tool
+    /// results across iterations). Default: not supported.
+    async fn agent_step(
+        &self,
+        _model: String,
+        _messages: Vec<serde_json::Value>,
+        _tools: Vec<ToolDef>,
+    ) -> Result<AgentStep, ProviderError> {
+        Err(ProviderError::NotImplemented)
+    }
 }
 
 /// Build the right adapter for a connection. `api_key` already resolved from

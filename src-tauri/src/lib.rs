@@ -3,6 +3,7 @@ mod commands;
 mod db;
 mod keychain;
 mod providers;
+mod tools;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -30,6 +31,13 @@ pub fn run() {
             commands::save_session,
             commands::upsert_message,
             commands::delete_session,
+            commands::agent_step,
+            commands::tool_read_file,
+            commands::tool_list_dir,
+            commands::tool_grep,
+            commands::tool_write_file,
+            commands::tool_edit_file,
+            commands::tool_run_bash,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

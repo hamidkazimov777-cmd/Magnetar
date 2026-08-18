@@ -2,7 +2,8 @@
 //! LM Studio, Ollama's OpenAI shim, etc. Streams via SSE (`stream: true`).
 
 use super::{
-    ChatParams, Connection, ModelInfo, Provider, ProviderError, StreamEvent,
+    AgentStep, ChatParams, Connection, ModelInfo, Provider, ProviderError, StreamEvent, ToolCall,
+    ToolDef,
 };
 use async_trait::async_trait;
 use futures_util::StreamExt;
@@ -232,5 +233,94 @@ impl Provider for OpenAiCompat {
             .unwrap_or_default()
             .to_string();
         Ok(content)
+    }
+
+    async fn agent_step(
+        &self,
+        model: String,
+        messages: Vec<Value>,
+        tools: Vec<ToolDef>,
+    ) -> Result<AgentStep, ProviderError> {
+        if self.api_key.is_empty() {
+            return Err(ProviderError::MissingKey);
+        }
+
+        let tools_json: Vec<Value> = tools
+            .iter()
+            .map(|t| {
+                json!({
+                    "type": "function",
+                    "function": {
+                        "name": t.name,
+                        "description": t.description,
+                        "parameters": t.parameters,
+                    }
+                })
+            })
+            .collect();
+
+        let mut body = json!({
+            "model": model,
+            "messages": messages,
+            "stream": false,
+        });
+        if !tools_json.is_empty() {
+            body["tools"] = json!(tools_json);
+            body["tool_choice"] = json!("auto");
+        }
+
+        let resp = self
+            .http
+            .post(self.conn.endpoint("chat/completions"))
+            .bearer_auth(&self.api_key)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| ProviderError::Network(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let code = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Api(format!("{code}: {text}")));
+        }
+
+        let v: Value = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::Api(e.to_string()))?;
+        let message = v
+            .get("choices")
+            .and_then(|c| c.get(0))
+            .and_then(|c| c.get("message"))
+            .cloned()
+            .unwrap_or_else(|| json!({}));
+
+        let content = message
+            .get("content")
+            .and_then(|c| c.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+
+        let tool_calls = message
+            .get("tool_calls")
+            .and_then(|t| t.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|tc| {
+                        let id = tc.get("id").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                        let func = tc.get("function")?;
+                        let name = func.get("name").and_then(|x| x.as_str())?.to_string();
+                        let arguments = func
+                            .get("arguments")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("{}")
+                            .to_string();
+                        Some(ToolCall { id, name, arguments })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        Ok(AgentStep { content, tool_calls })
     }
 }
