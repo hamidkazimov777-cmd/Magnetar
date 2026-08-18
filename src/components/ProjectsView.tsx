@@ -3,8 +3,10 @@ import { Plus, FolderGit2, Save, Trash2 } from "lucide-react";
 import { useStore } from "../lib/store";
 import { cn } from "../lib/cn";
 import { Project } from "../lib/types";
+import { useT } from "../lib/i18n";
 
 export function ProjectsView() {
+  const t = useT();
   const projects = useStore((s) => s.projects);
   const activeProjectId = useStore((s) => s.activeProjectId);
   const addProject = useStore((s) => s.addProject);
@@ -26,7 +28,7 @@ export function ProjectsView() {
   const handleCreate = () => {
     const p: Project = {
       id: crypto.randomUUID(),
-      name: "New Project",
+      name: t("projectNew"),
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -44,18 +46,18 @@ export function ProjectsView() {
       {/* Left panel: List of projects */}
       <div className="w-64 border-r border-[var(--color-border)] flex flex-col bg-[var(--color-surface)]">
         <div className="p-4 border-b border-[var(--color-border)] flex items-center justify-between">
-          <h2 className="font-medium text-[var(--color-text)]">Projects</h2>
+          <h2 className="font-medium text-[var(--color-text)]">{t("projectsTitle")}</h2>
           <button
             onClick={handleCreate}
             className="p-1.5 rounded-md hover:bg-[var(--color-surface-2)] text-[var(--color-text-dim)] hover:text-[var(--color-text)] transition"
-            title="New Project"
+            title={t("projectNew")}
           >
             <Plus size={16} />
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {projects.length === 0 ? (
-            <p className="p-4 text-sm text-center text-[var(--color-text-dim)]">No projects yet.</p>
+            <p className="p-4 text-sm text-center text-[var(--color-text-dim)]">{t("projectsEmpty")}</p>
           ) : (
             projects.map((p) => (
               <button
@@ -86,7 +88,7 @@ export function ProjectsView() {
                 value={formState.name || ""}
                 onChange={(e) => setFormState({ ...formState, name: e.target.value })}
                 className="text-3xl font-semibold bg-transparent border-none outline-none text-[var(--color-text)] w-full focus:ring-0 placeholder-[var(--color-text-dim)]"
-                placeholder="Project Name"
+                placeholder={t("projectName")}
               />
               <div className="flex items-center gap-2 shrink-0">
                 <button
@@ -94,16 +96,16 @@ export function ProjectsView() {
                   className="flex items-center gap-2 px-4 py-2 bg-[var(--color-surface-2)] hover:bg-[var(--color-accent)] hover:text-white rounded-lg text-sm font-medium transition text-[var(--color-text)]"
                 >
                   <Save size={16} />
-                  Save
+                  {t("projectSave")}
                 </button>
                 <button
                   onClick={() => {
-                    if (confirm("Delete this project?")) {
+                    if (confirm(t("projectDeleteConfirm"))) {
                       deleteProject(activeProject.id);
                     }
                   }}
                   className="p-2 text-[var(--color-text-dim)] hover:text-red-400 hover:bg-[var(--color-surface-2)] rounded-lg transition"
-                  title="Delete Project"
+                  title={t("projectDelete")}
                 >
                   <Trash2 size={16} />
                 </button>
@@ -112,67 +114,67 @@ export function ProjectsView() {
 
             <div className="mb-6 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-4 flex items-center justify-between">
               <div>
-                <h3 className="font-medium text-[var(--color-text)]">AI CTO Mode</h3>
-                <p className="text-sm text-[var(--color-text-dim)]">Analyze codebase for tech debt and suggest roadmap tasks.</p>
+                <h3 className="font-medium text-[var(--color-text)]">{t("projectCto")}</h3>
+                <p className="text-sm text-[var(--color-text-dim)]">{t("projectCtoText")}</p>
               </div>
               <button 
                 onClick={() => {
-                  alert("To run CTO Mode, please go to the Chats tab and type: /cto");
+                  alert(t("projectCtoHint"));
                 }}
                 className="px-4 py-2 bg-[var(--color-surface-2)] hover:bg-[var(--color-accent)] hover:text-white transition rounded-lg text-sm font-medium text-[var(--color-text)]"
               >
-                Run Audit
+                {t("projectCtoAction")}
               </button>
             </div>
 
             <div className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-[var(--color-text-dim)] mb-1">Description</label>
+                <label className="block text-sm font-medium text-[var(--color-text-dim)] mb-1">{t("projectDescription")}</label>
                 <textarea
                   value={formState.description || ""}
                   onChange={(e) => setFormState({ ...formState, description: e.target.value })}
-                  placeholder="What is this project about?"
+                  placeholder={t("projectDescriptionHint")}
                   className="w-full min-h-[100px] p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl outline-none focus:border-[var(--color-accent)] text-[var(--color-text)] text-sm resize-y"
                 />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-[var(--color-text-dim)] mb-1">Tech Stack</label>
+                  <label className="block text-sm font-medium text-[var(--color-text-dim)] mb-1">{t("projectStack")}</label>
                   <textarea
                     value={formState.techStack || ""}
                     onChange={(e) => setFormState({ ...formState, techStack: e.target.value })}
-                    placeholder="e.g. React, Tauri, Rust, SQLite"
+                    placeholder={t("projectStackHint")}
                     className="w-full min-h-[120px] p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl outline-none focus:border-[var(--color-accent)] text-[var(--color-text)] text-sm resize-y"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-[var(--color-text-dim)] mb-1">Coding Standards</label>
+                  <label className="block text-sm font-medium text-[var(--color-text-dim)] mb-1">{t("projectStandards")}</label>
                   <textarea
                     value={formState.codingStandards || ""}
                     onChange={(e) => setFormState({ ...formState, codingStandards: e.target.value })}
-                    placeholder="e.g. Use early returns, strictly type APIs"
+                    placeholder={t("projectStandardsHint")}
                     className="w-full min-h-[120px] p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl outline-none focus:border-[var(--color-accent)] text-[var(--color-text)] text-sm resize-y"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[var(--color-text-dim)] mb-1">Architecture Notes</label>
+                <label className="block text-sm font-medium text-[var(--color-text-dim)] mb-1">{t("projectArchitecture")}</label>
                 <textarea
                   value={formState.architectureNotes || ""}
                   onChange={(e) => setFormState({ ...formState, architectureNotes: e.target.value })}
-                  placeholder="Key architectural patterns, data flow, etc."
+                  placeholder={t("projectArchitectureHint")}
                   className="w-full min-h-[150px] p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl outline-none focus:border-[var(--color-accent)] text-[var(--color-text)] text-sm resize-y"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[var(--color-text-dim)] mb-1">Core Decisions</label>
+                <label className="block text-sm font-medium text-[var(--color-text-dim)] mb-1">{t("projectDecisions")}</label>
                 <textarea
                   value={formState.decisions || ""}
                   onChange={(e) => setFormState({ ...formState, decisions: e.target.value })}
-                  placeholder="Recorded decisions and trade-offs"
+                  placeholder={t("projectDecisionsHint")}
                   className="w-full min-h-[150px] p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl outline-none focus:border-[var(--color-accent)] text-[var(--color-text)] text-sm resize-y"
                 />
               </div>
@@ -182,7 +184,7 @@ export function ProjectsView() {
           <div className="flex h-full items-center justify-center text-[var(--color-text-dim)]">
             <div className="text-center">
               <FolderGit2 size={48} className="mx-auto mb-4 opacity-20" />
-              <p>Select a project or create a new one</p>
+              <p>{t("projectSelect")}</p>
             </div>
           </div>
         )}

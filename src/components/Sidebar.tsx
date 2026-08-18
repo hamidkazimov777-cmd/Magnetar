@@ -50,7 +50,7 @@ export function Sidebar({
           )}
         >
           <MessageSquare size={16} />
-          {t("chats") || "Chats"}
+          {t("chats")}
         </button>
         <button
           onClick={() => onTabChange("projects")}
@@ -62,7 +62,7 @@ export function Sidebar({
           )}
         >
           <FolderGit2 size={16} />
-          {t("projects") || "Projects"}
+          {t("projects")}
         </button>
         <button
           onClick={() => onTabChange("roadmap")}
@@ -74,7 +74,7 @@ export function Sidebar({
           )}
         >
           <ListTodo size={16} />
-          {t("roadmap") || "Roadmap"}
+          {t("roadmap")}
         </button>
         <button
           onClick={() => onTabChange("knowledge")}
@@ -86,7 +86,7 @@ export function Sidebar({
           )}
         >
           <Network size={16} />
-          {t("knowledgeGraph") || "Knowledge Graph"}
+          {t("knowledgeGraph")}
         </button>
         <button
           onClick={() => onTabChange("timeline")}
@@ -98,8 +98,9 @@ export function Sidebar({
           )}
         >
           <Clock size={16} />
-          {t("timeline") || "Timeline"}
+          {t("timeline")}
         </button>
+        <div className="px-3 pb-1 pt-3 text-[10px] font-medium uppercase tracking-[0.16em] text-[var(--color-text-dim)]">{t("navWorkspace")}</div>
         <button
           onClick={() => onTabChange("code")}
           className={cn(

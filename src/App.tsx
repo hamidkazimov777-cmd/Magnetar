@@ -22,11 +22,6 @@ export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const connections = useStore((s) => s.connections);
 
-  // Open settings on first run so the user lands on "paste your key".
-  useEffect(() => {
-    if (connections.length === 0) setSettingsOpen(true);
-  }, [connections.length]);
-
   // Load the canon from SQLite, then ensure there's a session to type into.
   useEffect(() => {
     (async () => {
@@ -61,7 +56,12 @@ export default function App() {
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenGuide={() => setGuideOpen(true)}
       />
-      {activeTab === "chats" && <ChatView onOpenSettings={() => setSettingsOpen(true)} />}
+      {activeTab === "chats" && (
+        <ChatView
+          onOpenSettings={() => setSettingsOpen(true)}
+          onNavigate={setActiveTab}
+        />
+      )}
       {activeTab === "projects" && <ProjectsView />}
       {activeTab === "roadmap" && <RoadmapView />}
       {activeTab === "knowledge" && <KnowledgeGraphView />}

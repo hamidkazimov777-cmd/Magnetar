@@ -36,6 +36,30 @@ body {
   overflow: hidden;
 }
 
+button { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, textarea:focus-visible, input:focus-visible {
+  outline: 2px solid var(--color-accent-strong);
+  outline-offset: 2px;
+}
+
+.onboarding-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 88px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  padding: 1rem;
+  color: var(--color-text);
+  background: linear-gradient(135deg, rgba(255,255,255,.025), transparent);
+  transition: border-color .16s ease, transform .16s ease, background .16s ease;
+}
+.onboarding-card:hover { border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border)); transform: translateY(-1px); background: var(--color-surface-2); }
+.onboarding-card b, .onboarding-card small { display: block; }
+.onboarding-card b { font-size: .875rem; font-weight: 550; }
+.onboarding-card small { margin-top: .2rem; color: var(--color-text-dim); font-size: .75rem; line-height: 1.25rem; }
+.onboarding-step { display: grid; width: 1.7rem; height: 1.7rem; flex: none; place-items: center; border-radius: 9999px; background: rgba(139,127,245,.16); color: var(--color-accent-strong); font-size: .75rem; font-weight: 650; }
+
 /* Slim scrollbars to match the dark surface. */
 * {
   scrollbar-width: thin;

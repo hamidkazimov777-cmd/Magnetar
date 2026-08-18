@@ -94,6 +94,12 @@ const ru: Dict = {
   errFillNameKey: "Заполни имя и ключ.",
   errNeedBaseUrl: "Нужен base URL.",
   language: "Язык",
+  chats: "Чаты", projects: "Проекты", roadmap: "План", knowledgeGraph: "Граф знаний", timeline: "Хронология", navWorkspace: "Рабочая область",
+  onboardingIntro: "Подключите модель и откройте папку — Magnetar подготовит контекст проекта и поможет начать работу.",
+  onboardingModelTitle: "Подключить модель", onboardingModelText: "Добавьте ключ API и выберите модель для чата и агента.",
+  onboardingProjectTitle: "Открыть проект", onboardingProjectText: "Выберите папку: код, Git и терминал будут готовы в одном месте.", onboardingReady: "Готово. Опишите задачу — или включите режим Агента для работы с проектом.",
+  projectsTitle: "Проекты", projectsEmpty: "Проектов пока нет.", projectNew: "Новый проект", projectName: "Название проекта", projectSave: "Сохранить", projectDelete: "Удалить проект", projectDeleteConfirm: "Удалить этот проект?", projectSelect: "Выберите проект или создайте новый.",
+  projectCto: "AI CTO", projectCtoText: "Проведёт аудит кодовой базы и предложит задачи для плана.", projectCtoAction: "Запустить аудит", projectCtoHint: "Чтобы запустить AI CTO, откройте «Чаты» и введите: /cto", projectDescription: "Описание", projectDescriptionHint: "О чём этот проект?", projectStack: "Технологии", projectStackHint: "Например: React, Tauri, Rust, SQLite", projectStandards: "Стандарты кода", projectStandardsHint: "Например: ранние возвраты, строго типизированные API", projectArchitecture: "Архитектурные заметки", projectArchitectureHint: "Ключевые паттерны и поток данных", projectDecisions: "Ключевые решения", projectDecisionsHint: "Зафиксированные решения и компромиссы",
 };
 
 const en: Dict = {
@@ -179,6 +185,12 @@ const en: Dict = {
   errFillNameKey: "Fill in name and key.",
   errNeedBaseUrl: "Base URL is required.",
   language: "Language",
+  chats: "Chats", projects: "Projects", roadmap: "Roadmap", knowledgeGraph: "Knowledge graph", timeline: "Timeline", navWorkspace: "Workspace",
+  onboardingIntro: "Connect a model and open a folder. Magnetar will prepare project context and help you get moving.",
+  onboardingModelTitle: "Connect a model", onboardingModelText: "Add an API key and choose a model for chat and agent work.",
+  onboardingProjectTitle: "Open a project", onboardingProjectText: "Pick a folder to prepare code, Git, and terminal in one place.", onboardingReady: "Ready. Describe a task—or turn on Agent mode to work with the project.",
+  projectsTitle: "Projects", projectsEmpty: "No projects yet.", projectNew: "New project", projectName: "Project name", projectSave: "Save", projectDelete: "Delete project", projectDeleteConfirm: "Delete this project?", projectSelect: "Select a project or create a new one.",
+  projectCto: "AI CTO", projectCtoText: "Audits the codebase and proposes roadmap tasks.", projectCtoAction: "Run audit", projectCtoHint: "To run AI CTO, open Chats and type: /cto", projectDescription: "Description", projectDescriptionHint: "What is this project about?", projectStack: "Tech stack", projectStackHint: "For example: React, Tauri, Rust, SQLite", projectStandards: "Coding standards", projectStandardsHint: "For example: early returns, strictly typed APIs", projectArchitecture: "Architecture notes", projectArchitectureHint: "Key patterns and data flow", projectDecisions: "Core decisions", projectDecisionsHint: "Recorded decisions and trade-offs",
 };
 
 const es: Dict = {
@@ -264,6 +276,12 @@ const es: Dict = {
   errFillNameKey: "Rellena nombre y clave.",
   errNeedBaseUrl: "Se requiere el Base URL.",
   language: "Idioma",
+  chats: "Chats", projects: "Proyectos", roadmap: "Plan", knowledgeGraph: "Grafo de conocimiento", timeline: "Cronología", navWorkspace: "Espacio de trabajo",
+  onboardingIntro: "Conecta un modelo y abre una carpeta. Magnetar preparará el contexto del proyecto y te ayudará a empezar.",
+  onboardingModelTitle: "Conectar un modelo", onboardingModelText: "Añade una clave API y elige un modelo para el chat y el agente.",
+  onboardingProjectTitle: "Abrir un proyecto", onboardingProjectText: "Elige una carpeta para preparar código, Git y terminal en un solo lugar.", onboardingReady: "Listo. Describe una tarea o activa el modo Agente para trabajar con el proyecto.",
+  projectsTitle: "Proyectos", projectsEmpty: "Aún no hay proyectos.", projectNew: "Nuevo proyecto", projectName: "Nombre del proyecto", projectSave: "Guardar", projectDelete: "Eliminar proyecto", projectDeleteConfirm: "¿Eliminar este proyecto?", projectSelect: "Selecciona un proyecto o crea uno.",
+  projectCto: "AI CTO", projectCtoText: "Audita la base de código y propone tareas para el plan.", projectCtoAction: "Ejecutar auditoría", projectCtoHint: "Para ejecutar AI CTO, abre Chats y escribe: /cto", projectDescription: "Descripción", projectDescriptionHint: "¿De qué trata este proyecto?", projectStack: "Tecnologías", projectStackHint: "Por ejemplo: React, Tauri, Rust, SQLite", projectStandards: "Estándares de código", projectStandardsHint: "Por ejemplo: retornos tempranos, APIs estrictamente tipadas", projectArchitecture: "Notas de arquitectura", projectArchitectureHint: "Patrones clave y flujo de datos", projectDecisions: "Decisiones clave", projectDecisionsHint: "Decisiones y compromisos registrados",
 };
 
 const DICTS: Record<Lang, Dict> = { ru, en, es };

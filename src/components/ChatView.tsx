@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Sparkles, ArrowUpRight, Bot, TriangleAlert } from "lucide-react";
+import { Sparkles, ArrowUpRight, Bot, TriangleAlert, FolderOpen, Check } from "lucide-react";
 import { api } from "../lib/api";
 import { useStore } from "../lib/store";
 import { buildCatalog, recommend, type Recommendation } from "../lib/adaptive";
@@ -20,7 +20,13 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 
-export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
+export function ChatView({
+  onOpenSettings,
+  onNavigate,
+}: {
+  onOpenSettings: () => void;
+  onNavigate: (tab: string) => void;
+}) {
   const t = useT();
   const connections = useStore((s) => s.connections);
   const models = useStore((s) => s.models);
@@ -244,7 +250,12 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl px-4 py-6">
           {messages.length === 0 ? (
-            <EmptyState ready={ready} onOpenSettings={onOpenSettings} />
+            <EmptyState
+              ready={ready}
+              hasWorkspace={Boolean(useStore.getState().workspaceRoot)}
+              onOpenSettings={onOpenSettings}
+              onNavigate={onNavigate}
+            />
           ) : (
             <div className="space-y-5">
               {messages.map((m) => (
@@ -334,15 +345,19 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
 
 function EmptyState({
   ready,
+  hasWorkspace,
   onOpenSettings,
+  onNavigate,
 }: {
   ready: boolean;
+  hasWorkspace: boolean;
   onOpenSettings: () => void;
+  onNavigate: (tab: string) => void;
 }) {
   const t = useT();
   return (
-    <div className="grid min-h-[50vh] place-items-center text-center">
-      <div className="flex flex-col items-center">
+    <div className="grid min-h-[52vh] place-items-center">
+      <div className="w-full max-w-2xl text-center">
         <LogoMark size={64} className="mb-5" />
         <h1
           className="text-xl font-light uppercase text-[var(--color-text)]"
@@ -350,16 +365,22 @@ function EmptyState({
         >
           Magnetar
         </h1>
-        <p className="mt-2 text-sm text-[var(--color-text-dim)]">
-          {ready ? t("emptyReady") : t("emptyNotReady")}
+        <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[var(--color-text-dim)]">
+          {ready ? t("emptyReady") : t("onboardingIntro")}
         </p>
-        {!ready && (
-          <button
-            onClick={onOpenSettings}
-            className="mt-4 rounded-xl bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-[var(--color-accent-fg)]"
-          >
-            {t("addConnection")}
+        <div className="mt-7 grid gap-3 text-left sm:grid-cols-2">
+          <button onClick={onOpenSettings} className="onboarding-card group">
+            <span className="onboarding-step">{ready ? <Check size={14} /> : "1"}</span>
+            <span><b>{t("onboardingModelTitle")}</b><small>{t("onboardingModelText")}</small></span>
           </button>
+          <button onClick={() => onNavigate("code")} className="onboarding-card group">
+            <span className="onboarding-step">{hasWorkspace ? <Check size={14} /> : "2"}</span>
+            <span><b>{t("onboardingProjectTitle")}</b><small>{t("onboardingProjectText")}</small></span>
+            <FolderOpen size={17} className="ml-auto text-[var(--color-text-dim)] group-hover:text-[var(--color-accent-strong)]" />
+          </button>
+        </div>
+        {ready && (
+          <p className="mt-5 text-xs text-[var(--color-text-dim)]">{t("onboardingReady")}</p>
         )}
       </div>
     </div>
