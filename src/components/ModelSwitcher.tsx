@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Loader2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, ChevronDown, Loader2, Search } from "lucide-react";
 import { api } from "../lib/api";
 import { useStore } from "../lib/store";
 import { useT } from "../lib/i18n";
@@ -19,7 +19,13 @@ export function ModelSwitcher() {
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const boxRef = useRef<HTMLDivElement>(null);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? models.filter((m) => m.id.toLowerCase().includes(q)) : models;
+  }, [models, query]);
 
   const activeConn = connections.find((c) => c.id === activeConnectionId);
 
@@ -92,6 +98,21 @@ export function ModelSwitcher() {
             </div>
           )}
 
+          {!loading && !error && models.length > 6 && (
+            <div className="border-b border-[var(--color-border)] p-2">
+              <div className="flex items-center gap-2 rounded-lg bg-[var(--color-bg)] px-2.5 py-1.5">
+                <Search size={14} className="text-[var(--color-text-dim)]" />
+                <input
+                  autoFocus
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={t("selectModel")}
+                  className="w-full bg-transparent text-sm outline-none placeholder:text-[var(--color-text-dim)]"
+                />
+              </div>
+            </div>
+          )}
+
           <div className="max-h-72 overflow-y-auto p-2">
             {loading && (
               <div className="flex items-center gap-2 px-2 py-3 text-sm text-[var(--color-text-dim)]">
@@ -103,12 +124,13 @@ export function ModelSwitcher() {
             )}
             {!loading &&
               !error &&
-              models.map((m) => (
+              filtered.map((m) => (
                 <button
                   key={m.id}
                   onClick={() => {
                     setActiveModel(m.id);
                     setOpen(false);
+                    setQuery("");
                   }}
                   className={cn(
                     "flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm hover:bg-[var(--color-surface-2)]",
@@ -119,7 +141,7 @@ export function ModelSwitcher() {
                   {m.id === activeModel && <Check size={14} className="shrink-0" />}
                 </button>
               ))}
-            {!loading && !error && models.length === 0 && (
+            {!loading && !error && filtered.length === 0 && (
               <div className="px-2 py-3 text-sm text-[var(--color-text-dim)]">
                 {t("noModels")}
               </div>
