@@ -2,11 +2,15 @@ import { useEffect, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { ChatView } from "./components/ChatView";
 import { SettingsDialog } from "./components/SettingsDialog";
+import { GuideDialog } from "./components/GuideDialog";
+import { Splash } from "./components/Splash";
 import { useStore } from "./lib/store";
 import { api } from "./lib/api";
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
   const connections = useStore((s) => s.connections);
 
   // Open settings on first run so the user lands on "paste your key".
@@ -42,9 +46,14 @@ export default function App() {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden">
-      <Sidebar onOpenSettings={() => setSettingsOpen(true)} />
+      <Sidebar
+        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenGuide={() => setGuideOpen(true)}
+      />
       <ChatView onOpenSettings={() => setSettingsOpen(true)} />
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+      {guideOpen && <GuideDialog onClose={() => setGuideOpen(false)} />}
+      {showSplash && <Splash onDone={() => setShowSplash(false)} />}
     </div>
   );
 }

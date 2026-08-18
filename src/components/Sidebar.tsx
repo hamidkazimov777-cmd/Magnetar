@@ -1,9 +1,16 @@
-import { MessageSquarePlus, Settings, Trash2 } from "lucide-react";
+import { BookOpen, MessageSquarePlus, Settings, Trash2 } from "lucide-react";
 import { useStore } from "../lib/store";
 import { useT, LANGS } from "../lib/i18n";
+import { LogoMark } from "./Logo";
 import { cn } from "../lib/cn";
 
-export function Sidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
+export function Sidebar({
+  onOpenSettings,
+  onOpenGuide,
+}: {
+  onOpenSettings: () => void;
+  onOpenGuide: () => void;
+}) {
   const t = useT();
   const sessions = useStore((s) => s.sessions);
   const activeSessionId = useStore((s) => s.activeSessionId);
@@ -19,10 +26,13 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
         data-tauri-drag-region
         className="flex items-center gap-2 px-4 pb-2 pt-9"
       >
-        <div className="grid h-7 w-7 place-items-center rounded-lg bg-[var(--color-accent)] text-sm font-bold text-[var(--color-accent-fg)]">
-          M
-        </div>
-        <span className="text-sm font-semibold tracking-tight">Magnetar</span>
+        <LogoMark size={26} />
+        <span
+          className="text-sm font-light uppercase text-[var(--color-text)]"
+          style={{ letterSpacing: "0.28em" }}
+        >
+          Magnetar
+        </span>
       </div>
 
       <div className="p-3">
@@ -86,6 +96,13 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
             </button>
           ))}
         </div>
+        <button
+          onClick={onOpenGuide}
+          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
+        >
+          <BookOpen size={16} />
+          {t("guide")}
+        </button>
         <button
           onClick={onOpenSettings}
           className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"

@@ -5,6 +5,7 @@ import { useStore } from "../lib/store";
 import { buildCatalog, recommend, type Recommendation } from "../lib/adaptive";
 import { buildOutgoing, maybeSummarize } from "../lib/handoff";
 import { runAgent } from "../lib/agent";
+import { LogoMark } from "./Logo";
 import { useT } from "../lib/i18n";
 import { Composer } from "./Composer";
 import { Message } from "./Message";
@@ -310,12 +311,15 @@ function EmptyState({
   const t = useT();
   return (
     <div className="grid min-h-[50vh] place-items-center text-center">
-      <div>
-        <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-[var(--color-accent)] text-lg font-bold text-[var(--color-accent-fg)]">
-          M
-        </div>
-        <h1 className="text-xl font-semibold">Magnetar</h1>
-        <p className="mt-1 text-sm text-[var(--color-text-dim)]">
+      <div className="flex flex-col items-center">
+        <LogoMark size={64} className="mb-5" />
+        <h1
+          className="text-xl font-light uppercase text-[var(--color-text)]"
+          style={{ letterSpacing: "0.4em" }}
+        >
+          Magnetar
+        </h1>
+        <p className="mt-2 text-sm text-[var(--color-text-dim)]">
           {ready ? t("emptyReady") : t("emptyNotReady")}
         </p>
         {!ready && (
