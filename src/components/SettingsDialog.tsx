@@ -9,6 +9,7 @@ import {
 } from "../lib/types";
 import { useT } from "../lib/i18n";
 import { cn } from "../lib/cn";
+import { SelfTest } from "./SelfTest";
 
 import {
   Dialog,
@@ -102,6 +103,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         </DialogHeader>
 
         <div className="max-h-[70vh] space-y-5 overflow-y-auto p-5">
+          {connections.length >= 1 && <SelfTest />}
           {connections.length > 0 && (
             <div className="space-y-2">
               {connections.map((c) => (
