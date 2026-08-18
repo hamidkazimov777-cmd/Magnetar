@@ -1,4 +1,4 @@
-import { BookOpen, MessageSquarePlus, Settings, Trash2, FolderGit2, MessageSquare, ListTodo, Network, Clock, Globe, Code2 } from "lucide-react";
+import { BookOpen, MessageSquarePlus, Settings, Trash2, FolderGit2, MessageSquare, ListTodo, Network, Clock, Globe, Code2, GitBranch } from "lucide-react";
 import { useStore } from "../lib/store";
 import { useT, LANGS } from "../lib/i18n";
 import { LogoMark } from "./Logo";
@@ -111,6 +111,18 @@ export function Sidebar({
         >
           <Code2 size={16} />
           {t("code")}
+        </button>
+        <button
+          onClick={() => onTabChange("git")}
+          className={cn(
+            "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm",
+            activeTab === "git"
+              ? "bg-[var(--color-surface-2)] text-[var(--color-text)]"
+              : "text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
+          )}
+        >
+          <GitBranch size={16} />
+          {t("git")}
         </button>
         <button
           onClick={() => onTabChange("subscriptions")}

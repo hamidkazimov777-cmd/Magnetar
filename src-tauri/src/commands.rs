@@ -228,6 +228,11 @@ pub fn editor_read_file(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+pub fn git_exec(cwd: String, args: Vec<String>) -> Result<tools::BashResult, String> {
+    tools::git_exec(&cwd, args)
+}
+
+#[tauri::command]
 pub async fn chat_stream(
     connection: Connection,
     params: ChatParams,

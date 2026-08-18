@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, Loader2, Search } from "lucide-react";
+import { Check, ChevronDown, Loader2, Search, RefreshCw } from "lucide-react";
 import { api } from "../lib/api";
 import { useStore } from "../lib/store";
 import { useT } from "../lib/i18n";
@@ -29,6 +29,15 @@ export function ModelSwitcher() {
 
   const activeConn = connections.find((c) => c.id === activeConnectionId);
 
+  // Seed from the persisted catalog so models never appear "lost" after restart.
+  const cachedModels = useStore((s) =>
+    activeConnectionId ? s.models[activeConnectionId] : undefined,
+  );
+  useEffect(() => {
+    if (cachedModels && cachedModels.length) setModels(cachedModels);
+    else setModels([]);
+  }, [cachedModels]);
+
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       if (boxRef.current && !boxRef.current.contains(e.target as Node))
@@ -57,7 +66,9 @@ export function ModelSwitcher() {
   };
 
   useEffect(() => {
-    if (open && activeConnectionId) loadModels(activeConnectionId);
+    // Use the cache; only fetch when we have nothing (manual refresh updates it).
+    if (open && activeConnectionId && (!cachedModels || cachedModels.length === 0))
+      loadModels(activeConnectionId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, activeConnectionId]);
 
@@ -98,9 +109,9 @@ export function ModelSwitcher() {
             </div>
           )}
 
-          {!loading && !error && models.length > 6 && (
-            <div className="border-b border-[var(--color-border)] p-2">
-              <div className="flex items-center gap-2 rounded-lg bg-[var(--color-bg)] px-2.5 py-1.5">
+          <div className="flex items-center gap-2 border-b border-[var(--color-border)] p-2">
+            {models.length > 6 ? (
+              <div className="flex flex-1 items-center gap-2 rounded-lg bg-[var(--color-bg)] px-2.5 py-1.5">
                 <Search size={14} className="text-[var(--color-text-dim)]" />
                 <input
                   autoFocus
@@ -110,8 +121,19 @@ export function ModelSwitcher() {
                   className="w-full bg-transparent text-sm outline-none placeholder:text-[var(--color-text-dim)]"
                 />
               </div>
-            </div>
-          )}
+            ) : (
+              <span className="flex-1 px-1 text-xs text-[var(--color-text-dim)]">
+                {models.length} {t("modelsCount")}
+              </span>
+            )}
+            <button
+              onClick={() => activeConnectionId && loadModels(activeConnectionId)}
+              title={t("refreshModels")}
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
+            >
+              <RefreshCw size={14} className={cn(loading && "animate-spin")} />
+            </button>
+          </div>
 
           <div className="max-h-72 overflow-y-auto p-2">
             {loading && (

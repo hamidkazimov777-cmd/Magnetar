@@ -141,6 +141,11 @@ export const api = {
     invoke<number>("tool_write_file", { path, content }),
   editorReadFile: (path: string) =>
     invoke<string>("editor_read_file", { path }),
+  gitExec: (cwd: string, args: string[]) =>
+    invoke<{ stdout: string; stderr: string; code: number; truncated: boolean }>(
+      "git_exec",
+      { cwd, args },
+    ),
   toolEditFile: (path: string, oldString: string, newString: string) =>
     invoke<{ replaced: number; diff: string }>("tool_edit_file", {
       path,

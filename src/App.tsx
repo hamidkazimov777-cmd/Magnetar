@@ -10,6 +10,7 @@ import { KnowledgeGraphView } from "./components/KnowledgeGraphView";
 import { TimelineView } from "./components/TimelineView";
 import { SubscriptionsView } from "./components/SubscriptionsView";
 import { EditorView } from "./components/EditorView";
+import { GitView } from "./components/GitView";
 import { useStore } from "./lib/store";
 import { api } from "./lib/api";
 
@@ -66,6 +67,7 @@ export default function App() {
       {activeTab === "timeline" && <TimelineView />}
       {activeTab === "subscriptions" && <SubscriptionsView />}
       {activeTab === "code" && <EditorView />}
+      {activeTab === "git" && <GitView />}
 
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       {guideOpen && <GuideDialog onClose={() => setGuideOpen(false)} />}

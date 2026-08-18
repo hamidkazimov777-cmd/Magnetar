@@ -339,6 +339,7 @@ export const useStore = create<State>()(
         adaptive: s.adaptive,
         agentMode: s.agentMode,
         workspaceRoot: s.workspaceRoot,
+        models: s.models,
         lang: s.lang,
         activeProjectId: s.activeProjectId,
       }),

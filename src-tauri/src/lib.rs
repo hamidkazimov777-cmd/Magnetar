@@ -46,6 +46,7 @@ pub fn run() {
             commands::tool_attach_file,
             commands::extract_pdf_text,
             commands::editor_read_file,
+            commands::git_exec,
             commands::list_projects,
             commands::save_project,
             commands::delete_project,

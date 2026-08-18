@@ -286,6 +286,24 @@ pub fn run_bash(command: &str, cwd: Option<&str>) -> Result<BashResult, String> 
     })
 }
 
+/// Run a git subcommand in `cwd`. Only invokes the `git` binary (not a shell),
+/// so it's safer than run_bash. Output is capped like bash output.
+pub fn git_exec(cwd: &str, args: Vec<String>) -> Result<BashResult, String> {
+    let out = std::process::Command::new("git")
+        .args(&args)
+        .current_dir(cwd)
+        .output()
+        .map_err(|e| e.to_string())?;
+    let (stdout, t1) = clip(&String::from_utf8_lossy(&out.stdout), MAX_BASH_BYTES);
+    let (stderr, t2) = clip(&String::from_utf8_lossy(&out.stderr), MAX_BASH_BYTES);
+    Ok(BashResult {
+        stdout,
+        stderr,
+        code: out.status.code().unwrap_or(-1),
+        truncated: t1 || t2,
+    })
+}
+
 pub fn kill_bash(pid: Option<u32>) -> Result<(), String> {
     // Negative pid = kill the whole process group (pgid == the bash pid we set
     // via process_group(0)), so children like node/npm die too.
