@@ -1,0 +1,30 @@
+mod commands;
+mod db;
+mod keychain;
+mod providers;
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            use tauri::Manager;
+            // Initialize the local canon DB in the app data dir.
+            if let Ok(dir) = app.path().app_data_dir() {
+                if let Err(e) = db::init(&dir) {
+                    eprintln!("db init failed: {e}");
+                }
+            }
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::save_api_key,
+            commands::delete_api_key,
+            commands::has_api_key,
+            commands::list_models,
+            commands::complete,
+            commands::chat_stream,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}

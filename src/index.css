@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+/* Dark, clean chat surface — Claude/ChatGPT-flavored. */
+@theme {
+  --color-bg: #060907;
+  --color-surface: #0d1310;
+  --color-surface-2: #151d18;
+  --color-border: #1f2c25;
+  --color-text: #e6efe9;
+  --color-text-dim: #7f978a;
+  --color-accent: #1f8a5b;
+  --color-accent-strong: #26a56d;
+  --color-accent-fg: #f2fff8;
+  /* SF Pro on macOS via system-ui — free, full Cyrillic, nothing to download. */
+  --font-sans: -apple-system, system-ui, "SF Pro Text", "SF Pro Display",
+    "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* Slim scrollbars to match the dark surface. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 8px;
+}
+
+/* Basic prose for streamed markdown-ish text. */
+.prose-chat p {
+  margin: 0 0 0.75rem;
+  line-height: 1.65;
+}
+.prose-chat p:last-child {
+  margin-bottom: 0;
+}
+.prose-chat pre {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  overflow-x: auto;
+  font-size: 0.85rem;
+  margin: 0 0 0.75rem;
+}
+.prose-chat code,
+.prose-chat pre {
+  font-family: var(--font-mono);
+}

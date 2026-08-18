@@ -1,0 +1,79 @@
+import { invoke, Channel } from "@tauri-apps/api/core";
+import type { ChatMessage, Connection, ModelInfo, StreamEvent } from "./types";
+
+/** Rust `Connection` uses snake_case keys. */
+function toRustConn(c: Connection) {
+  return { id: c.id, kind: c.kind, base_url: c.baseUrl };
+}
+
+export const api = {
+  saveApiKey: (connectionId: string, key: string) =>
+    invoke<void>("save_api_key", { connectionId, key }),
+
+  deleteApiKey: (connectionId: string) =>
+    invoke<void>("delete_api_key", { connectionId }),
+
+  hasApiKey: (connectionId: string) =>
+    invoke<boolean>("has_api_key", { connectionId }),
+
+  listModels: (connection: Connection) =>
+    invoke<ModelInfo[]>("list_models", { connection: toRustConn(connection) }),
+
+  /** Single-shot non-streaming completion (router / summarizer). */
+  complete: (
+    connection: Connection,
+    model: string,
+    messages: ChatMessage[],
+    system?: string,
+  ) =>
+    invoke<string>("complete", {
+      connection: toRustConn(connection),
+      params: {
+        model,
+        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        system: system ?? null,
+        temperature: 0,
+      },
+    }),
+
+  /** Stream a chat completion. Returns a stop() that abandons the UI stream
+   *  (the backend request itself completes on its own). */
+  chatStream(
+    connection: Connection,
+    model: string,
+    messages: ChatMessage[],
+    opts: {
+      system?: string;
+      temperature?: number;
+      onDelta: (text: string) => void;
+      onDone: () => void;
+      onError: (message: string) => void;
+    },
+  ): () => void {
+    let stopped = false;
+    const channel = new Channel<StreamEvent>();
+    channel.onmessage = (ev) => {
+      if (stopped) return;
+      if (ev.type === "delta") opts.onDelta(ev.content);
+      else if (ev.type === "done") opts.onDone();
+      else if (ev.type === "error") opts.onError(ev.message);
+    };
+
+    invoke<void>("chat_stream", {
+      connection: toRustConn(connection),
+      params: {
+        model,
+        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        system: opts.system ?? null,
+        temperature: opts.temperature ?? null,
+      },
+      onEvent: channel,
+    }).catch((e) => {
+      if (!stopped) opts.onError(String(e));
+    });
+
+    return () => {
+      stopped = true;
+    };
+  },
+};
