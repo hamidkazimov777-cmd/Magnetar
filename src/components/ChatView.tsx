@@ -11,6 +11,12 @@ import { Composer } from "./Composer";
 import { Message } from "./Message";
 import { ModelSwitcher } from "./ModelSwitcher";
 import { cn } from "../lib/cn";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
 
 export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
   const t = useT();
@@ -173,6 +179,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     stopRef.current?.();
     stopRef.current = null;
     setStreaming(false);
+    void api.toolKillBash().catch(() => {});
   };
 
   return (
@@ -268,12 +275,15 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
       />
 
       {confirm && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
-          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl">
-            <div className="flex items-center gap-2 border-b border-[var(--color-border)] px-5 py-3.5">
+        <Dialog open onOpenChange={() => {
+          confirm.resolve(false);
+          setConfirm(null);
+        }}>
+          <DialogContent className="max-w-md p-0 gap-0 border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)]">
+            <DialogHeader className="border-b border-[var(--color-border)] px-5 py-3.5 flex flex-row items-center gap-2">
               <TriangleAlert size={17} className="text-[var(--color-accent-strong)]" />
-              <h3 className="text-sm font-semibold">{t("confirmTitle")}</h3>
-            </div>
+              <DialogTitle className="text-sm font-semibold">{t("confirmTitle")}</DialogTitle>
+            </DialogHeader>
             <div className="space-y-2 px-5 py-4">
               <div className="text-sm font-medium">{confirm.name}</div>
               <pre className="max-h-56 overflow-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3 text-xs">
@@ -300,8 +310,8 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
                 {t("confirmApprove")}
               </button>
             </div>
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

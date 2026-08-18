@@ -89,7 +89,11 @@ export const AGENT_TOOLS: ToolDef[] = [
 /** Tools that change the machine — require explicit user confirmation. */
 export const DESTRUCTIVE = new Set(["write_file", "edit_file", "run_bash"]);
 
-export const AGENT_SYSTEM = `You are Magnetar, a local coding agent with tools to read and change the user's machine. Use the tools to accomplish the task: inspect files before editing, make surgical edits, and verify with commands when useful. Keep responses concise. When done, give a short summary of what you did.`;
+export const AGENT_SYSTEM = `You are Magnetar, a local coding agent with tools to read and change the user's machine. Use the tools to accomplish the task: inspect files before editing, make surgical edits, and verify with commands when useful. Keep responses concise. When you have finished the task, you MUST output a brief structural note with the following format:
+## Handoff Note
+- **Status:** (what was accomplished)
+- **Decisions:** (key technical decisions or changes)
+- **Next Steps:** (open questions or what to do next)`;
 
 const MAX_ITERS = 10;
 
@@ -241,7 +245,11 @@ Action Input: <a single-line JSON object of arguments>
 
 Then stop — you will receive an "Observation:" with the result. Repeat as needed. When the task is complete, reply:
 Thought: <reasoning>
-Final Answer: <your answer to the user>
+Final Answer: <your answer to the user, ending with a Handoff Note:>
+## Handoff Note
+- **Status:** ...
+- **Decisions:** ...
+- **Next Steps:** ...
 
 Available tools (Action Input is JSON):
 - read_file {"path":"...","offset"?:n,"limit"?:n}

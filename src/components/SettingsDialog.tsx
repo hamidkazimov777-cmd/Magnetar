@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, KeyRound, Loader2, Plus, Trash2, X } from "lucide-react";
+import { Check, KeyRound, Loader2, Plus, Trash2 } from "lucide-react";
 import { api } from "../lib/api";
 import { useStore } from "../lib/store";
 import {
@@ -9,6 +9,13 @@ import {
 } from "../lib/types";
 import { useT } from "../lib/i18n";
 import { cn } from "../lib/cn";
+
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
 
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const t = useT();
@@ -88,23 +95,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
-      onMouseDown={onClose}
-    >
-      <div
-        className="w-full max-w-lg overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-[var(--color-border)] px-5 py-4">
-          <h2 className="text-base font-semibold">{t("connectionsTitle")}</h2>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)]"
-          >
-            <X size={18} />
-          </button>
-        </div>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-lg p-0 gap-0 border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)]">
+        <DialogHeader className="border-b border-[var(--color-border)] px-5 py-4">
+          <DialogTitle className="text-base font-semibold">{t("connectionsTitle")}</DialogTitle>
+        </DialogHeader>
 
         <div className="max-h-[70vh] space-y-5 overflow-y-auto p-5">
           {connections.length > 0 && (
@@ -271,8 +266,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             </button>
           </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

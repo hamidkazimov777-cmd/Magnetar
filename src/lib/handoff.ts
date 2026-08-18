@@ -46,10 +46,12 @@ export function buildOutgoing(
 /** Refresh the rolling summary when the transcript has grown. Uses a cheap,
  *  single-shot completion on the given connection/model. Best-effort: failures
  *  are swallowed so chat never breaks because summarization hiccuped. */
+import { useStore } from "./store";
+
 export async function maybeSummarize(
   session: Session,
-  connection: Connection,
-  model: string,
+  defaultConnection: Connection,
+  defaultModel: string,
   setSummary: (summary: string, upToId: string) => void,
 ): Promise<void> {
   const msgs = session.messages.filter((m) => m.content);
@@ -73,10 +75,27 @@ export async function maybeSummarize(
     createdAt: 0,
   };
 
+  // Find cheapest model for summarization
+  let useConn = defaultConnection;
+  let useModel = defaultModel;
+  const state = useStore.getState();
+  
+  outer: for (const conn of state.connections) {
+    const models = state.models[conn.id] || [];
+    for (const m of models) {
+      const id = m.id.toLowerCase();
+      if (id.includes("haiku") || id.includes("mini") || id.includes("lite") || id.includes("flash") || id.includes("8b")) {
+        useConn = conn;
+        useModel = m.id;
+        break outer;
+      }
+    }
+  }
+
   try {
     const summary = await api.complete(
-      connection,
-      model,
+      useConn,
+      useModel,
       [instruction],
       "You write terse, information-dense engineering handoff notes.",
     );

@@ -147,6 +147,11 @@ pub fn tool_attach_file(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+pub fn tool_kill_bash(pid: Option<u32>) -> Result<(), String> {
+    tools::kill_bash(pid)
+}
+
+#[tauri::command]
 pub fn extract_pdf_text(path: String) -> Result<String, String> {
     pdf_extract::extract_text(&path).map_err(|e| format!("Failed to extract PDF: {}", e))
 }

@@ -41,6 +41,7 @@ pub fn run() {
             commands::tool_write_file,
             commands::tool_edit_file,
             commands::tool_run_bash,
+            commands::tool_kill_bash,
             commands::tool_attach_file,
             commands::extract_pdf_text,
         ])

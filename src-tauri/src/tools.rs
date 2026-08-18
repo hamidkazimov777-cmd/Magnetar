@@ -200,6 +200,14 @@ fn walk_grep(dir: &Path, needle: &str, hits: &mut Vec<GrepHit>) {
     }
 }
 
+use std::sync::Mutex;
+use std::collections::HashMap;
+use once_cell::sync::Lazy;
+
+/// Map of PID to child process id for killing. (Platform specific, simplified here for macOS/Unix)
+pub static BASH_PROCESSES: Lazy<Mutex<HashMap<u32, u32>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
 pub fn run_bash(command: &str, cwd: Option<&str>) -> Result<BashResult, String> {
     let mut cmd = std::process::Command::new("bash");
     cmd.arg("-lc").arg(command).stdout(Stdio::piped()).stderr(Stdio::piped());
@@ -207,6 +215,11 @@ pub fn run_bash(command: &str, cwd: Option<&str>) -> Result<BashResult, String> 
         cmd.current_dir(dir);
     }
     let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+    
+    let pid = child.id();
+    if let Ok(mut m) = BASH_PROCESSES.lock() {
+        m.insert(pid, pid);
+    }
 
     // Drain pipes on threads so a chatty command can't deadlock on a full buffer
     // while we wait.
@@ -238,11 +251,17 @@ pub fn run_bash(command: &str, cwd: Option<&str>) -> Result<BashResult, String> 
             (-1, true)
         }
     };
+    
+    if let Ok(mut m) = BASH_PROCESSES.lock() {
+        m.remove(&pid);
+    }
 
     let stdout_raw = th_o.join().unwrap_or_default();
     let mut stderr_raw = th_e.join().unwrap_or_default();
     if timed_out {
         stderr_raw.push_str(&format!("\n[killed: exceeded {BASH_TIMEOUT_SECS}s timeout]"));
+    } else if code == -1 && stdout_raw.is_empty() && stderr_raw.is_empty() {
+        stderr_raw.push_str("\n[killed by user]");
     }
 
     let (stdout, t1) = clip(&stdout_raw, MAX_BASH_BYTES);
@@ -253,4 +272,24 @@ pub fn run_bash(command: &str, cwd: Option<&str>) -> Result<BashResult, String> 
         code,
         truncated: t1 || t2,
     })
+}
+
+pub fn kill_bash(pid: Option<u32>) -> Result<(), String> {
+    if let Some(p) = pid {
+        // Kill specific process
+        unsafe {
+            libc::kill(p as i32, libc::SIGKILL);
+        }
+    } else {
+        // Kill all running bash processes tracked
+        if let Ok(mut m) = BASH_PROCESSES.lock() {
+            for (&p, _) in m.iter() {
+                unsafe {
+                    libc::kill(p as i32, libc::SIGKILL);
+                }
+            }
+            m.clear();
+        }
+    }
+    Ok(())
 }

@@ -150,6 +150,8 @@ export const api = {
       "tool_run_bash",
       { command, cwd: cwd ?? null },
     ),
+  toolKillBash: (pid?: number) =>
+    invoke<void>("tool_kill_bash", { pid: pid ?? null }),
   toolAttachFile: (path: string) =>
     invoke<string>("tool_attach_file", { path }),
   extractPdfText: (path: string) =>
