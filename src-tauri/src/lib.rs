@@ -1,3 +1,4 @@
+mod canon;
 mod commands;
 mod db;
 mod keychain;
@@ -24,6 +25,11 @@ pub fn run() {
             commands::list_models,
             commands::complete,
             commands::chat_stream,
+            commands::list_sessions,
+            commands::load_messages,
+            commands::save_session,
+            commands::upsert_message,
+            commands::delete_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

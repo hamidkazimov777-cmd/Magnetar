@@ -1,8 +1,36 @@
 //! Tauri command surface — the bridge the React frontend calls via `invoke`.
 
+use crate::canon::{self, MessageRow, SessionMeta};
 use crate::keychain;
 use crate::providers::{build_provider, ChatParams, Connection, ModelInfo, StreamEvent};
 use tauri::ipc::Channel;
+
+// ---- Canon (SQLite) --------------------------------------------------------
+
+#[tauri::command]
+pub fn list_sessions() -> Result<Vec<SessionMeta>, String> {
+    canon::list_sessions()
+}
+
+#[tauri::command]
+pub fn load_messages(session_id: String) -> Result<Vec<MessageRow>, String> {
+    canon::load_messages(&session_id)
+}
+
+#[tauri::command]
+pub fn save_session(meta: SessionMeta) -> Result<(), String> {
+    canon::save_session(meta)
+}
+
+#[tauri::command]
+pub fn upsert_message(message: MessageRow) -> Result<(), String> {
+    canon::upsert_message(message)
+}
+
+#[tauri::command]
+pub fn delete_session(id: String) -> Result<(), String> {
+    canon::delete_session(&id)
+}
 
 // ---- Secrets (Keychain) ----------------------------------------------------
 

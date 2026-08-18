@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { db, type SessionMetaRow } from "./db";
 import type { ChatMessage, Connection, ModelInfo, Session } from "./types";
 
 const uid = () =>
@@ -7,21 +8,38 @@ const uid = () =>
 
 const now = () => Date.now();
 
+/** The canon (sessions/messages) lives in SQLite; connections and preferences
+ *  stay in localStorage. Mutations update memory immediately and write through
+ *  to the DB in the background (fire-and-forget — chat never blocks on disk). */
+
+function metaOf(s: Session): SessionMetaRow {
+  return {
+    id: s.id,
+    title: s.title,
+    connectionId: s.connectionId ?? null,
+    model: s.model ?? null,
+    summary: s.summary ?? null,
+    summaryUpToId: s.summaryUpToId ?? null,
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt,
+  };
+}
+
+const persistMeta = (s: Session) => void db.saveSession(metaOf(s)).catch(() => {});
+
 interface State {
   connections: Connection[];
   activeConnectionId?: string;
   activeModel?: string;
-
-  /** Cached model catalog per connection (for the adaptive router). */
   models: Record<string, ModelInfo[]>;
-
-  /** Adaptive mode: let Magnetar pick/suggest the right-sized model per prompt. */
   adaptive: boolean;
 
   sessions: Session[];
   activeSessionId?: string;
+  hydrated: boolean;
 
-  // connections
+  hydrate: () => Promise<void>;
+
   addConnection: (c: Omit<Connection, "id">) => string;
   removeConnection: (id: string) => void;
   setActiveConnection: (id: string) => void;
@@ -30,19 +48,18 @@ interface State {
   setActive: (connectionId: string, model: string) => void;
   setAdaptive: (on: boolean) => void;
 
-  // handoff
   setSummary: (sessionId: string, summary: string, upToId: string) => void;
 
-  // sessions
   newSession: () => string;
   selectSession: (id: string) => void;
   deleteSession: (id: string) => void;
   renameSession: (id: string, title: string) => void;
 
-  // messages
   addMessage: (sessionId: string, m: Omit<ChatMessage, "id" | "createdAt">) => string;
   appendToMessage: (sessionId: string, messageId: string, delta: string) => void;
   setMessageContent: (sessionId: string, messageId: string, content: string) => void;
+  /** Persist a message's current in-memory content to the DB (e.g. after a stream ends). */
+  persistMessage: (sessionId: string, messageId: string) => void;
 }
 
 export const useStore = create<State>()(
@@ -52,6 +69,42 @@ export const useStore = create<State>()(
       models: {},
       adaptive: false,
       sessions: [],
+      hydrated: false,
+
+      hydrate: async () => {
+        try {
+          const metas = await db.listSessions();
+          const sessions: Session[] = await Promise.all(
+            metas.map(async (m) => {
+              const rows = await db.loadMessages(m.id);
+              return {
+                id: m.id,
+                title: m.title,
+                connectionId: m.connectionId ?? undefined,
+                model: m.model ?? undefined,
+                summary: m.summary ?? undefined,
+                summaryUpToId: m.summaryUpToId ?? undefined,
+                createdAt: m.createdAt,
+                updatedAt: m.updatedAt,
+                messages: rows.map((r) => ({
+                  id: r.id,
+                  role: r.role as ChatMessage["role"],
+                  content: r.content,
+                  model: r.model ?? undefined,
+                  createdAt: r.createdAt,
+                })),
+              };
+            }),
+          );
+          set((s) => ({
+            sessions,
+            activeSessionId: s.activeSessionId ?? sessions[0]?.id,
+            hydrated: true,
+          }));
+        } catch {
+          set({ hydrated: true });
+        }
+      },
 
       setModels: (connectionId, models) =>
         set((s) => ({ models: { ...s.models, [connectionId]: models } })),
@@ -60,13 +113,6 @@ export const useStore = create<State>()(
         set({ activeConnectionId: connectionId, activeModel: model }),
 
       setAdaptive: (on) => set({ adaptive: on }),
-
-      setSummary: (sessionId, summary, upToId) =>
-        set((s) => ({
-          sessions: s.sessions.map((x) =>
-            x.id === sessionId ? { ...x, summary, summaryUpToId: upToId } : x,
-          ),
-        })),
 
       addConnection: (c) => {
         const id = uid();
@@ -93,6 +139,18 @@ export const useStore = create<State>()(
 
       setActiveModel: (model) => set({ activeModel: model }),
 
+      setSummary: (sessionId, summary, upToId) =>
+        set((s) => {
+          const sessions = s.sessions.map((x) =>
+            x.id === sessionId
+              ? { ...x, summary, summaryUpToId: upToId, updatedAt: now() }
+              : x,
+          );
+          const sess = sessions.find((x) => x.id === sessionId);
+          if (sess) persistMeta(sess);
+          return { sessions };
+        }),
+
       newSession: () => {
         const id = uid();
         const session: Session = {
@@ -105,12 +163,14 @@ export const useStore = create<State>()(
           updatedAt: now(),
         };
         set((s) => ({ sessions: [session, ...s.sessions], activeSessionId: id }));
+        persistMeta(session);
         return id;
       },
 
       selectSession: (id) => set({ activeSessionId: id }),
 
-      deleteSession: (id) =>
+      deleteSession: (id) => {
+        void db.deleteSession(id).catch(() => {});
         set((s) => {
           const sessions = s.sessions.filter((x) => x.id !== id);
           return {
@@ -118,29 +178,51 @@ export const useStore = create<State>()(
             activeSessionId:
               s.activeSessionId === id ? sessions[0]?.id : s.activeSessionId,
           };
-        }),
+        });
+      },
 
       renameSession: (id, title) =>
-        set((s) => ({
-          sessions: s.sessions.map((x) =>
+        set((s) => {
+          const sessions = s.sessions.map((x) =>
             x.id === id ? { ...x, title, updatedAt: now() } : x,
-          ),
-        })),
+          );
+          const sess = sessions.find((x) => x.id === id);
+          if (sess) persistMeta(sess);
+          return { sessions };
+        }),
 
       addMessage: (sessionId, m) => {
         const id = uid();
+        const createdAt = now();
+        let touched: Session | undefined;
         set((s) => ({
           sessions: s.sessions.map((sess) => {
             if (sess.id !== sessionId) return sess;
-            const messages = [...sess.messages, { ...m, id, createdAt: now() }];
-            // Derive a title from the first user message.
+            const messages = [...sess.messages, { ...m, id, createdAt }];
             const title =
               sess.title === "New chat" && m.role === "user"
                 ? m.content.slice(0, 48) || "New chat"
                 : sess.title;
-            return { ...sess, messages, title, updatedAt: now() };
+            touched = { ...sess, messages, title, updatedAt: createdAt };
+            return touched;
           }),
         }));
+        if (touched) {
+          persistMeta(touched);
+          // Persist non-empty messages right away; empty assistant placeholders
+          // get written when their stream completes (see persistMessage).
+          if (m.content)
+            void db
+              .upsertMessage({
+                id,
+                sessionId,
+                role: m.role,
+                content: m.content,
+                model: m.model ?? null,
+                createdAt,
+              })
+              .catch(() => {});
+        }
         return id;
       },
 
@@ -160,7 +242,7 @@ export const useStore = create<State>()(
           ),
         })),
 
-      setMessageContent: (sessionId, messageId, content) =>
+      setMessageContent: (sessionId, messageId, content) => {
         set((s) => ({
           sessions: s.sessions.map((sess) =>
             sess.id !== sessionId
@@ -172,17 +254,34 @@ export const useStore = create<State>()(
                   ),
                 },
           ),
-        })),
+        }));
+        get().persistMessage(sessionId, messageId);
+      },
+
+      persistMessage: (sessionId, messageId) => {
+        const sess = get().sessions.find((x) => x.id === sessionId);
+        const msg = sess?.messages.find((m) => m.id === messageId);
+        if (!msg) return;
+        void db
+          .upsertMessage({
+            id: msg.id,
+            sessionId,
+            role: msg.role,
+            content: msg.content,
+            model: msg.model ?? null,
+            createdAt: msg.createdAt,
+          })
+          .catch(() => {});
+      },
     }),
     {
       name: "magnetar-store",
+      // Canon (sessions) is in SQLite; only keep light preferences here.
       partialize: (s) => ({
         connections: s.connections,
         activeConnectionId: s.activeConnectionId,
         activeModel: s.activeModel,
         adaptive: s.adaptive,
-        sessions: s.sessions,
-        activeSessionId: s.activeSessionId,
       }),
     },
   ),

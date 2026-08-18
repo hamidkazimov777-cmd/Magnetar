@@ -74,6 +74,8 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
       onDone: () => {
         setStreaming(false);
         stopRef.current = null;
+        // Persist the finished assistant turn to the canon (SQLite).
+        useStore.getState().persistMessage(sessionId!, assistantId);
         // Refresh the rolling handoff summary in the background.
         const s = useStore.getState().sessions.find((x) => x.id === sessionId);
         if (s)

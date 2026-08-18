@@ -8,18 +8,19 @@ import { api } from "./lib/api";
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const connections = useStore((s) => s.connections);
-  const sessions = useStore((s) => s.sessions);
-  const activeSessionId = useStore((s) => s.activeSessionId);
-  const newSession = useStore((s) => s.newSession);
 
   // Open settings on first run so the user lands on "paste your key".
   useEffect(() => {
     if (connections.length === 0) setSettingsOpen(true);
   }, [connections.length]);
 
-  // Always have a session to type into.
+  // Load the canon from SQLite, then ensure there's a session to type into.
   useEffect(() => {
-    if (sessions.length === 0 || !activeSessionId) newSession();
+    (async () => {
+      await useStore.getState().hydrate();
+      const st = useStore.getState();
+      if (st.sessions.length === 0 || !st.activeSessionId) st.newSession();
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

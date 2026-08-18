@@ -226,4 +226,43 @@ Root CA» (PEM) в настройках подключения GigaChat. Без 
 
 **Как продолжить:** `npm run tauri dev` (при необходимости `source $HOME/.cargo/env`).
 
-<!-- Следующий ассистент: добавь «Запись 4 — дата — модель — тема» здесь. -->
+### Запись 4 — 2026-08-18 — Claude (Opus 4.8) — Фаза 2: канон в SQLite
+
+**Статус: реализовано, компилируется (`cargo check` ✅, `tsc` ✅, `npm run build` ✅).**
+
+Сессии/сообщения перенесены из localStorage в **SQLite** — теперь это источник
+правды, канон переживает перезапуск и общий для всех провайдеров.
+
+- **`db.rs`** — расширенная схема: `sessions`(id,title,connection_id,model,summary,
+  summary_up_to_id,created_at,updated_at) + `messages`(id,session_id,role,content,
+  model,created_at). Best-effort `ALTER TABLE` для старых БД.
+- **`canon.rs`** (новый) — DTO `SessionMeta`/`MessageRow` (serde camelCase) + CRUD:
+  `list_sessions`, `load_messages`, `save_session` (upsert), `upsert_message`
+  (+ touch updated_at), `delete_session`.
+- **`commands.rs`/`lib.rs`** — команды зарегистрированы.
+- **Фронт:**
+  - `lib/db.ts` — обёртки канон-команд.
+  - `store.ts` переписан: канон держится в памяти для UI, но **write-through в
+    SQLite** на каждую мутацию (fire-and-forget, чат не блокируется на диск).
+    `partialize` теперь хранит в localStorage только connections/active*/adaptive.
+    Добавлены `hydrate()` (загрузка из БД при старте) и `persistMessage()`.
+  - Стрим ассистента: контент копится в памяти, в БД пишется один раз в `onDone`
+    (или при ошибке через `setMessageContent`) — не спамим диск на каждый токен.
+  - `App.tsx` — `hydrate()` на старте, затем создаёт сессию если пусто.
+
+**Важно:** старые чаты, что лежали в localStorage до этого изменения, в новый
+SQLite-канон НЕ мигрируют (dev, реальных данных не было) — начинается с чистого
+листа в БД. БД: `<appData>/com.hamidkazimov.magnetar/magnetar.sqlite`.
+
+**Известные мелочи:** при ручном «Стоп» частичный ответ ассистента в БД не
+дописывается (персист только на onDone/ошибке). Легко добавить persistMessage в stop().
+
+**Следующий шаг по плану:** **Фаза 4** — агентские инструменты (read_file,
+write_file, edit_file(diff), list_dir, grep, run_bash) как Tauri-команды +
+подтверждение разрушающих действий; для провайдеров без нативного tool-use —
+ReAct-протокол текстом. Затем **Фаза 5** — доп. экономия токенов (prompt caching
+где поддерживается, ещё агрессивнее резать вывод инструментов).
+
+**Как продолжить:** `npm run tauri dev` (при необходимости `source $HOME/.cargo/env`).
+
+<!-- Следующий ассистент: добавь «Запись 5 — дата — модель — тема» здесь. -->
