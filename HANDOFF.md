@@ -182,4 +182,48 @@ OAuth, локальные Ollama/LM Studio). Если пользователь �
 
 **Как продолжить:** `npm run tauri dev` (при необходимости `source $HOME/.cargo/env`).
 
-<!-- Следующий ассистент: добавь «Запись 3 — дата — модель — тема» здесь. -->
+### Запись 3 — 2026-08-18 — Claude (Opus 4.8) — Фаза 3: GigaChat-адаптер
+
+**Статус: GigaChat-адаптер реализован, компилируется (`cargo check` ✅, `tsc` ✅,
+`npm run build` ✅). OAuth проверен вживую curl'ом — HTTP 200, токен получен.**
+
+Сделано:
+
+- **`src-tauri/src/providers/gigachat.rs`** — полный адаптер:
+  - OAuth `POST …:9443/api/v2/oauth`, заголовки Basic + RqUID(uuid4) + User-Agent,
+    тело `scope=…` (form). Ответ `{access_token, expires_at(ms epoch)}`.
+  - **Глобальный кэш токенов** (`TOKENS: Lazy<Mutex<HashMap<auth_key,(token,exp)>>>`)
+    — т.к. `build_provider` создаёт адаптер заново на каждый вызов, кэш обязан быть
+    глобальным. Refresh, когда до истечения <60с.
+  - **Russian Trusted Root CA**: `reqwest::Certificate::from_pem_bundle` (root+sub),
+    `add_root_certificate` поверх нативных корней (`rustls-tls-native-roots`). Путь к
+    PEM берётся из `Connection.ca_path`.
+  - **Сериализация freemium**: глобальный `GIGA_LOCK: Lazy<AsyncMutex<()>>` — все
+    сетевые вызовы GigaChat (list_models/chat_stream/complete) под одним локом.
+  - **`strip_json_fence`**: снимает ```json-обёртку (от первого `{` до последнего `}`).
+  - `chat_stream` парсит SSE как OpenAI; `complete` — non-streaming.
+- **`providers/mod.rs`**: `Connection` получил поля `scope`/`ca_path` (оба
+  `#[serde(default)]`, только для GigaChat); `build_provider` теперь строит GigaChat.
+- **Фронт:** `types.ts` — `Connection.scope/caPath` + `GIGACHAT_BASE`; `api.ts`
+  шлёт `scope`/`ca_path`; **SettingsDialog** — переключатель провайдера
+  (OpenAI-совместимый / GigaChat) с полями: Authorization key (Basic), Scope
+  (default GIGACHAT_API_PERS), путь к CA PEM. В списке подключений — бейдж типа.
+- **Проверка вживую:** curl на OAuth (порт 9443, заголовки как в адаптере) вернул
+  HTTP 200 + `access_token`/`expires_at`. TLS без Russian CA падает (HTTP 000) —
+  подтверждает необходимость PEM. Токены/ключи в логи/файлы не попадали.
+
+**Что нужно пользователю для боевого GigaChat:** указать путь к «Russian Trusted
+Root CA» (PEM) в настройках подключения GigaChat. Без него — TLS-ошибка. CA
+сознательно НЕ качал и в систему НЕ ставил (root CA = чувствительно); адаптер
+доверяет ему только в рамках своего reqwest-клиента, не системно.
+
+**Не сделано / следующий шаг (по-прежнему):**
+- **Фаза 2 (SQLite-канон)** — сессии/сообщения всё ещё в localStorage. Backend
+  `db.rs` со схемой готов. Рекомендуемый следующий шаг.
+- Фаза 4 (агентские инструменты: read/write/edit/list_dir/grep/run_bash +
+  подтверждения), Фаза 5 (доп. экономия токенов, prompt caching).
+- Отмена стрима на бэкенде по «Стоп».
+
+**Как продолжить:** `npm run tauri dev` (при необходимости `source $HOME/.cargo/env`).
+
+<!-- Следующий ассистент: добавь «Запись 4 — дата — модель — тема» здесь. -->

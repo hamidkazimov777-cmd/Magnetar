@@ -6,6 +6,7 @@
 //! any OpenAI-shaped endpoint). GigaChat and custom/self-hosted are laid into
 //! the architecture and filled in on later phases.
 
+pub mod gigachat;
 pub mod openai_compat;
 
 use async_trait::async_trait;
@@ -48,6 +49,13 @@ pub struct Connection {
     pub kind: ProviderKind,
     /// e.g. "https://openrouter.ai/api/v1". Trailing slash tolerated.
     pub base_url: String,
+    /// GigaChat only: OAuth scope (e.g. "GIGACHAT_API_PERS"). Ignored elsewhere.
+    #[serde(default)]
+    pub scope: Option<String>,
+    /// GigaChat only: path to a PEM with the Russian Trusted Root CA (added to
+    /// the reqwest trust store on top of the OS roots).
+    #[serde(default)]
+    pub ca_path: Option<String>,
 }
 
 impl Connection {
@@ -111,7 +119,8 @@ pub fn build_provider(
         ProviderKind::OpenaiCompat => Ok(Box::new(
             openai_compat::OpenAiCompat::new(conn.clone(), api_key),
         )),
-        // Filled in on Phase 3 / later.
-        ProviderKind::Gigachat | ProviderKind::Custom => Err(ProviderError::NotImplemented),
+        ProviderKind::Gigachat => Ok(Box::new(gigachat::GigaChat::new(conn.clone(), api_key)?)),
+        // Custom/self-hosted: wired but hidden in the UI for now.
+        ProviderKind::Custom => Err(ProviderError::NotImplemented),
     }
 }

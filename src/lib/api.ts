@@ -3,7 +3,13 @@ import type { ChatMessage, Connection, ModelInfo, StreamEvent } from "./types";
 
 /** Rust `Connection` uses snake_case keys. */
 function toRustConn(c: Connection) {
-  return { id: c.id, kind: c.kind, base_url: c.baseUrl };
+  return {
+    id: c.id,
+    kind: c.kind,
+    base_url: c.baseUrl,
+    scope: c.scope ?? null,
+    ca_path: c.caPath ?? null,
+  };
 }
 
 export const api = {

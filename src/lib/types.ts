@@ -7,7 +7,14 @@ export interface Connection {
   name: string;
   kind: ProviderKind;
   baseUrl: string;
+  /** GigaChat only: OAuth scope (default GIGACHAT_API_PERS). */
+  scope?: string;
+  /** GigaChat only: path to the Russian Trusted Root CA PEM. */
+  caPath?: string;
 }
+
+/** GigaChat uses fixed endpoints; base URL is not user-editable. */
+export const GIGACHAT_BASE = "https://gigachat.devices.sberbank.ru/api/v1";
 
 export interface ModelInfo {
   id: string;
