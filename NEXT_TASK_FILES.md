@@ -155,3 +155,10 @@ React/TS/Tailwind), BYOK-чат с ИИ, код и доступ к машине.
 - Если в чате виден 403 «token has no access to model», это не ошибка UI:
   выберите другой model id в selector или Settings → «Проверить», чтобы подобрать
   первую доступную модель и сделать её активной.
+
+### Keychain UX — 2026-08-19
+
+- `src-tauri/src/keychain.rs` держит API key в macOS Keychain и кэширует его
+  только в памяти текущего процесса (`SESSION_KEYS`). Это предотвращает запрос
+  доступа macOS на каждом сетевом действии; кэш очищается при выходе или удалении
+  connection. Не заменять это хранением ключей в SQLite/localStorage.
