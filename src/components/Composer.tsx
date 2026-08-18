@@ -175,6 +175,33 @@ export function Composer({
               }
             }}
             onPaste={handlePaste}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                const files = Array.from(e.dataTransfer.files);
+                for (const file of files) {
+                  if (file.type.startsWith("image/")) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                      if (event.target?.result) {
+                        const dataUrl = event.target.result as string;
+                        const [header, base64] = dataUrl.split(",");
+                        const mime = header.split(":")[1].split(";")[0];
+                        setAttachments(prev => [...prev, {
+                          id: crypto.randomUUID(),
+                          type: "image",
+                          mimeType: mime,
+                          name: file.name,
+                          data: base64
+                        }]);
+                      }
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                }
+              }
+            }}
+            onDragOver={(e) => e.preventDefault()}
             className="max-h-[220px] flex-1 resize-none bg-transparent py-1.5 text-[15px] leading-6 text-[var(--color-text)] outline-none placeholder:text-[var(--color-text-dim)] disabled:opacity-60"
           />
           {streaming ? (
