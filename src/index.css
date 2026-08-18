@@ -11,9 +11,9 @@
   --color-accent: #8b7ff5;
   --color-accent-strong: #a99cff;
   --color-accent-fg: #ffffff;
-  /* SF Pro on macOS via system-ui — free, full Cyrillic, nothing to download. */
-  --font-sans: -apple-system, system-ui, "SF Pro Text", "SF Pro Display",
-    "Segoe UI", sans-serif;
+  /* Space Grotesk for Latin (cosmic vibe); Onest covers Cyrillic — both offline. */
+  --font-sans: "Space Grotesk", "Onest", -apple-system, system-ui, "Segoe UI",
+    sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
