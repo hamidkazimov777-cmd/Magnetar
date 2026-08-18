@@ -861,3 +861,20 @@ base_url/scope/ca_path). Backend: `workspace.rs` (`ConnectionRow` + list/save/de
 настоящим API-ключом. В рамках текущего запуска API-ключи и нативный GUI не
 трогались. Не менять SQLite, Keychain, мультимодальность или GigaChat без
 отдельной проверки их end-to-end сценариев.
+
+### Запись 27 — 2026-08-19 — Codex — release-пересборка после UX-изменений
+
+**Сделано:** после коммита `d251fb7` пересобран production macOS app bundle.
+Подтверждён исполняемый файл x86_64 Mach-O:
+`src-tauri/target/release/bundle/macos/Magnetar.app/Contents/MacOS/magnetar`
+(01:27:57, 2026-08-19). Приложение можно запускать и проверять уже сейчас,
+открыв `src-tauri/target/release/bundle/macos/Magnetar.app` в Finder.
+
+**Проверки:** ранее в этом цикле прошли `cargo check`, `npx tsc --noEmit`,
+`npm run build`; release-бинарник и `.app` созданы успешно.
+
+**Ограничение:** новый DMG в этом цикле не появился — в
+`src-tauri/target/release/bundle/dmg/` остались служебные файлы упаковщика.
+Перед дистрибуцией нужно отдельно повторить `npm run tauri build` до строки
+успешной DMG-упаковки и зафиксировать размер/дату. `.app` полностью пригоден
+для локальной проверки на Intel macOS; он не подписан.
