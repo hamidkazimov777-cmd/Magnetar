@@ -1,4 +1,5 @@
 import { api, type ToolDef } from "./api";
+import { useStore } from "./store";
 import type { ChatMessage, Connection } from "./types";
 
 /** Tools exposed to the model (OpenAI function schemas). */
@@ -36,6 +37,18 @@ export const AGENT_TOOLS: ToolDef[] = [
         path: { type: "string", description: "Directory to search (default .)" },
       },
       required: ["pattern"],
+    },
+  },
+  {
+    name: "search_code",
+    description:
+      "Semantic-ish ranked search over the open project (BM25). Best way to find where something lives — returns the most relevant files with a snippet.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "What to look for (natural words or identifiers)" },
+      },
+      required: ["query"],
     },
   },
   {
@@ -118,6 +131,16 @@ export async function executeTool(name: string, args: ToolArgs): Promise<string>
       case "grep": {
         const r = await api.toolGrep(String(args.pattern), args.path ? String(args.path) : undefined);
         return r.map((h) => `${h.file}:${h.line}: ${h.text}`).join("\n") || "(no matches)";
+      }
+      case "search_code": {
+        const root = useStore.getState().workspaceRoot;
+        if (!root) return "No project folder is open. Open one in the Code tab first.";
+        const r = await api.indexSearch(root, String(args.query), 8);
+        return (
+          r
+            .map((h) => `${h.file}:${h.line}  ${h.snippet}`)
+            .join("\n") || "(no matches)"
+        );
       }
       case "write_file": {
         const n = await api.toolWriteFile(String(args.path), String(args.content));

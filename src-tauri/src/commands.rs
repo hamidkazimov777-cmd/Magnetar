@@ -227,6 +227,22 @@ pub fn editor_read_file(path: String) -> Result<String, String> {
     tools::read_text(&path)
 }
 
+// ---- Codebase index (BM25 retrieval) --------------------------------------
+
+#[tauri::command]
+pub fn index_build(root: String) -> Result<crate::index::IndexStats, String> {
+    crate::index::build(&root)
+}
+
+#[tauri::command]
+pub fn index_search(
+    root: String,
+    query: String,
+    top_k: Option<usize>,
+) -> Result<Vec<crate::index::SearchHit>, String> {
+    crate::index::search(&root, &query, top_k.unwrap_or(8))
+}
+
 #[tauri::command]
 pub fn git_exec(cwd: String, args: Vec<String>) -> Result<tools::BashResult, String> {
     tools::git_exec(&cwd, args)

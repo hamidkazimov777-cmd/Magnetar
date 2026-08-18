@@ -1,6 +1,7 @@
 mod canon;
 mod commands;
 mod db;
+mod index;
 mod keychain;
 mod providers;
 mod pty;
@@ -47,6 +48,8 @@ pub fn run() {
             commands::tool_attach_file,
             commands::extract_pdf_text,
             commands::editor_read_file,
+            commands::index_build,
+            commands::index_search,
             commands::git_exec,
             commands::pty_spawn,
             commands::pty_write,

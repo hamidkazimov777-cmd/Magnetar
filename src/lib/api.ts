@@ -141,6 +141,13 @@ export const api = {
     invoke<number>("tool_write_file", { path, content }),
   editorReadFile: (path: string) =>
     invoke<string>("editor_read_file", { path }),
+  indexBuild: (root: string) =>
+    invoke<{ files: number; terms: number }>("index_build", { root }),
+  indexSearch: (root: string, query: string, topK?: number) =>
+    invoke<{ file: string; score: number; snippet: string; line: number }[]>(
+      "index_search",
+      { root, query, topK: topK ?? null },
+    ),
   gitExec: (cwd: string, args: string[]) =>
     invoke<{ stdout: string; stderr: string; code: number; truncated: boolean }>(
       "git_exec",
