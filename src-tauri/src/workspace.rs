@@ -17,6 +17,8 @@ pub struct Project {
     pub active_goals: Option<String>,
     pub roadmap: Option<String>,
     pub risks: Option<String>,
+    pub path: Option<String>,
+    pub last_state: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -26,13 +28,13 @@ pub fn list_projects() -> Result<Vec<Project>, String> {
         let mut stmt = c
             .prepare(
                 "SELECT id, name, description, tech_stack, architecture_notes, coding_standards, \
-                 decisions, active_goals, roadmap, risks, created_at, updated_at \
+                 decisions, active_goals, roadmap, risks, path, last_state, created_at, updated_at \
                  FROM projects \
                  WHERE deleted_at IS NULL \
                  ORDER BY updated_at DESC",
             )
             .map_err(|e| e.to_string())?;
-        
+
         let rows = stmt
             .query_map([], |r| {
                 Ok(Project {
@@ -46,8 +48,10 @@ pub fn list_projects() -> Result<Vec<Project>, String> {
                     active_goals: r.get(7)?,
                     roadmap: r.get(8)?,
                     risks: r.get(9)?,
-                    created_at: r.get(10)?,
-                    updated_at: r.get(11)?,
+                    path: r.get(10)?,
+                    last_state: r.get(11)?,
+                    created_at: r.get(12)?,
+                    updated_at: r.get(13)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -60,16 +64,16 @@ pub fn save_project(p: Project) -> Result<(), String> {
     with_conn(|c| {
         c.execute(
             "INSERT INTO projects \
-               (id, name, description, tech_stack, architecture_notes, coding_standards, decisions, active_goals, roadmap, risks, created_at, updated_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12) \
+               (id, name, description, tech_stack, architecture_notes, coding_standards, decisions, active_goals, roadmap, risks, path, last_state, created_at, updated_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14) \
              ON CONFLICT(id) DO UPDATE SET \
                name=excluded.name, description=excluded.description, tech_stack=excluded.tech_stack, \
                architecture_notes=excluded.architecture_notes, coding_standards=excluded.coding_standards, \
                decisions=excluded.decisions, active_goals=excluded.active_goals, roadmap=excluded.roadmap, \
-               risks=excluded.risks, updated_at=excluded.updated_at",
+               risks=excluded.risks, path=excluded.path, last_state=excluded.last_state, updated_at=excluded.updated_at",
             params![
                 p.id, p.name, p.description, p.tech_stack, p.architecture_notes, p.coding_standards,
-                p.decisions, p.active_goals, p.roadmap, p.risks, p.created_at, p.updated_at
+                p.decisions, p.active_goals, p.roadmap, p.risks, p.path, p.last_state, p.created_at, p.updated_at
             ],
         )
         .map_err(|e| e.to_string())?;

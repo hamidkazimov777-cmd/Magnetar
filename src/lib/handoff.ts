@@ -31,6 +31,10 @@ export async function buildOutgoing(
       if (p.codingStandards) parts.push(`Coding Standards: ${p.codingStandards}`);
       if (p.architectureNotes) parts.push(`Architecture: ${p.architectureNotes}`);
       if (p.decisions) parts.push(`Decisions: ${p.decisions}`);
+      if (p.lastState)
+        parts.push(
+          `\n## Where the previous model stopped (continue from here)\n${p.lastState}`,
+        );
     }
 
     // Knowledge Graph Subgraph

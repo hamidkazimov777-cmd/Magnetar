@@ -709,4 +709,39 @@ Developer аккаунт ($99) пользователя. Универсальн�
 кросс-собрать (`rustup target add aarch64-apple-darwin`, `tauri build --target
 universal-apple-darwin`), НЕ делал в этот заход.
 
-<!-- Следующий ассистент: добавь «Запись 22 — дата — модель — тема» здесь. -->
+### Запись 22 — 2026-08-18 — Claude (Opus 4.8) — «память-первым»: онбординг папки, Brain в агенте, флаш на переключении
+
+Реализована ключевая философия пользователя: **память уровня ПРОЕКТА, тезисная;
+модель работает из памяти, а не перечитывает проект; переключение = флаш в память.**
+
+- **Схема:** в `projects` добавлены `path` (связь проекта с папкой) и `last_state`
+  (тезис «где остановились»). Миграции в `db.rs`, поля в `workspace.rs` (struct +
+  SELECT + upsert) и `types.ts` (`Project.path/lastState`).
+- **`src/lib/memory.ts`** (новый):
+  - `analyzeFolderIntoMemory(root)` — **онбординг папки**: строит BM25-индекс, читает
+    ключевые файлы (package.json/README/Cargo.toml/pyproject/… + top-level дерево),
+    гоняет ДЕШЁВУЮ модель (`cheapModel()`), парсит JSON → создаёт/обновляет Project
+    (name/description/techStack/architectureNotes/codingStandards, `path=root`),
+    делает активным и привязывает текущую сессию. Триггерится авто при «Открыть
+    папку» в редакторе + кнопка «Проанализировать в память» (иконка мозга).
+  - `flushHandoffToMemory()` — **флаш на переключении**: сворачивает последние ходы в
+    тезис «состояние + следующий шаг» → пишет в `project.lastState`. Вызывается в
+    `ModelSwitcher` при смене модели/подключения (перед переключением).
+  - `buildProjectMemory(session)` — преамбула проектной памяти (brain + lastState +
+    «работай из памяти, используй search_code/read_file(offset) — экономь токены»).
+  - `cheapModel()` — выбирает самую дешёвую модель (haiku/mini/flash/…) для фоновой
+    работы, иначе активную.
+- **Brain в агент-режиме (Piece 2):** `runAgent`/`runAgentNative`/`runAgentReAct`/
+  `runTeamAgent` принимают `system`/`projectMemory`; ChatView передаёт
+  `buildProjectMemory(session)`. Теперь агент (и `/team`) стартует С памятью проекта.
+- **Обычный чат:** в `handoff.ts` в проектный контекст добавлен `lastState`.
+- **Store:** `attachSessionToProject(sessionId, projectId)`.
+- **Дистрибуция:** универсальная сборка (Intel + Apple Silicon) собрана
+  (`tauri build --target universal-apple-darwin`) — `target/release/bundle/macos/`
+  (universal `.app`) и dmg. Подпись — ждёт Apple аккаунт.
+
+**Итог:** загрузил папку → приложение само заполнило память → переключаешь модель,
+на кнопке пишется тезис в память → следующая модель читает память, а не проект.
+Токены экономятся. Осталось по мелочи: авто-refresh дерева, табы файлов, дедуп памяти.
+
+<!-- Следующий ассистент: добавь «Запись 23 — дата — модель — тема» здесь. -->

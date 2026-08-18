@@ -194,14 +194,16 @@ export async function runAgent(
   history: ChatMessage[],
   h: AgentHandlers,
   isTeam = false,
+  projectMemory = "",
 ): Promise<void> {
+  const system = AGENT_SYSTEM + projectMemory;
   if (isTeam) {
-    return runTeamAgent(connection, model, history, h);
+    return runTeamAgent(connection, model, history, h, system);
   }
   if (connection.kind === "openai_compat") {
-    return runAgentNative(connection, model, history, h);
+    return runAgentNative(connection, model, history, h, system);
   }
-  return runAgentReAct(connection, model, history, h);
+  return runAgentReAct(connection, model, history, h, system);
 }
 
 export async function runTeamAgent(
@@ -209,29 +211,34 @@ export async function runTeamAgent(
   model: string,
   history: ChatMessage[],
   h: AgentHandlers,
+  system: string = AGENT_SYSTEM,
 ): Promise<void> {
   if (h.cancelled?.()) return;
 
   h.onText("🏛️ **Architect** is analyzing the request and creating a plan...\n\n");
-  const architectSystem = "You are the Architect. Analyze the user request, break it down into a clear technical plan with steps. Do not execute code. Just output the plan.";
+  const architectSystem =
+    "You are the Architect. Analyze the user request, break it down into a clear technical plan with steps. Do not execute code. Just output the plan." +
+    system;
   const plan = await api.complete(connection, model, history, architectSystem);
-  
+
   if (h.cancelled?.()) return;
   h.onText(`${plan}\n\n---\n\n🛠️ **Developer** is implementing the plan...\n\n`);
-  
+
   const devHistory = [...history, { id: "plan", role: "assistant", content: plan, createdAt: 0 }];
-  // Run developer
+  // Run developer with the same project memory in context.
   if (connection.kind === "openai_compat") {
-    await runAgentNative(connection, model, devHistory as ChatMessage[], h);
+    await runAgentNative(connection, model, devHistory as ChatMessage[], h, system);
   } else {
-    await runAgentReAct(connection, model, devHistory as ChatMessage[], h);
+    await runAgentReAct(connection, model, devHistory as ChatMessage[], h, system);
   }
 
   if (h.cancelled?.()) return;
   h.onText("\n\n---\n\n👀 **Reviewer** is checking the changes...\n\n");
-  const reviewerSystem = "You are the Reviewer. Check what the developer did based on the plan, suggest any improvements, or confirm it looks good. Be concise.";
+  const reviewerSystem =
+    "You are the Reviewer. Check what the developer did based on the plan, suggest any improvements, or confirm it looks good. Be concise." +
+    system;
   const review = await api.complete(connection, model, devHistory as ChatMessage[], reviewerSystem);
-  
+
   h.onText(review);
 }
 
@@ -241,9 +248,10 @@ async function runAgentNative(
   model: string,
   history: ChatMessage[],
   h: AgentHandlers,
+  system: string = AGENT_SYSTEM,
 ): Promise<void> {
   const messages: unknown[] = [
-    { role: "system", content: AGENT_SYSTEM },
+    { role: "system", content: system },
     ...toWire(history),
   ];
 
@@ -352,6 +360,7 @@ async function runAgentReAct(
   model: string,
   history: ChatMessage[],
   h: AgentHandlers,
+  extraSystem: string = "",
 ): Promise<void> {
   const messages: ChatMessage[] = [...history];
   const mk = (role: ChatMessage["role"], content: string): ChatMessage => ({
@@ -360,7 +369,7 @@ async function runAgentReAct(
 
   for (let i = 0; i < MAX_ITERS; i++) {
     if (h.cancelled?.()) return;
-    const text = await api.complete(connection, model, messages, REACT_SYSTEM);
+    const text = await api.complete(connection, model, messages, REACT_SYSTEM + extraSystem);
     const p = parseReAct(text);
 
     if (p.final != null) {

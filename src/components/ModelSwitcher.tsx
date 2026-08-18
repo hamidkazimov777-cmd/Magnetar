@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Loader2, Search, RefreshCw } from "lucide-react";
 import { api } from "../lib/api";
 import { useStore } from "../lib/store";
+import { flushHandoffToMemory } from "../lib/memory";
 import { useT } from "../lib/i18n";
 import type { ModelInfo } from "../lib/types";
 import { cn } from "../lib/cn";
@@ -96,7 +97,10 @@ export function ModelSwitcher() {
               {connections.map((c) => (
                 <button
                   key={c.id}
-                  onClick={() => setActiveConnection(c.id)}
+                  onClick={() => {
+                    if (c.id !== activeConnectionId) void flushHandoffToMemory();
+                    setActiveConnection(c.id);
+                  }}
                   className={cn(
                     "flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-sm hover:bg-[var(--color-surface-2)]",
                     c.id === activeConnectionId && "text-[var(--color-accent)]",
@@ -150,6 +154,9 @@ export function ModelSwitcher() {
                 <button
                   key={m.id}
                   onClick={() => {
+                    // Flush the current model's recent work into project memory
+                    // BEFORE switching, so the next model continues from memory.
+                    if (m.id !== activeModel) void flushHandoffToMemory();
                     setActiveModel(m.id);
                     setOpen(false);
                     setQuery("");

@@ -5,6 +5,7 @@ import { useStore } from "../lib/store";
 import { buildCatalog, recommend, type Recommendation } from "../lib/adaptive";
 import { buildOutgoing, maybeSummarize } from "../lib/handoff";
 import { runAgent } from "../lib/agent";
+import { buildProjectMemory } from "../lib/memory";
 import { LogoMark } from "./Logo";
 import { ToolPreview } from "./ToolPreview";
 import { useT } from "../lib/i18n";
@@ -140,12 +141,14 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     setStreaming(true);
     try {
       if (agentMode || isTeam || isCto) {
+        const sess = useStore.getState().sessions.find((s) => s.id === sessionId);
+        const projectMemory = buildProjectMemory(sess);
         await runAgent(connection, model, history, {
           confirm: (name, args) =>
             new Promise<boolean>((resolve) => setConfirm({ name, args, resolve })),
           onText: (t) => appendToMessage(sessionId!, assistantId, t),
           cancelled: () => agentCancelRef.current,
-        }, isTeam);
+        }, isTeam, projectMemory);
       } else {
         await runSend(text, attachments, connId, model);
       }

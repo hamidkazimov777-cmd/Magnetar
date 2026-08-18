@@ -20,8 +20,10 @@ import {
 } from "lucide-react";
 import { api } from "../lib/api";
 import { useStore } from "../lib/store";
+import { analyzeFolderIntoMemory } from "../lib/memory";
 import { useT } from "../lib/i18n";
 import { cn } from "../lib/cn";
+import { Brain, Loader2 } from "lucide-react";
 
 function langFor(path: string) {
   const ext = path.split(".").pop()?.toLowerCase();
@@ -168,6 +170,19 @@ export function EditorView() {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [rootKey, setRootKey] = useState(0); // force tree remount on root change
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzed, setAnalyzed] = useState<string | null>(null);
+
+  const analyze = async () => {
+    if (!workspaceRoot) return;
+    setAnalyzing(true);
+    try {
+      const p = await analyzeFolderIntoMemory(workspaceRoot);
+      setAnalyzed(p?.name ?? null);
+    } finally {
+      setAnalyzing(false);
+    }
+  };
 
   const rootName = useMemo(
     () => workspaceRoot?.split(/[/\\]/).pop() || workspaceRoot,
@@ -180,6 +195,12 @@ export function EditorView() {
       setWorkspaceRoot(selected);
       setRootKey((k) => k + 1);
       setFile(null);
+      setAnalyzed(null);
+      // App analyzes the folder into long-term memory (best-effort, cheap model).
+      setAnalyzing(true);
+      analyzeFolderIntoMemory(selected)
+        .then((p) => setAnalyzed(p?.name ?? null))
+        .finally(() => setAnalyzing(false));
     }
   };
 
@@ -238,6 +259,25 @@ export function EditorView() {
               {file.name}
               {dirty && <span className="ml-1 text-[var(--color-accent-strong)]">●</span>}
             </span>
+          )}
+          {workspaceRoot && (
+            <button
+              onClick={analyze}
+              disabled={analyzing}
+              title={t("memAnalyzeHint")}
+              className="flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] px-2.5 py-1.5 text-xs text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)] disabled:opacity-60"
+            >
+              {analyzing ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <Brain size={13} className="text-[var(--color-accent-strong)]" />
+              )}
+              {analyzing
+                ? t("memAnalyzing")
+                : analyzed
+                  ? `${t("memInMemory")}: ${analyzed}`
+                  : t("memAnalyze")}
+            </button>
           )}
         </div>
         {file && (

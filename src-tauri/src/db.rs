@@ -49,6 +49,8 @@ pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
             active_goals       TEXT,
             roadmap            TEXT,
             risks              TEXT,
+            path               TEXT,
+            last_state         TEXT,
             created_at         INTEGER NOT NULL,
             updated_at         INTEGER NOT NULL,
             deleted_at         INTEGER
@@ -110,6 +112,8 @@ pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
         "ALTER TABLE sessions ADD COLUMN project_id TEXT",
         "ALTER TABLE messages ADD COLUMN model TEXT",
         "ALTER TABLE messages ADD COLUMN attachments TEXT",
+        "ALTER TABLE projects ADD COLUMN path TEXT",
+        "ALTER TABLE projects ADD COLUMN last_state TEXT",
     ] {
         let _ = conn.execute(stmt, []);
     }

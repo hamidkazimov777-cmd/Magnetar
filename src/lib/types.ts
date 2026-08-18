@@ -71,6 +71,10 @@ export interface Project {
   activeGoals?: string;
   roadmap?: string;
   risks?: string;
+  /** Filesystem path this project maps to (set by folder onboarding). */
+  path?: string;
+  /** Rolling "where we stopped" thesis — flushed to memory on model switch. */
+  lastState?: string;
   createdAt: number;
   updatedAt: number;
 }

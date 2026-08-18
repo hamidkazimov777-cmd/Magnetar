@@ -51,6 +51,7 @@ interface State {
 
   loadProjects: () => Promise<void>;
   setActiveProject: (id: string | undefined) => void;
+  attachSessionToProject: (sessionId: string, projectId: string) => void;
   addProject: (p: import("./types").Project) => void;
   updateProject: (p: import("./types").Project) => void;
   deleteProject: (id: string) => void;
@@ -165,6 +166,16 @@ export const useStore = create<State>()(
 
       setActive: (connectionId, model) =>
         set({ activeConnectionId: connectionId, activeModel: model }),
+
+      attachSessionToProject: (sessionId: string, projectId: string) =>
+        set((s) => {
+          const sessions = s.sessions.map((x) =>
+            x.id === sessionId ? { ...x, projectId, updatedAt: Date.now() } : x,
+          );
+          const sess = sessions.find((x) => x.id === sessionId);
+          if (sess) persistMeta(sess);
+          return { sessions };
+        }),
 
       setAdaptive: (on) => set({ adaptive: on }),
 
