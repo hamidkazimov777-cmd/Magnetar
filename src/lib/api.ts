@@ -112,10 +112,10 @@ export const api = {
       tools,
     }),
 
-  toolReadFile: (path: string) =>
+  toolReadFile: (path: string, offset?: number, limit?: number) =>
     invoke<{ content: string; truncated: boolean; bytes: number }>(
       "tool_read_file",
-      { path },
+      { path, offset: offset ?? null, limit: limit ?? null },
     ),
   toolListDir: (path: string) =>
     invoke<{ name: string; isDir: boolean }[]>("tool_list_dir", { path }),

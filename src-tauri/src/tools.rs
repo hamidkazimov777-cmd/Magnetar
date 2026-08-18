@@ -59,11 +59,32 @@ fn clip(s: &str, max: usize) -> (String, bool) {
     }
 }
 
-pub fn read_file(path: &str) -> Result<ReadResult, String> {
+/// Read a file. With `offset`/`limit` (1-based line offset, line count) it returns
+/// just that slice — retrieval of chunks instead of whole files (token economy).
+pub fn read_file(
+    path: &str,
+    offset: Option<usize>,
+    limit: Option<usize>,
+) -> Result<ReadResult, String> {
     let bytes = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
     let total = bytes.len();
     let text = String::from_utf8_lossy(&bytes);
-    let (content, truncated) = clip(&text, MAX_READ_BYTES);
+
+    let slice: String = if offset.is_some() || limit.is_some() {
+        let start = offset.unwrap_or(1).saturating_sub(1);
+        let count = limit.unwrap_or(200);
+        text.lines()
+            .enumerate()
+            .skip(start)
+            .take(count)
+            .map(|(i, l)| format!("{}: {}", i + 1, l))
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        text.to_string()
+    };
+
+    let (content, truncated) = clip(&slice, MAX_READ_BYTES);
     Ok(ReadResult {
         content,
         truncated,

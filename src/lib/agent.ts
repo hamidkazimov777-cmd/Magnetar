@@ -5,10 +5,15 @@ import type { ChatMessage, Connection } from "./types";
 export const AGENT_TOOLS: ToolDef[] = [
   {
     name: "read_file",
-    description: "Read a text file. Returns its contents (may be truncated).",
+    description:
+      "Read a text file. Pass offset+limit (1-based line, line count) to read only a slice — prefer this for large files to save tokens.",
     parameters: {
       type: "object",
-      properties: { path: { type: "string", description: "Absolute or relative path" } },
+      properties: {
+        path: { type: "string", description: "Absolute or relative path" },
+        offset: { type: "integer", description: "1-based start line (optional)" },
+        limit: { type: "integer", description: "number of lines (optional)" },
+      },
       required: ["path"],
     },
   },
@@ -84,7 +89,11 @@ export async function executeTool(name: string, args: ToolArgs): Promise<string>
   try {
     switch (name) {
       case "read_file": {
-        const r = await api.toolReadFile(String(args.path));
+        const r = await api.toolReadFile(
+          String(args.path),
+          args.offset != null ? Number(args.offset) : undefined,
+          args.limit != null ? Number(args.limit) : undefined,
+        );
         return r.truncated ? `${r.content}\n[truncated, ${r.bytes} bytes total]` : r.content;
       }
       case "list_dir": {

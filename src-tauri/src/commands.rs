@@ -92,8 +92,12 @@ pub async fn agent_step(
 // ---- Agent tools -----------------------------------------------------------
 
 #[tauri::command]
-pub fn tool_read_file(path: String) -> Result<tools::ReadResult, String> {
-    tools::read_file(&path)
+pub fn tool_read_file(
+    path: String,
+    offset: Option<usize>,
+    limit: Option<usize>,
+) -> Result<tools::ReadResult, String> {
+    tools::read_file(&path, offset, limit)
 }
 
 #[tauri::command]

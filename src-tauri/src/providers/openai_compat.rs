@@ -16,6 +16,37 @@ pub struct OpenAiCompat {
     http: reqwest::Client,
 }
 
+/// Prompt caching is worth turning on for gateways/models that honor
+/// `cache_control` breakpoints (Anthropic + Gemini via OpenRouter). Elsewhere we
+/// leave messages as plain strings — OpenAI itself caches automatically, and
+/// unknown endpoints may reject the block form.
+fn supports_prompt_cache(base_url: &str, model: &str) -> bool {
+    let b = base_url.to_lowercase();
+    let m = model.to_lowercase();
+    b.contains("openrouter")
+        && (m.contains("claude") || m.contains("anthropic") || m.contains("gemini"))
+}
+
+/// Mark the (large, stable) system prompt as a cache breakpoint so repeated
+/// turns don't re-bill it.
+fn maybe_cache_system(messages: &mut [Value], enabled: bool) {
+    if !enabled {
+        return;
+    }
+    if let Some(sys) = messages
+        .iter_mut()
+        .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("system"))
+    {
+        if let Some(text) = sys.get("content").and_then(|c| c.as_str()).map(String::from) {
+            sys["content"] = json!([{
+                "type": "text",
+                "text": text,
+                "cache_control": { "type": "ephemeral" }
+            }]);
+        }
+    }
+}
+
 impl OpenAiCompat {
     pub fn new(conn: Connection, api_key: String) -> Self {
         Self {
@@ -93,6 +124,10 @@ impl Provider for OpenAiCompat {
         for m in &params.messages {
             messages.push(json!({ "role": m.role, "content": m.content }));
         }
+        maybe_cache_system(
+            &mut messages,
+            supports_prompt_cache(&self.conn.base_url, &params.model),
+        );
 
         let mut body = json!({
             "model": params.model,
@@ -194,6 +229,10 @@ impl Provider for OpenAiCompat {
         for m in &params.messages {
             messages.push(json!({ "role": m.role, "content": m.content }));
         }
+        maybe_cache_system(
+            &mut messages,
+            supports_prompt_cache(&self.conn.base_url, &params.model),
+        );
 
         let mut body = json!({
             "model": params.model,
@@ -238,12 +277,16 @@ impl Provider for OpenAiCompat {
     async fn agent_step(
         &self,
         model: String,
-        messages: Vec<Value>,
+        mut messages: Vec<Value>,
         tools: Vec<ToolDef>,
     ) -> Result<AgentStep, ProviderError> {
         if self.api_key.is_empty() {
             return Err(ProviderError::MissingKey);
         }
+        maybe_cache_system(
+            &mut messages,
+            supports_prompt_cache(&self.conn.base_url, &model),
+        );
 
         let tools_json: Vec<Value> = tools
             .iter()

@@ -43,17 +43,21 @@ API без потери контекста.
 
 ## Статус по фазам
 
-- [x] **Фаза 1 — Каркас.** Tauri v2 + чат-UI (тёмная тема), Keychain, один
-      OpenAI-совместимый адаптер со стримингом, переключатель моделей на лету
-      (модели тянутся из `/models`), сессии/история (пока в локальном сторе).
-- [ ] **Фаза 2 — SQLite + канон.** Перенос сессий/сообщений в БД, нейтральная
-      схема транскрипта (уже создаётся в `db.rs`).
-- [ ] **Фаза 3 — GigaChat.** OAuth (порт 9443, кэш токена ~30 мин), Russian
-      Trusted Root CA в reqwest, mutex на одновременный запрос, парсинг ```json.
-- [ ] **Фаза 4 — Агентские инструменты.** read/write/edit(diff)/list_dir/grep/
-      run_bash + подтверждения; ReAct-текст для провайдеров без tool-use.
-- [ ] **Фаза 5 — Handoff + экономия токенов.** rolling-summary, prompt caching,
-      фильтрация вывода инструментов (~90%), retrieval кусков, роутинг моделей.
+- [x] **Фаза 1 — Каркас.** Tauri v2 + чат-UI (тёмная тема), Keychain, OpenAI-
+      совместимый адаптер со стримингом, переключатель моделей на лету.
+- [x] **Фаза 2 — SQLite + канон.** Сессии/сообщения в SQLite (`db.rs`/`canon.rs`),
+      write-through, hydrate при старте.
+- [x] **Фаза 3 — GigaChat.** OAuth (порт 9443, кэш токена), Russian Trusted Root
+      CA **встроен в приложение** (из коробки), mutex на запрос, парсинг ```json.
+- [x] **Фаза 4 — Агентские инструменты.** read/write/edit(diff)/list_dir/grep/
+      run_bash + фильтрация вывода + подтверждение разрушающих; цикл tool-use
+      (native OpenAI function calling). *ReAct для GigaChat — остаток.*
+- [x] **Фаза 5 — Экономия токенов.** rolling-summary, prompt caching (где
+      поддерживается), жёсткие caps вывода инструментов, retrieval кусков (read_file
+      по диапазону строк), diff-правки.
 
-Заготовки под Custom/self-hosted и GigaChat уже есть в `ProviderKind`, но в UI
-Custom скрыт (на будущее).
+Дополнительно: **адаптивный режим** (роутер модели под запрос), **межмодельный
+handoff** (продолжение при смене модели), **i18n RU/EN/ES**, чёрно-зелёный дизайн,
+SF Pro + JetBrains Mono. Заготовка Custom/self-hosted есть в `ProviderKind`, в UI скрыта.
+
+Полный журнал разработки — [HANDOFF.md](HANDOFF.md).
