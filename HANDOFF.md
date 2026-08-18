@@ -926,3 +926,21 @@ base_url/scope/ca_path). Backend: `workspace.rs` (`ConnectionRow` + list/save/de
 Исполняемый x86_64 binary имеет timestamp 01:52:07 (2026-08-19), то есть содержит
 commit `1d2e5bd` с IDE-shell и автоматическим выбором connection/model. DMG в этот
 проход не пересобирался; для UI QA открывать именно `.app`.
+
+### Запись 30 — 2026-08-19 — Codex — критический UX hotfix selector модели
+
+Пользователь обнаружил, что в embedded Agent panel отсутствует способ выбрать
+модель: предыдущая переработка скрыла ChatView header вместе с `ModelSwitcher`.
+Это был блокирующий UX-регресс.
+
+**Исправление:** Agent header теперь всегда виден в `IdeWorkspace`: слева статус
+«Агент», рядом текущая модель/connection как открываемый `ModelSwitcher`; справа
+переключатели Agent и Adaptive. Из списка можно выбрать другой provider и любую
+возвращённую им модель. 403 на скриншоте является реальной ошибкой провайдера:
+текущий токен не имеет доступа к `qwen/qwen3.8-max-free`; пользователь должен
+выбрать другую доступную модель в этом селекторе либо применить «Проверить» в
+Settings, чтобы получить подтверждённую модель.
+
+**Проверки и bundle:** `npx tsc --noEmit` ✅, `npm run build` ✅; `.app` повторно
+упакован штатной командой `npx tauri bundle --bundles app`. Файлы: `ChatView.tsx`,
+`IdeWorkspace.tsx`, `HANDOFF.md`, `NEXT_TASK_FILES.md`.

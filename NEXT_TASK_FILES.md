@@ -146,3 +146,12 @@ React/TS/Tailwind), BYOK-чат с ИИ, код и доступ к машине.
   `src-tauri/target/release/bundle/macos/Magnetar.app` (упакован в 01:52:07,
   2026-08-19). Для новой DMG после QA запускать `npx tauri bundle --bundles dmg`
   с уже собранным release binary.
+
+### Горячий UX-фикс selector — 2026-08-19
+
+- В embedded Agent panel selector модели расположен в верхней строке рядом с
+  «Агент». Он открывает список connections и моделей; больше не скрывается в
+  IDE-shell. Основная реализация: `src/components/ChatView.tsx`.
+- Если в чате виден 403 «token has no access to model», это не ошибка UI:
+  выберите другой model id в selector или Settings → «Проверить», чтобы подобрать
+  первую доступную модель и сделать её активной.
