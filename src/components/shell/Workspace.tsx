@@ -1,0 +1,203 @@
+import { useEffect, useRef, useState } from "react";
+import { ActivityBar } from "./ActivityBar";
+import { StatusBar } from "./StatusBar";
+import { TerminalPanel } from "./TerminalPanel";
+import { ExplorerPanel } from "../panels/ExplorerPanel";
+import { ChatsPanel } from "../panels/ChatsPanel";
+import { SearchPanel } from "../panels/SearchPanel";
+import { GitPanel } from "../panels/GitPanel";
+import { ChangesPanel } from "../panels/ChangesPanel";
+import { ProblemsPanel } from "../panels/ProblemsPanel";
+import { ProjectPanel } from "../panels/ProjectPanel";
+import { EditorArea } from "../editor/EditorArea";
+import { ChatView } from "../ChatView";
+import { SettingsView } from "../SettingsView";
+import { ProjectsView } from "../ProjectsView";
+import { RoadmapView } from "../RoadmapView";
+import { KnowledgeGraphView } from "../KnowledgeGraphView";
+import { TimelineView } from "../TimelineView";
+import { SubscriptionsView } from "../SubscriptionsView";
+import { useStore } from "../../lib/store";
+import { useT } from "../../lib/i18n";
+import { cn } from "../../lib/cn";
+import { ErrorBoundary } from "../ui/ErrorBoundary";
+
+const SIDEBAR_MIN = 190;
+const SIDEBAR_MAX = 460;
+const AGENT_MIN = 320;
+const AGENT_MAX = 720;
+
+/** The single workspace screen: activity rail → primary panel → center (editor
+ *  or a full page) → agent panel, with a terminal dock and a status bar.
+ *  Nothing here swaps the whole screen; every surface keeps its context. */
+export function Workspace({
+  onOpenSettings,
+  onOpenGuide,
+}: {
+  onOpenSettings: () => void;
+  onOpenGuide: () => void;
+}) {
+  const t = useT();
+  const sidePanel = useStore((s) => s.sidePanel);
+  const sidebarOpen = useStore((s) => s.sidebarOpen);
+  const centerView = useStore((s) => s.centerView);
+  const terminalOpen = useStore((s) => s.terminalOpen);
+  const agentPanelOpen = useStore((s) => s.agentPanelOpen);
+
+  const [sidebarW, setSidebarW] = useState(248);
+  const [agentW, setAgentW] = useState(420);
+  const [termH, setTermH] = useState(260);
+
+  return (
+    <div className="flex h-screen w-screen overflow-hidden bg-[var(--color-bg)]">
+      <ActivityBar onOpenSettings={onOpenSettings} onOpenGuide={onOpenGuide} />
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 flex-1">
+          {/* Primary side panel */}
+          {sidebarOpen && (
+            <>
+              <aside
+                className="flex shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)]"
+                style={{ width: sidebarW }}
+              >
+                <ErrorBoundary surface={t("navExplorer")}>
+                  {sidePanel === "explorer" && <ExplorerPanel />}
+                  {sidePanel === "chats" && <ChatsPanel />}
+                  {sidePanel === "search" && <SearchPanel />}
+                  {sidePanel === "git" && <GitPanel />}
+                  {sidePanel === "changes" && <ChangesPanel />}
+                  {sidePanel === "problems" && <ProblemsPanel />}
+                  {sidePanel === "project" && <ProjectPanel />}
+                </ErrorBoundary>
+              </aside>
+              <Resizer
+                axis="x"
+                onDrag={(dx) =>
+                  setSidebarW((w) => clamp(w + dx, SIDEBAR_MIN, SIDEBAR_MAX))
+                }
+              />
+            </>
+          )}
+
+          {/* Center: editor + terminal dock. It sits on the app floor while
+              the flanking panels sit on raised surfaces, so the three regions
+              read as distinct working areas rather than one continuous sheet. */}
+          <main className="flex min-w-[300px] flex-1 flex-col bg-[var(--color-bg)]">
+            <div
+              data-tauri-drag-region
+              className="flex min-h-0 flex-1 flex-col overflow-hidden"
+            >
+              <ErrorBoundary surface={t("workspace")}>
+                {centerView === "editor" && <EditorArea />}
+                {centerView === "settings" && <SettingsView />}
+                {centerView === "projects" && <ProjectsView />}
+                {centerView === "roadmap" && <RoadmapView />}
+                {centerView === "knowledge" && <KnowledgeGraphView />}
+                {centerView === "timeline" && <TimelineView />}
+                {centerView === "subscriptions" && <SubscriptionsView />}
+              </ErrorBoundary>
+            </div>
+
+            {terminalOpen && (
+              <>
+                <Resizer
+                  axis="y"
+                  onDrag={(dy) => setTermH((h) => clamp(h - dy, 120, 620))}
+                />
+                <div style={{ height: termH }} className="shrink-0">
+                  <ErrorBoundary surface={t("terminalTitle")}>
+                    <TerminalPanel />
+                  </ErrorBoundary>
+                </div>
+              </>
+            )}
+          </main>
+
+          {/* Agent panel */}
+          {agentPanelOpen && (
+            <>
+              <Resizer
+                axis="x"
+                onDrag={(dx) => setAgentW((w) => clamp(w - dx, AGENT_MIN, AGENT_MAX))}
+              />
+              <aside
+                aria-label={t("agentPanel")}
+                className="flex shrink-0 flex-col border-l border-[var(--color-border)] bg-[var(--color-surface)]"
+                style={{ width: agentW }}
+              >
+                <ErrorBoundary surface={t("agentPanel")}>
+                  <ChatView onOpenSettings={onOpenSettings} />
+                </ErrorBoundary>
+              </aside>
+            </>
+          )}
+        </div>
+
+        <StatusBar onOpenSettings={onOpenSettings} />
+      </div>
+    </div>
+  );
+}
+
+function clamp(v: number, lo: number, hi: number) {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+/** A thin draggable divider. Reports movement deltas; the parent owns the size. */
+function Resizer({
+  axis,
+  onDrag,
+}: {
+  axis: "x" | "y";
+  onDrag: (delta: number) => void;
+}) {
+  const [dragging, setDragging] = useState(false);
+  const last = useRef(0);
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e: MouseEvent) => {
+      const cur = axis === "x" ? e.clientX : e.clientY;
+      onDrag(cur - last.current);
+      last.current = cur;
+    };
+    const onUp = () => setDragging(false);
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    document.body.style.cursor = axis === "x" ? "col-resize" : "row-resize";
+    document.body.style.userSelect = "none";
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [dragging, axis, onDrag]);
+
+  return (
+    <div
+      role="separator"
+      aria-orientation={axis === "x" ? "vertical" : "horizontal"}
+      onMouseDown={(e) => {
+        last.current = axis === "x" ? e.clientX : e.clientY;
+        setDragging(true);
+      }}
+      className={cn(
+        "group/rz relative z-10 shrink-0 transition-colors",
+        axis === "x" ? "w-px cursor-col-resize" : "h-px cursor-row-resize",
+        dragging
+          ? "bg-[var(--color-accent)]"
+          : "bg-[var(--color-border)] hover:bg-[var(--color-border-strong)]",
+      )}
+    >
+      {/* Wider invisible hit area than the 1px visual line. */}
+      <span
+        className={cn(
+          "absolute",
+          axis === "x" ? "-left-1 -right-1 inset-y-0" : "-top-1 -bottom-1 inset-x-0",
+        )}
+      />
+    </div>
+  );
+}

@@ -3,11 +3,12 @@ import { Check, KeyRound, Loader2, Plus, Trash2, Play } from "lucide-react";
 import { api } from "../lib/api";
 import { useStore } from "../lib/store";
 import {
+  ANTHROPIC_BASE,
   GIGACHAT_BASE,
   OPENAI_COMPAT_PRESETS,
   type ProviderKind,
 } from "../lib/types";
-import { useT } from "../lib/i18n";
+import { useT, LANGS } from "../lib/i18n";
 import { cn } from "../lib/cn";
 import { SelfTest } from "./SelfTest";
 
@@ -25,6 +26,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const removeConnection = useStore((s) => s.removeConnection);
   const setActive = useStore((s) => s.setActive);
   const setModels = useStore((s) => s.setModels);
+  const setModelStatus = useStore((s) => s.setModelStatus);
+  const lang = useStore((s) => s.lang);
+  const setLang = useStore((s) => s.setLang);
 
   const [kind, setKind] = useState<ProviderKind>("openai_compat");
   const [name, setName] = useState("OpenRouter");
@@ -52,6 +56,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     setError(null);
     if (k === "gigachat") {
       setName("GigaChat");
+    } else if (k === "anthropic") {
+      setName("Claude");
     } else {
       setName("OpenRouter");
       setBaseUrl(OPENAI_COMPAT_PRESETS[0].baseUrl);
@@ -79,11 +85,17 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               scope: scope.trim() || "GIGACHAT_API_PERS",
               caPath: caPath.trim() || undefined,
             })
-          : addConnection({
-              name: name.trim(),
-              kind: "openai_compat",
-              baseUrl: baseUrl.trim(),
-            });
+          : kind === "anthropic"
+            ? addConnection({
+                name: name.trim(),
+                kind: "anthropic",
+                baseUrl: ANTHROPIC_BASE,
+              })
+            : addConnection({
+                name: name.trim(),
+                kind: "openai_compat",
+                baseUrl: baseUrl.trim(),
+              });
       await api.saveApiKey(id, apiKey.trim());
       setApiKey("");
       setCaPath("");
@@ -94,10 +106,16 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const remove = async (id: string) => {
+  const remove = async (id: string, name: string) => {
+    if (!confirm(t("connectionDeleteConfirm", { name }))) return;
     await api.deleteApiKey(id);
     removeConnection(id);
   };
+
+  /** Providers happily list models a token cannot actually call (404 "No such
+   *  model", 403, or a broken free tier). Walk the catalogue until one really
+   *  answers, mark the failures, and activate the first that works. */
+  const MAX_PROBES = 14;
 
   const testConnection = async (c: (typeof connections)[number]) => {
     setTesting(c.id);
@@ -106,12 +124,54 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
       const models = await api.listModels(c);
       if (!models[0]) throw new Error(t("noModels"));
       setModels(c.id, models);
-      setActive(c.id, models[0].id);
-      const answer = await api.complete(c, models[0].id, [{ id: "health", role: "user", content: "Reply exactly: OK", createdAt: 0 }]);
-      if (!/ok/i.test(answer)) throw new Error(answer.slice(0, 80));
-      setTestResult((prev) => ({ ...prev, [c.id]: t("connectionTestOk", { count: String(models.length), model: models[0].id }) }));
+
+      // Try models the token has not already been refused for first.
+      const status = useStore.getState().modelStatus;
+      const ordered = [...models].sort(
+        (a, b) =>
+          Number(status[`${c.id}::${a.id}`] === "denied") -
+          Number(status[`${c.id}::${b.id}`] === "denied"),
+      );
+
+      let lastError = "";
+      for (const [i, m] of ordered.slice(0, MAX_PROBES).entries()) {
+        setTestResult((prev) => ({
+          ...prev,
+          [c.id]: t("connectionProbing", {
+            n: String(i + 1),
+            total: String(Math.min(ordered.length, MAX_PROBES)),
+            model: m.id,
+          }),
+        }));
+        try {
+          const answer = await api.complete(c, m.id, [
+            { id: "health", role: "user", content: "Reply exactly: OK", createdAt: 0 },
+          ]);
+          if (!/ok/i.test(answer)) throw new Error(answer.slice(0, 80) || "empty reply");
+          setModelStatus(c.id, m.id, "ok");
+          setActive(c.id, m.id);
+          setTestResult((prev) => ({
+            ...prev,
+            [c.id]: t("connectionTestOk", {
+              count: String(models.length),
+              model: m.id,
+            }),
+          }));
+          return;
+        } catch (e) {
+          // Name the model in the error. Gateways often answer 400 with no
+          // body at all, and "400 Bad Request" on its own tells the user
+          // nothing about which model the token cannot actually call.
+          lastError = `${m.id} — ${String(e)}`;
+          setModelStatus(c.id, m.id, "denied");
+        }
+      }
+      throw new Error(lastError || t("noModels"));
     } catch (e) {
-      setTestResult((prev) => ({ ...prev, [c.id]: `${t("connectionTestFail")}: ${String(e).slice(0, 120)}` }));
+      setTestResult((prev) => ({
+        ...prev,
+        [c.id]: `${t("connectionTestFail")}: ${String(e).slice(0, 160)}`,
+      }));
     } finally {
       setTesting(null);
     }
@@ -121,33 +181,60 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-lg p-0 gap-0 border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)]">
         <DialogHeader className="border-b border-[var(--color-border)] px-5 py-4">
-          <DialogTitle className="text-base font-semibold">{t("connectionsTitle")}</DialogTitle>
+          <DialogTitle className="text-[length:var(--fs-lg)] font-semibold">
+            {t("connectionsTitle")}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="max-h-[70vh] space-y-5 overflow-y-auto p-5">
+          <div className="panel space-y-2 p-4">
+            <div className="text-[length:var(--fs-md)] font-semibold">
+              {t("settingsAppearance")}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="field-label mb-0 flex-1">{t("language")}</span>
+              <div className="flex gap-1.5">
+                {LANGS.map((l) => (
+                  <button
+                    key={l.code}
+                    onClick={() => setLang(l.code)}
+                    className="toggle-pill"
+                    data-on={lang === l.code}
+                  >
+                    {l.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
           {connections.length >= 1 && <SelfTest />}
           {connections.length > 0 && (
             <div className="space-y-2">
               {connections.map((c) => (
                 <div
                   key={c.id}
-                  className="flex flex-wrap items-center justify-between rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2.5"
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--r-lg)] border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2.5"
                 >
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2 truncate text-sm font-medium">
+                    <div className="flex items-center gap-2 truncate text-[length:var(--fs-md)] font-medium">
                       {c.name}
-                      <span className="rounded-md bg-[var(--color-surface-2)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[var(--color-text-dim)]">
-                        {c.kind === "gigachat" ? "GigaChat" : "OpenAI-compat"}
+                      <span className="badge">
+                        {c.kind === "gigachat"
+                          ? "GigaChat"
+                          : c.kind === "anthropic"
+                            ? "Claude"
+                            : "OpenAI"}
                       </span>
                     </div>
-                    <div className="truncate text-xs text-[var(--color-text-dim)]">
+                    <div className="truncate font-mono text-[length:var(--fs-xs)] text-[var(--color-text-mute)]">
                       {c.baseUrl}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <span
                       className={cn(
-                        "flex items-center gap-1 text-xs",
+                        "flex items-center gap-1 text-[length:var(--fs-xs)]",
                         keyed[c.id]
                           ? "text-[var(--color-accent-strong)]"
                           : "text-[var(--color-text-dim)]",
@@ -156,42 +243,61 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                       {keyed[c.id] ? <Check size={13} /> : <KeyRound size={13} />}
                       {keyed[c.id] ? t("keyInKeychain") : t("noKey")}
                     </span>
-                    <button onClick={() => void testConnection(c)} disabled={testing !== null} className="flex items-center gap-1 rounded-md border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)] disabled:opacity-40" title={t("connectionTest")}>
-                      {testing === c.id ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}{t("connectionTest")}
+                    <button
+                      onClick={() => void testConnection(c)}
+                      disabled={testing !== null}
+                      className="btn btn-secondary btn-sm"
+                      title={t("connectionTest")}
+                    >
+                      {testing === c.id ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <Play size={12} />
+                      )}
+                      {t("connectionTest")}
                     </button>
                     <button
-                      onClick={() => remove(c.id)}
-                      className="rounded-lg p-1.5 text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)] hover:text-red-400"
+                      onClick={() => void remove(c.id, c.name)}
+                      className="icon-btn hover:text-[var(--color-danger)]"
+                      title={t("delete")}
                     >
                       <Trash2 size={15} />
                     </button>
                   </div>
-                  {testResult[c.id] && <p className={cn("mt-2 w-full text-xs", testResult[c.id].startsWith(t("connectionTestFail")) ? "text-red-400" : "text-emerald-400")}>{testResult[c.id]}</p>}
+                  {testResult[c.id] && (
+                    <p
+                      className={cn(
+                        "mt-1 w-full text-[length:var(--fs-xs)]",
+                        testResult[c.id].startsWith(t("connectionTestFail"))
+                          ? "text-[var(--color-danger)]"
+                          : "text-[var(--color-success)]",
+                      )}
+                    >
+                      {testResult[c.id]}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
           )}
 
-          <div className="space-y-3 rounded-xl border border-[var(--color-border)] p-4">
-            <div className="text-sm font-medium">{t("addConnection")}</div>
+          <div className="panel space-y-3 p-4">
+            <div className="text-[length:var(--fs-md)] font-semibold">{t("addConnection")}</div>
 
             {/* Provider kind */}
             <div className="flex gap-1.5">
               {(
                 [
                   ["openai_compat", t("providerOpenai")],
+                  ["anthropic", t("providerAnthropic")],
                   ["gigachat", t("providerGiga")],
                 ] as const
               ).map(([k, label]) => (
                 <button
                   key={k}
                   onClick={() => selectKind(k)}
-                  className={cn(
-                    "flex-1 rounded-lg border px-2.5 py-1.5 text-xs",
-                    kind === k
-                      ? "border-[var(--color-accent)] text-[var(--color-accent-strong)]"
-                      : "border-[var(--color-border)] text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)]",
-                  )}
+                  className="toggle-pill flex-1 justify-center"
+                  data-on={kind === k}
                 >
                   {label}
                 </button>
@@ -207,11 +313,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                       setName(p.name);
                       setBaseUrl(p.baseUrl);
                     }}
-                    className={cn(
-                      "rounded-full border border-[var(--color-border)] px-2.5 py-1 text-xs hover:bg-[var(--color-surface-2)]",
-                      baseUrl === p.baseUrl &&
-                        "border-[var(--color-accent)] text-[var(--color-accent-strong)]",
-                    )}
+                    className="toggle-pill h-6 text-[length:var(--fs-xs)]"
+                    data-on={baseUrl === p.baseUrl}
                   >
                     {p.name}
                   </button>
@@ -245,10 +348,22 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                 type="password"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder={kind === "gigachat" ? "base64 client_id:secret" : "sk-…"}
+                placeholder={
+                  kind === "gigachat"
+                    ? "base64 client_id:secret"
+                    : kind === "anthropic"
+                      ? "sk-ant-…"
+                      : "sk-…"
+                }
                 className={inputCls}
               />
             </Field>
+
+            {kind === "anthropic" && (
+              <p className="text-[length:var(--fs-xs)] leading-relaxed text-[var(--color-text-dim)]">
+                {t("anthropicNote")}
+              </p>
+            )}
 
             {kind === "gigachat" && (
               <>
@@ -268,22 +383,22 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                     className={inputCls}
                   />
                 </Field>
-                <p className="text-xs text-[var(--color-text-dim)]">
+                <p className="text-[length:var(--fs-xs)] leading-relaxed text-[var(--color-text-dim)]">
                   {t("gigaNote")}
                 </p>
               </>
             )}
 
-            <p className="text-xs text-[var(--color-text-dim)]">
+            <p className="text-[length:var(--fs-xs)] leading-relaxed text-[var(--color-text-mute)]">
               {t("keychainNote")}
             </p>
 
-            {error && <div className="text-sm text-red-400">{error}</div>}
+            {error && <div className="alert text-[length:var(--fs-sm)]">{error}</div>}
 
             <button
               onClick={add}
               disabled={busy}
-              className="flex items-center gap-2 rounded-xl bg-[var(--color-accent)] px-3.5 py-2 text-sm font-medium text-[var(--color-accent-fg)] disabled:opacity-50"
+              className="btn btn-primary"
             >
               {busy ? (
                 <Loader2 size={15} className="animate-spin" />
@@ -299,13 +414,12 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-const inputCls =
-  "w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--color-accent)]";
+const inputCls = "input";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="block space-y-1">
-      <span className="text-xs text-[var(--color-text-dim)]">{label}</span>
+    <label className="block">
+      <span className="field-label">{label}</span>
       {children}
     </label>
   );

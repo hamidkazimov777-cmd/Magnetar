@@ -1,87 +1,107 @@
 import { useEffect, useState } from "react";
-import { Sidebar } from "./components/Sidebar";
-import { ChatView } from "./components/ChatView";
+import { Workspace } from "./components/shell/Workspace";
+import { CommandPalette } from "./components/shell/CommandPalette";
+import { WelcomeView } from "./components/WelcomeView";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { GuideDialog } from "./components/GuideDialog";
 import { Splash } from "./components/Splash";
-import { ProjectsView } from "./components/ProjectsView";
-import { RoadmapView } from "./components/RoadmapView";
-import { KnowledgeGraphView } from "./components/KnowledgeGraphView";
-import { TimelineView } from "./components/TimelineView";
-import { SubscriptionsView } from "./components/SubscriptionsView";
-import { EditorView } from "./components/EditorView";
-import { GitView } from "./components/GitView";
-import { TerminalView } from "./components/TerminalView";
-import { IdeWorkspace } from "./components/IdeWorkspace";
 import { useStore } from "./lib/store";
 import { api } from "./lib/api";
+import { installLinkInterceptor } from "./lib/links";
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState("workspace");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
+
   const connections = useStore((s) => s.connections);
+  const hydrated = useStore((s) => s.hydrated);
+  const onboarded = useStore((s) => s.onboarded);
+  const setOnboarded = useStore((s) => s.setOnboarded);
 
   // Load the canon from SQLite, then ensure there's a session to type into.
   useEffect(() => {
-    (async () => {
+    void (async () => {
       await useStore.getState().hydrate();
       const st = useStore.getState();
       if (st.sessions.length === 0 || !st.activeSessionId) st.newSession();
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Warm the model catalog across all connections so the adaptive router can
-  // reason about which models are available (best-effort, offline-safe).
+  // reason about what is available (best-effort, offline-safe).
   useEffect(() => {
-    (async () => {
+    void (async () => {
       for (const c of connections) {
         if (!(await api.hasApiKey(c.id))) continue;
         try {
           const list = await api.listModels(c);
           useStore.getState().setModels(c.id, list);
           const state = useStore.getState();
-          if (state.activeConnectionId === c.id && !state.activeModel && list[0]) {
+          if (state.activeConnectionId === c.id && !state.activeModel && list[0])
             state.setActiveModel(list[0].id);
-          }
         } catch {
-          /* ignore — offline / bad key surfaces elsewhere */
+          /* ignore — offline / bad key surfaces in Settings → Test */
         }
       }
     })();
   }, [connections]);
 
+  // Links must never navigate the app window — see lib/links.ts.
+  useEffect(installLinkInterceptor, []);
+
+  // Global shortcuts: ⌘K palette, ⌘J terminal, ⌘B sidebar, ⌘⇧A agent panel.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      const st = useStore.getState();
+      if (e.key === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      } else if (e.key === "j") {
+        e.preventDefault();
+        st.toggleTerminal();
+      } else if (e.key === "b") {
+        e.preventDefault();
+        st.toggleSidebar();
+      } else if (e.shiftKey && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        st.toggleAgentPanel();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // First launch goes through the walkthrough, not straight into an empty IDE.
+  const showWelcome = hydrated && !onboarded;
+
   return (
-    <div className="flex h-screen w-screen overflow-hidden">
-      <Sidebar
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
+    <>
+      {showWelcome ? (
+        <WelcomeView
+          onOpenSettings={() => setSettingsOpen(true)}
+          onFinish={() => setOnboarded(true)}
+        />
+      ) : (
+        <Workspace
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenGuide={() => setGuideOpen(true)}
+        />
+      )}
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenGuide={() => setGuideOpen(true)}
       />
-      {activeTab === "workspace" && (
-        <IdeWorkspace onOpenSettings={() => setSettingsOpen(true)} onNavigate={setActiveTab} />
-      )}
-      {activeTab === "chats" && (
-        <ChatView
-          onOpenSettings={() => setSettingsOpen(true)}
-          onNavigate={setActiveTab}
-        />
-      )}
-      {activeTab === "projects" && <ProjectsView />}
-      {activeTab === "roadmap" && <RoadmapView />}
-      {activeTab === "knowledge" && <KnowledgeGraphView />}
-      {activeTab === "timeline" && <TimelineView />}
-      {activeTab === "subscriptions" && <SubscriptionsView />}
-      {activeTab === "code" && <EditorView />}
-      {activeTab === "git" && <GitView />}
-      {activeTab === "terminal" && <TerminalView />}
 
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       {guideOpen && <GuideDialog onClose={() => setGuideOpen(false)} />}
       {showSplash && <Splash onDone={() => setShowSplash(false)} />}
-    </div>
+    </>
   );
 }

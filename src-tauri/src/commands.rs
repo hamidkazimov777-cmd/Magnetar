@@ -21,6 +21,21 @@ static CANCELS: Lazy<Mutex<HashMap<String, Arc<AtomicBool>>>> =
 
 // ---- Canon (SQLite) --------------------------------------------------------
 
+/// Run blocking work off the UI thread.
+///
+/// A synchronous `#[tauri::command]` executes on the main thread, so anything
+/// slow there freezes the whole window — `run_bash` could hang it for the full
+/// timeout. Every long command goes through here instead.
+async fn blocking<T, F>(f: F) -> Result<T, String>
+where
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+    T: Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| format!("task failed: {e}"))?
+}
+
 #[tauri::command]
 pub fn list_sessions() -> Result<Vec<SessionMeta>, String> {
     canon::list_sessions()
@@ -196,13 +211,26 @@ pub fn tool_list_dir(path: String) -> Result<Vec<tools::DirEntry>, String> {
 }
 
 #[tauri::command]
-pub fn tool_grep(pattern: String, path: Option<String>) -> Result<Vec<tools::GrepHit>, String> {
-    tools::grep(&pattern, path.as_deref().unwrap_or("."))
+pub async fn tool_grep(
+    pattern: String,
+    path: Option<String>,
+) -> Result<Vec<tools::GrepHit>, String> {
+    blocking(move || tools::grep(&pattern, path.as_deref().unwrap_or("."))).await
 }
 
 #[tauri::command]
 pub fn tool_write_file(path: String, content: String) -> Result<usize, String> {
     tools::write_file(&path, &content)
+}
+
+#[tauri::command]
+pub async fn list_project_files(root: String) -> Result<Vec<String>, String> {
+    blocking(move || crate::index::list_files(&root)).await
+}
+
+#[tauri::command]
+pub fn tool_delete_file(path: String) -> Result<(), String> {
+    tools::delete_file(&path)
 }
 
 #[tauri::command]
@@ -215,8 +243,12 @@ pub fn tool_edit_file(
 }
 
 #[tauri::command]
-pub fn tool_run_bash(command: String, cwd: Option<String>) -> Result<tools::BashResult, String> {
-    tools::run_bash(&command, cwd.as_deref())
+pub async fn tool_run_bash(
+    command: String,
+    cwd: Option<String>,
+    timeout_secs: Option<u64>,
+) -> Result<tools::BashResult, String> {
+    blocking(move || tools::run_bash(&command, cwd.as_deref(), timeout_secs)).await
 }
 
 #[tauri::command]
@@ -234,8 +266,11 @@ pub fn tool_kill_bash(pid: Option<u32>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn extract_pdf_text(path: String) -> Result<String, String> {
-    pdf_extract::extract_text(&path).map_err(|e| format!("Failed to extract PDF: {}", e))
+pub async fn extract_pdf_text(path: String) -> Result<String, String> {
+    blocking(move || {
+        pdf_extract::extract_text(&path).map_err(|e| format!("Failed to extract PDF: {}", e))
+    })
+    .await
 }
 
 /// Full file read for the code editor (no size cap).
@@ -247,22 +282,22 @@ pub fn editor_read_file(path: String) -> Result<String, String> {
 // ---- Codebase index (BM25 retrieval) --------------------------------------
 
 #[tauri::command]
-pub fn index_build(root: String) -> Result<crate::index::IndexStats, String> {
-    crate::index::build(&root)
+pub async fn index_build(root: String) -> Result<crate::index::IndexStats, String> {
+    blocking(move || crate::index::build(&root)).await
 }
 
 #[tauri::command]
-pub fn index_search(
+pub async fn index_search(
     root: String,
     query: String,
     top_k: Option<usize>,
 ) -> Result<Vec<crate::index::SearchHit>, String> {
-    crate::index::search(&root, &query, top_k.unwrap_or(8))
+    blocking(move || crate::index::search(&root, &query, top_k.unwrap_or(8))).await
 }
 
 #[tauri::command]
-pub fn git_exec(cwd: String, args: Vec<String>) -> Result<tools::BashResult, String> {
-    tools::git_exec(&cwd, args)
+pub async fn git_exec(cwd: String, args: Vec<String>) -> Result<tools::BashResult, String> {
+    blocking(move || tools::git_exec(&cwd, args)).await
 }
 
 // ---- Embedded terminal (PTY) ----------------------------------------------

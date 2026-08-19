@@ -1,52 +1,44 @@
-import iconUrl from "../assets/magnetar-icon.png";
+import blackMark from "../assets/magnetar-mark-black.png";
+import whiteMark from "../assets/magnetar-mark-white.png";
+import { useResolvedTheme } from "../lib/useTheme";
+import { cn } from "../lib/cn";
 
-/** Magnetar mark — the brand icon (neutron star + violet dipole field). Uses the
- *  real icon PNG so it matches the app icon exactly. */
+/** The Magnetar mark. Two artworks, one per theme: black on light, white on
+ *  dark. The glyph is wider than it is tall, so `size` is the width and the
+ *  height follows the artwork's own ratio. */
 export function LogoMark({
-  size = 32,
+  size = 24,
   className,
 }: {
   size?: number;
   className?: string;
-  glow?: boolean;
 }) {
+  const theme = useResolvedTheme();
   return (
     <img
-      src={iconUrl}
-      width={size}
-      height={size}
+      src={theme === "dark" ? whiteMark : blackMark}
       alt="Magnetar"
       draggable={false}
-      className={className}
-      style={{ width: size, height: size, objectFit: "contain" }}
+      className={cn("select-none", className)}
+      style={{ width: size, height: "auto", objectFit: "contain" }}
     />
   );
 }
 
-/** "MAGNETAR" wordmark — thin, wide letter-spacing, uppercase. */
+/** "MAGNETAR" wordmark — light weight, wide tracking, uppercase. */
 export function Wordmark({
   className,
-  tagline = false,
+  size = "var(--fs-md)",
 }: {
   className?: string;
-  tagline?: boolean;
+  size?: string;
 }) {
   return (
-    <div className={className}>
-      <div
-        className="font-light uppercase text-[var(--color-text)]"
-        style={{ letterSpacing: "0.42em" }}
-      >
-        Magnetar
-      </div>
-      {tagline && (
-        <div
-          className="mt-1 text-[10px] uppercase text-[var(--color-text-dim)]"
-          style={{ letterSpacing: "0.34em" }}
-        >
-          Your AI Command Center
-        </div>
-      )}
+    <div
+      className={cn("font-medium uppercase text-[var(--color-text)]", className)}
+      style={{ letterSpacing: "0.22em", fontSize: size }}
+    >
+      Magnetar
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { api, type ToolDef } from "./api";
 import { useStore } from "./store";
+import { tr } from "./i18n";
 import type { ChatMessage, Connection } from "./types";
 
 /** Tools exposed to the model (OpenAI function schemas). */
@@ -99,18 +100,65 @@ export const AGENT_TOOLS: ToolDef[] = [
   },
 ];
 
-/** Tools that change the machine — require explicit user confirmation. */
+/** Tools that change the machine. Whether each one blocks on a confirm dialog
+ *  is decided by `needsConfirm` — file edits can be auto-applied and reviewed
+ *  afterwards (VS Code/Antigravity behaviour), shell commands normally cannot. */
 export const DESTRUCTIVE = new Set(["write_file", "edit_file", "run_bash"]);
 
-export const AGENT_SYSTEM = `You are Magnetar, a local coding agent with tools to read and change the user's machine. Use the tools to accomplish the task: inspect files before editing, make surgical edits, and verify with commands when useful. Keep responses concise. When you have finished the task, you MUST output a brief structural note with the following format:
-## Handoff Note
-- **Status:** (what was accomplished)
-- **Decisions:** (key technical decisions or changes)
-- **Next Steps:** (open questions or what to do next)`;
+/** True when this call must stop and ask the user before running. */
+export function needsConfirm(name: string): boolean {
+  if (!DESTRUCTIVE.has(name)) return false;
+  const st = useStore.getState();
+  // Once the user trusts commands for this run, stop interrupting the build.
+  if (name === "run_bash") return st.prefs.confirmBash && !st.trustCommands;
+  return !st.prefs.autoApplyEdits;
+}
 
-const MAX_ITERS = 10;
+export const AGENT_SYSTEM = `You are Magnetar, a local coding agent working inside the user's project. You have tools that read and change their machine.
+
+A project folder is already open — its absolute path is given below as
+"Workspace root". You can read and change those files right now with your tools.
+Never tell the user you cannot see their files or ask them to paste code: look
+with list_dir / search_code / read_file instead.
+
+How to work:
+- Finish the job. Keep using tools until the task is actually done — do not stop to ask permission for ordinary steps, and do not hand back a plan when you were asked to build something.
+- Ground yourself first: use search_code or list_dir to find real paths. Never invent file paths or APIs.
+- Starting from an empty folder is normal: scaffold the project yourself (create files, run the init/install commands you need).
+- Prefer surgical edit_file over rewriting whole files. Read a file before editing it.
+- Verify your work: after meaningful changes run the project's own build, typecheck or tests when they exist, and fix what fails before reporting success.
+- If a command fails, read the error and fix the cause instead of repeating the same command.
+- Long-running servers (npm run dev, vite, watchers) never exit, so do NOT run them in the foreground — they would just hit the timeout. Start them detached, e.g. \`npm run dev > /tmp/dev.log 2>&1 &\`, wait a moment, check the log for the URL, then give the user that URL.
+- Keep prose short. The user sees every tool call, so do not narrate what the trace already shows.
+
+When the task is complete, end with:
+## Handoff Note
+- **Status:** what now works (and what you verified)
+- **Decisions:** key technical choices
+- **Next Steps:** what remains, if anything`;
+
+/** Fallback when prefs are unavailable; the real budget lives in Prefs. */
+const MAX_ITERS = 40;
+
+const stepBudget = () => useStore.getState().prefs?.agentMaxSteps ?? MAX_ITERS;
 
 type ToolArgs = Record<string, unknown>;
+
+/** Resolve a path the model gave us against the open project.
+ *  Models routinely pass "/", ".", or a repo-relative path meaning "the project
+ *  root" — taking those literally would list the filesystem root instead. */
+function resolvePath(raw: unknown): string {
+  const root = useStore.getState().workspaceRoot;
+  const p = String(raw ?? "").trim();
+  if (!root) return p || ".";
+  if (!p || p === "." || p === "/" || p === "./") return root;
+  if (p.startsWith("/")) {
+    // Absolute but outside the project usually means the model prefixed "/"
+    // to a repo-relative path; keep real absolute paths inside the project.
+    return p.startsWith(root) ? p : `${root}${p}`;
+  }
+  return `${root}/${p.replace(/^\.\//, "")}`;
+}
 
 /** Execute one tool and return a compact string result for the model. */
 export async function executeTool(name: string, args: ToolArgs): Promise<string> {
@@ -118,23 +166,26 @@ export async function executeTool(name: string, args: ToolArgs): Promise<string>
     switch (name) {
       case "read_file": {
         const r = await api.toolReadFile(
-          String(args.path),
+          resolvePath(args.path),
           args.offset != null ? Number(args.offset) : undefined,
           args.limit != null ? Number(args.limit) : undefined,
         );
         return r.truncated ? `${r.content}\n[truncated, ${r.bytes} bytes total]` : r.content;
       }
       case "list_dir": {
-        const r = await api.toolListDir(String(args.path));
+        const r = await api.toolListDir(resolvePath(args.path));
         return r.map((e) => (e.isDir ? `${e.name}/` : e.name)).join("\n") || "(empty)";
       }
       case "grep": {
-        const r = await api.toolGrep(String(args.pattern), args.path ? String(args.path) : undefined);
+        const r = await api.toolGrep(
+          String(args.pattern),
+          resolvePath(args.path ?? "."),
+        );
         return r.map((h) => `${h.file}:${h.line}: ${h.text}`).join("\n") || "(no matches)";
       }
       case "search_code": {
         const root = useStore.getState().workspaceRoot;
-        if (!root) return "No project folder is open. Open one in the Code tab first.";
+        if (!root) return "No project folder is open. Ask the user to open one from the Explorer panel.";
         const r = await api.indexSearch(root, String(args.query), 8);
         return (
           r
@@ -143,23 +194,41 @@ export async function executeTool(name: string, args: ToolArgs): Promise<string>
         );
       }
       case "write_file": {
-        const n = await api.toolWriteFile(String(args.path), String(args.content));
-        return `wrote ${n} bytes to ${args.path}`;
+        const path = resolvePath(args.path);
+        const content = String(args.content);
+        // Snapshot first — null means the agent is creating a new file.
+        const before = await api.editorReadFile(path).catch(() => null);
+        const n = await api.toolWriteFile(path, content);
+        useStore.getState().addChange({
+          path,
+          before,
+          after: content,
+          tool: "write_file",
+        });
+        return `wrote ${n} bytes to ${path}`;
       }
       case "edit_file": {
+        const path = resolvePath(args.path);
+        const before = await api.editorReadFile(path).catch(() => null);
         const r = await api.toolEditFile(
-          String(args.path),
+          path,
           String(args.old_string),
           String(args.new_string),
         );
-        return `edited ${args.path} (1 replacement)\n${r.diff}`;
+        const after = await api.editorReadFile(path).catch(() => "");
+        useStore.getState().addChange({ path, before, after, tool: "edit_file" });
+        return `edited ${path} (1 replacement)\n${r.diff}`;
       }
       case "run_bash": {
-        const r = await api.toolRunBash(String(args.command), args.cwd ? String(args.cwd) : undefined);
+        const r = await api.toolRunBash(
+          String(args.command),
+          args.cwd ? String(args.cwd) : useStore.getState().workspaceRoot,
+          useStore.getState().prefs.bashTimeoutSecs,
+        );
         return `exit ${r.code}\n${r.stdout}${r.stderr ? `\n[stderr]\n${r.stderr}` : ""}`;
       }
       case "attach_file": {
-        const result = await api.toolAttachFile(String(args.path));
+        const result = await api.toolAttachFile(resolvePath(args.path));
         return result;
       }
       default:
@@ -170,14 +239,36 @@ export async function executeTool(name: string, args: ToolArgs): Promise<string>
   }
 }
 
+/** One tool invocation, surfaced to the UI so the run reads as a sequence of
+ *  steps rather than a wall of text. Emitted twice: on start and on finish. */
+export interface AgentToolEvent {
+  id: string;
+  name: string;
+  args: ToolArgs;
+  status: "running" | "done" | "error" | "declined";
+  /** Short preview of the tool output (already truncated for display). */
+  result?: string;
+  /** ReAct providers expose the model's reasoning for the step. */
+  thought?: string;
+}
+
 export interface AgentHandlers {
   /** Ask the user to approve a destructive tool call. */
   confirm: (name: string, args: ToolArgs) => Promise<boolean>;
-  /** Append visible progress (assistant text / tool step) to the chat. */
+  /** Append visible assistant prose to the chat. */
   onText: (text: string) => void;
+  /** Report a tool step starting/finishing (structured, rendered as a card). */
+  onTool?: (e: AgentToolEvent) => void;
+  /** Announce a named phase of a multi-role run (Architect/Developer/Reviewer). */
+  onPhase?: (label: string, running: boolean) => void;
   /** Returns true when the user pressed Stop — the loop halts between steps. */
   cancelled?: () => boolean;
 }
+
+/** Keep tool previews small — the full result still goes to the model. */
+const PREVIEW_CAP = 600;
+const preview = (s: string) =>
+  s.length > PREVIEW_CAP ? `${s.slice(0, PREVIEW_CAP)}…` : s;
 
 /** Convert canon messages to OpenAI wire messages. */
 function toWire(messages: ChatMessage[]): unknown[] {
@@ -200,7 +291,13 @@ export async function runAgent(
   if (isTeam) {
     return runTeamAgent(connection, model, history, h, system);
   }
-  if (connection.kind === "openai_compat") {
+  // Providers accept `tools` even for models that ignore them, so the choice
+  // cannot be made from connection.kind alone — we remember what actually
+  // happened the first time and fall back to text-based ReAct when needed.
+  const mode = useStore.getState().modelTools[`${connection.id}::${model}`];
+  const canUseNativeTools =
+    connection.kind === "openai_compat" || connection.kind === "anthropic";
+  if (canUseNativeTools && mode !== "react") {
     return runAgentNative(connection, model, history, h, system);
   }
   return runAgentReAct(connection, model, history, h, system);
@@ -215,31 +312,47 @@ export async function runTeamAgent(
 ): Promise<void> {
   if (h.cancelled?.()) return;
 
-  h.onText("🏛️ **Architect** is analyzing the request and creating a plan...\n\n");
+  h.onPhase?.(tr("agentArchitect"), true);
+  h.onText(`**${tr("agentArchitect")}** — ${tr("agentArchitectRunning")}\n\n`);
   const architectSystem =
     "You are the Architect. Analyze the user request, break it down into a clear technical plan with steps. Do not execute code. Just output the plan." +
     system;
   const plan = await api.complete(connection, model, history, architectSystem);
 
   if (h.cancelled?.()) return;
-  h.onText(`${plan}\n\n---\n\n🛠️ **Developer** is implementing the plan...\n\n`);
+  h.onText(
+    `${plan}\n\n---\n\n**${tr("agentDeveloper")}** — ${tr("agentDeveloperRunning")}\n\n`,
+  );
 
   const devHistory = [...history, { id: "plan", role: "assistant", content: plan, createdAt: 0 }];
   // Run developer with the same project memory in context.
-  if (connection.kind === "openai_compat") {
+  if (connection.kind === "openai_compat" || connection.kind === "anthropic") {
     await runAgentNative(connection, model, devHistory as ChatMessage[], h, system);
   } else {
     await runAgentReAct(connection, model, devHistory as ChatMessage[], h, system);
   }
 
   if (h.cancelled?.()) return;
-  h.onText("\n\n---\n\n👀 **Reviewer** is checking the changes...\n\n");
+  h.onText(
+    `\n\n---\n\n**${tr("agentReviewer")}** — ${tr("agentReviewerRunning")}\n\n`,
+  );
   const reviewerSystem =
     "You are the Reviewer. Check what the developer did based on the plan, suggest any improvements, or confirm it looks good. Be concise." +
     system;
   const review = await api.complete(connection, model, devHistory as ChatMessage[], reviewerSystem);
 
   h.onText(review);
+}
+
+/** True when the latest user message is about the project rather than small
+ *  talk — those are the turns where a missing tool call is a real failure. */
+function wantsTools(history: ChatMessage[]): boolean {
+  const last = [...history].reverse().find((m) => m.role === "user")?.content ?? "";
+  if (last.trim().length === 0) return false;
+  // Anything longer than a greeting, or mentioning code/files/the project.
+  const chatty = /^(привет|прив|здоров|хай|как дела|спасибо|ок|окей|пока|hi|hello|hey|thanks|thank you|yo|sup)\b/i;
+  if (chatty.test(last.trim()) && last.trim().length < 40) return false;
+  return true;
 }
 
 /** Native OpenAI tool-use loop. */
@@ -255,13 +368,29 @@ async function runAgentNative(
     ...toWire(history),
   ];
 
-  for (let i = 0; i < MAX_ITERS; i++) {
+  const budget = stepBudget();
+  for (let i = 0; i < budget; i++) {
     if (h.cancelled?.()) return;
     const step = await api.agentStep(connection, model, messages, AGENT_TOOLS);
 
+    const called = (step.tool_calls?.length ?? 0) > 0;
+
+    // First turn decides how this model is driven from now on.
+    if (i === 0) {
+      if (called) {
+        useStore.getState().setModelTools(connection.id, model, "native");
+      } else if (wantsTools(history)) {
+        // The request clearly needs the project, yet the model produced prose
+        // and no tool call: it does not really do function-calling. Redo the
+        // whole turn in ReAct instead of leaving the user with an excuse.
+        useStore.getState().setModelTools(connection.id, model, "react");
+        return runAgentReAct(connection, model, history, h, system);
+      }
+    }
+
     if (step.content) h.onText(step.content);
 
-    if (!step.tool_calls || step.tool_calls.length === 0) return; // final answer
+    if (!called) return; // final answer
 
     // The assistant turn that carries the tool calls must precede tool results.
     messages.push({
@@ -283,28 +412,31 @@ async function runAgentNative(
       }
 
       let result: string;
-      if (DESTRUCTIVE.has(tc.name)) {
-        const ok = await h.confirm(tc.name, args);
-        if (!ok) {
-          result = "User declined this action.";
-          h.onText(`\n\n\`${tc.name}\` — ⛔ отклонено пользователем`);
-        } else {
-          h.onText(`\n\n\`${tc.name}\` ${summarizeArgs(tc.name, args)}`);
-          result = await executeTool(tc.name, args);
-        }
+      const approved = needsConfirm(tc.name) ? await h.confirm(tc.name, args) : true;
+
+      if (!approved) {
+        result = "User declined this action.";
+        h.onTool?.({ id: tc.id, name: tc.name, args, status: "declined" });
       } else {
-        h.onText(`\n\n\`${tc.name}\` ${summarizeArgs(tc.name, args)}`);
+        h.onTool?.({ id: tc.id, name: tc.name, args, status: "running" });
         result = await executeTool(tc.name, args);
+        h.onTool?.({
+          id: tc.id,
+          name: tc.name,
+          args,
+          status: result.startsWith("error:") ? "error" : "done",
+          result: preview(result),
+        });
       }
 
       messages.push({ role: "tool", tool_call_id: tc.id, content: result });
     }
   }
 
-  h.onText("\n\n_(достигнут лимит шагов агента)_");
+  h.onText(`\n\n_${tr("agentStepLimit")}_`);
 }
 
-const REACT_SYSTEM = `You are Magnetar, a local coding agent. You have tools but must call them via text. To use a tool, reply EXACTLY in this format and nothing else:
+const REACT_SYSTEM = `You are Magnetar, a local coding agent. A project folder is already open (its absolute path is given below as "Workspace root") and you can inspect and change it with the tools below. Never say you cannot see the user's files — look with list_dir or search_code first. You have tools but must call them via text. To use a tool, reply EXACTLY in this format and nothing else:
 Thought: <your reasoning>
 Action: <tool name>
 Action Input: <a single-line JSON object of arguments>
@@ -317,10 +449,13 @@ Final Answer: <your answer to the user, ending with a Handoff Note:>
 - **Decisions:** ...
 - **Next Steps:** ...
 
+Paths may be given relative to the project root — they are resolved for you.
+
 Available tools (Action Input is JSON):
 - read_file {"path":"...","offset"?:n,"limit"?:n}
 - list_dir {"path":"..."}
 - grep {"pattern":"...","path"?:"..."}
+- search_code {"query":"..."}  ← ranked search over the open project; best first step to find where something lives
 - write_file {"path":"...","content":"..."}
 - edit_file {"path":"...","old_string":"...","new_string":"..."}
 - run_bash {"command":"...","cwd"?:"..."}
@@ -339,19 +474,37 @@ function parseReAct(text: string): ReActParse {
 
   const thought = text.match(/Thought:\s*(.*)/i)?.[1]?.trim();
   const action = text.match(/Action:\s*([a-zA-Z_]+)/i)?.[1]?.trim();
-  let input: ToolArgs = {};
-  const inputM = text.match(/Action Input:\s*([\s\S]*?)(?:\nObservation:|$)/i);
-  if (inputM) {
-    const raw = inputM[1].trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-    const a = raw.indexOf("{");
-    const b = raw.lastIndexOf("}");
+
+  const parseArgs = (raw: string): ToolArgs => {
+    const cleaned = raw
+      .trim()
+      .replace(/^```(?:json)?/i, "")
+      .replace(/```$/, "")
+      .trim();
+    const a = cleaned.indexOf("{");
+    const b = cleaned.lastIndexOf("}");
     try {
-      input = JSON.parse(a >= 0 && b > a ? raw.slice(a, b + 1) : raw);
+      return JSON.parse(a >= 0 && b > a ? cleaned.slice(a, b + 1) : cleaned);
     } catch {
-      input = {};
+      return {};
     }
+  };
+
+  if (action) {
+    const inputM = text.match(/Action Input:\s*([\s\S]*?)(?:\nObservation:|$)/i);
+    return { thought, action, input: inputM ? parseArgs(inputM[1]) : {} };
   }
-  return { thought, action, input };
+
+  // Weaker models drop the ReAct scaffolding and just write the call, e.g.
+  // `list_dir {"path": "/"}` or a fenced block. Accept that rather than
+  // letting the run stall — the tool name still has to be a real one.
+  const known = AGENT_TOOLS.map((x) => x.name).join("|");
+  const bare = text.match(
+    new RegExp(`(?:^|\\n|\`{1,3})\\s*(${known})\\s*(\\{[\\s\\S]*?\\})`, "i"),
+  );
+  if (bare) return { thought, action: bare[1], input: parseArgs(bare[2]) };
+
+  return { thought, action, input: {} };
 }
 
 /** Text-based ReAct loop for providers without native tool-use (e.g. GigaChat). */
@@ -367,7 +520,8 @@ async function runAgentReAct(
     id: "", role, content, createdAt: 0,
   });
 
-  for (let i = 0; i < MAX_ITERS; i++) {
+  const budget = stepBudget();
+  for (let i = 0; i < budget; i++) {
     if (h.cancelled?.()) return;
     const text = await api.complete(connection, model, messages, REACT_SYSTEM + extraSystem);
     const p = parseReAct(text);
@@ -382,31 +536,47 @@ async function runAgentReAct(
       return;
     }
 
-    h.onText(
-      `${i > 0 ? "\n\n" : ""}${p.thought ? `${p.thought}\n` : ""}\`${p.action}\` ${summarizeArgs(p.action, p.input)}`,
-    );
-
+    const callId = `react-${i}`;
     let result: string;
-    if (DESTRUCTIVE.has(p.action)) {
-      const ok = await h.confirm(p.action, p.input);
-      if (!ok) {
-        result = "User declined this action.";
-        h.onText(" ⛔");
-      } else {
-        result = await executeTool(p.action, p.input);
-      }
+    const approved = needsConfirm(p.action) ? await h.confirm(p.action, p.input) : true;
+
+    if (!approved) {
+      result = "User declined this action.";
+      h.onTool?.({
+        id: callId,
+        name: p.action,
+        args: p.input,
+        status: "declined",
+        thought: p.thought,
+      });
     } else {
+      h.onTool?.({
+        id: callId,
+        name: p.action,
+        args: p.input,
+        status: "running",
+        thought: p.thought,
+      });
       result = await executeTool(p.action, p.input);
+      h.onTool?.({
+        id: callId,
+        name: p.action,
+        args: p.input,
+        status: result.startsWith("error:") ? "error" : "done",
+        result: preview(result),
+        thought: p.thought,
+      });
     }
 
     messages.push(mk("assistant", text));
     messages.push(mk("user", `Observation: ${result}`));
   }
 
-  h.onText("\n\n_(достигнут лимит шагов агента)_");
+  h.onText(`\n\n_${tr("agentStepLimit")}_`);
 }
 
-function summarizeArgs(name: string, args: ToolArgs): string {
+/** One-line human summary of a tool call — used by the run trace in the UI. */
+export function summarizeArgs(name: string, args: ToolArgs): string {
   switch (name) {
     case "read_file":
     case "list_dir":

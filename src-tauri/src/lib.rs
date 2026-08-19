@@ -42,6 +42,8 @@ pub fn run() {
             commands::tool_list_dir,
             commands::tool_grep,
             commands::tool_write_file,
+            commands::tool_delete_file,
+            commands::list_project_files,
             commands::tool_edit_file,
             commands::tool_run_bash,
             commands::tool_kill_bash,

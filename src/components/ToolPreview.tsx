@@ -27,10 +27,10 @@ export function ToolPreview({
     return (
       <div className="space-y-2">
         <PathLabel path={path} />
-        <pre className="max-h-72 overflow-auto rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-xs leading-relaxed">
+        <pre className="max-h-72 overflow-auto rounded-lg border border-[color-mix(in_srgb,var(--color-added)_30%,transparent)] bg-[color-mix(in_srgb,var(--color-added)_6%,transparent)] p-3 text-[length:var(--fs-xs)] leading-relaxed">
           {content.split("\n").map((l, i) => (
-            <div key={i} className="text-emerald-300">
-              <span className="mr-2 select-none text-emerald-500/60">+</span>
+            <div key={i} className="text-[var(--color-added)]">
+              <span className="mr-2 select-none text-[var(--color-added)] opacity-60">+</span>
               {l}
             </div>
           ))}
@@ -43,7 +43,7 @@ export function ToolPreview({
     return (
       <div className="space-y-2">
         {args.cwd ? <PathLabel path={String(args.cwd)} /> : null}
-        <pre className="overflow-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3 text-xs">
+        <pre className="overflow-auto rounded-[var(--r-md)] border border-[var(--color-border)] bg-[var(--color-bg)] p-3 text-[length:var(--fs-xs)]">
           <span className="mr-1 select-none text-[var(--color-accent-strong)]">$</span>
           {String(args.command ?? "")}
         </pre>
@@ -52,7 +52,7 @@ export function ToolPreview({
   }
 
   return (
-    <pre className="max-h-56 overflow-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3 text-xs">
+    <pre className="max-h-56 overflow-auto rounded-[var(--r-md)] border border-[var(--color-border)] bg-[var(--color-bg)] p-3 text-[length:var(--fs-xs)]">
       {JSON.stringify(args, null, 2)}
     </pre>
   );
@@ -60,7 +60,7 @@ export function ToolPreview({
 
 function PathLabel({ path }: { path: string }) {
   return (
-    <div className="truncate rounded-md bg-[var(--color-surface-2)] px-2 py-1 font-mono text-xs text-[var(--color-text-dim)]">
+    <div className="truncate rounded-[var(--r-sm)] bg-[var(--color-surface-2)] px-2 py-1 font-mono text-[length:var(--fs-xs)] text-[var(--color-text-dim)]">
       {path}
     </div>
   );
@@ -69,7 +69,7 @@ function PathLabel({ path }: { path: string }) {
 function DiffBlock({ oldStr, newStr }: { oldStr: string; newStr: string }) {
   const parts = diffLines(oldStr, newStr);
   return (
-    <pre className="max-h-72 overflow-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3 text-xs leading-relaxed">
+    <pre className="max-h-72 overflow-auto rounded-[var(--r-md)] border border-[var(--color-border)] bg-[var(--color-bg)] p-3 text-[length:var(--fs-xs)] leading-relaxed">
       {parts.map((p, i) => {
         const lines = p.value.replace(/\n$/, "").split("\n");
         return lines.map((l, j) => (
@@ -77,9 +77,9 @@ function DiffBlock({ oldStr, newStr }: { oldStr: string; newStr: string }) {
             key={`${i}-${j}`}
             className={
               p.added
-                ? "bg-emerald-500/10 text-emerald-300"
+                ? "bg-[color-mix(in_srgb,var(--color-added)_12%,transparent)] text-[var(--color-added)]"
                 : p.removed
-                  ? "bg-red-500/10 text-red-300"
+                  ? "bg-[color-mix(in_srgb,var(--color-removed)_12%,transparent)] text-[var(--color-removed)]"
                   : "text-[var(--color-text-dim)]"
             }
           >

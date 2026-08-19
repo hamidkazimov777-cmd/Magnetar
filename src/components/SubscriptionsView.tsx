@@ -1,16 +1,41 @@
 import { useState } from "react";
-import { Globe, Copy, Check, ClipboardPaste, ArrowDownToLine } from "lucide-react";
+import {
+  Globe,
+  Copy,
+  Check,
+  ClipboardPaste,
+  ArrowDownToLine,
+  ExternalLink,
+  ShieldCheck,
+} from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useStore } from "../lib/store";
 import { db } from "../lib/db";
 import { useT } from "../lib/i18n";
 import { LogoMark } from "./Logo";
 
-const PROVIDERS = [
+interface ProviderDef {
+  id: string;
+  name: string;
+  url: string;
+  color: string;
+}
+
+/** Google refuses OAuth from anything it recognises as an embedded webview
+ *  ("this browser may not be secure"), and presenting Safari's user agent is
+ *  what gets that sign-in through. It is not free: some apps then serve a
+ *  Safari-specific bundle that misbehaves inside the webview — ChatGPT loads
+ *  but its composer stays dead. So it is a per-site switch: turn it on to sign
+ *  in, turn it off to work. */
+const DESKTOP_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15";
+
+const PROVIDERS: ProviderDef[] = [
   { id: "chatgpt", name: "ChatGPT", url: "https://chatgpt.com", color: "#10a37f" },
   { id: "claude", name: "Claude", url: "https://claude.ai", color: "#c96442" },
   { id: "gemini", name: "Gemini", url: "https://gemini.google.com/app", color: "#4285f4" },
-  { id: "grok", name: "Grok", url: "https://grok.com", color: "#888" },
+  { id: "deepseek", name: "DeepSeek", url: "https://chat.deepseek.com", color: "#4d6bfe" },
 ];
 
 /** Build a portable project brief the user can paste into a subscription AI. */
@@ -57,11 +82,14 @@ async function buildProjectContext(): Promise<string> {
 
 export function SubscriptionsView() {
   const t = useT();
+  const safariUa = useStore((s) => s.subsSafariUa);
+  const setSafariUa = useStore((s) => s.setSubsSafariUa);
   const [copied, setCopied] = useState(false);
   const [reply, setReply] = useState("");
   const [imported, setImported] = useState(false);
 
-  const openProvider = async (id: string, url: string, name: string) => {
+  const openProvider = async (p: ProviderDef) => {
+    const { id, url, name } = p;
     const label = `subs-${id}`;
     try {
       const existing = await WebviewWindow.getByLabel(label);
@@ -75,8 +103,9 @@ export function SubscriptionsView() {
     const w = new WebviewWindow(label, {
       url,
       title: name,
-      width: 960,
-      height: 800,
+      width: 1100,
+      height: 860,
+      ...(useStore.getState().subsSafariUa[p.id] ? { userAgent: DESKTOP_UA } : {}),
     });
     w.once("tauri://error", (e) => console.error("webview error", e));
   };
@@ -111,54 +140,81 @@ export function SubscriptionsView() {
 
   return (
     <div className="flex h-full flex-1 flex-col overflow-y-auto">
-      <div className="mx-auto w-full max-w-3xl px-6 py-8">
-        <div className="mb-6 flex items-center gap-3">
-          <LogoMark size={30} />
-          <div>
-            <h1 className="text-lg font-semibold">{t("subscriptions")}</h1>
-            <p className="text-sm text-[var(--color-text-dim)]">{t("subsIntro")}</p>
+      <div className="mx-auto w-full max-w-[760px] px-8 pb-12 pt-10">
+        <div data-tauri-drag-region className="mb-7 flex items-center gap-3">
+          <LogoMark size={32} />
+          <div className="min-w-0">
+            <h1 className="text-[length:var(--fs-xl)] font-semibold">
+              {t("subscriptions")}
+            </h1>
+            <p className="mt-1 text-[length:var(--fs-md)] text-[var(--color-text-dim)]">
+              {t("subsIntro")}
+            </p>
           </div>
         </div>
 
         {/* In-app browser */}
         <div className="mb-8">
-          <h2 className="mb-2 text-sm font-medium text-[var(--color-text-dim)]">
-            {t("subsOpenTitle")}
-          </h2>
+          <h2 className="section-label px-0">{t("subsOpenTitle")}</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {PROVIDERS.map((p) => (
-              <button
+              <div
                 key={p.id}
-                onClick={() => openProvider(p.id, p.url, p.name)}
-                className="flex flex-col items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-4 hover:border-[var(--color-accent)] hover:bg-[var(--color-surface-2)]"
+                className="group/prov relative flex flex-col items-center gap-2 rounded-[var(--r-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-4 transition-colors hover:border-[var(--color-border-strong)]"
               >
-                <span
-                  className="grid h-9 w-9 place-items-center rounded-lg"
-                  style={{ background: `${p.color}22`, color: p.color }}
+                <button
+                  onClick={() => void openProvider(p)}
+                  className="flex flex-col items-center gap-2"
                 >
-                  <Globe size={18} />
-                </span>
-                <span className="text-sm text-[var(--color-text)]">{p.name}</span>
-              </button>
+                  <span
+                    className="grid h-9 w-9 place-items-center rounded-[var(--r-md)]"
+                    style={{ background: `${p.color}22`, color: p.color }}
+                  >
+                    <Globe size={18} />
+                  </span>
+                  <span className="text-[length:var(--fs-base)]">{p.name}</span>
+                </button>
+                {/* Escape hatch: the embedded webview is not a full browser, and
+                    some of these apps only behave in a real one. */}
+                <button
+                  onClick={() => void openUrl(p.url).catch(() => {})}
+                  title={t("subsOpenExternal")}
+                  className="icon-btn absolute right-1 top-1 h-6 w-6 opacity-0 group-hover/prov:opacity-100"
+                >
+                  <ExternalLink size={12} />
+                </button>
+                <button
+                  onClick={() => setSafariUa(p.id, !safariUa[p.id])}
+                  title={t("subsSafariUa")}
+                  data-active={Boolean(safariUa[p.id])}
+                  className="icon-btn absolute left-1 top-1 h-6 w-6 opacity-0 data-[active=true]:opacity-100 group-hover/prov:opacity-100"
+                >
+                  <ShieldCheck size={12} />
+                </button>
+              </div>
             ))}
           </div>
-          <p className="mt-2 text-xs text-[var(--color-text-dim)]">{t("subsHint")}</p>
+          <p className="mt-2 text-[length:var(--fs-xs)] leading-relaxed text-[var(--color-text-mute)]">
+            {t("subsHint")}
+          </p>
+          <p className="mt-1 text-[length:var(--fs-xs)] leading-relaxed text-[var(--color-text-mute)]">
+            {t("subsSafariUaHint")}
+          </p>
         </div>
 
         {/* Context bridge */}
-        <div className="space-y-4 rounded-xl border border-[var(--color-border)] p-5">
-          <div className="text-sm font-medium">{t("subsBridgeTitle")}</div>
+        <div className="panel space-y-4 p-5">
+          <div className="text-[length:var(--fs-md)] font-semibold">
+            {t("subsBridgeTitle")}
+          </div>
 
-          <button
-            onClick={copyContext}
-            className="flex items-center gap-2 rounded-xl bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-[var(--color-accent-fg)]"
-          >
+          <button onClick={copyContext} className="btn btn-primary">
             {copied ? <Check size={16} /> : <Copy size={16} />}
             {copied ? t("subsCopied") : t("subsCopyContext")}
           </button>
 
           <div className="space-y-2">
-            <div className="flex items-center gap-1.5 text-sm text-[var(--color-text-dim)]">
+            <div className="flex items-center gap-1.5 text-[length:var(--fs-base)] text-[var(--color-text-dim)]">
               <ClipboardPaste size={15} />
               {t("subsPasteLabel")}
             </div>
@@ -167,12 +223,12 @@ export function SubscriptionsView() {
               onChange={(e) => setReply(e.target.value)}
               rows={5}
               placeholder={t("subsPastePlaceholder")}
-              className="w-full resize-y rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--color-accent)]"
+              className="input"
             />
             <button
               onClick={importReply}
               disabled={!reply.trim()}
-              className="flex items-center gap-2 rounded-xl border border-[var(--color-border)] px-3.5 py-2 text-sm hover:bg-[var(--color-surface-2)] disabled:opacity-40"
+              className="btn btn-secondary"
             >
               {imported ? <Check size={15} /> : <ArrowDownToLine size={15} />}
               {imported ? t("subsImported") : t("subsImport")}

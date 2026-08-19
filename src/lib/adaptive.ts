@@ -46,6 +46,8 @@ export function buildCatalog(
 
 export interface Classification {
   tier: Tier;
+  /** i18n key ("reason_light" | "reason_standard" | "reason_heavy") — the UI
+   *  translates it; never put user-visible prose here. */
   reason: string;
 }
 
@@ -62,12 +64,12 @@ export function classifyPrompt(text: string): Classification {
     /^(привет|прив|здоров|хай|как дела|спасибо|ок|окей|пока|hi|hello|hey|thanks|thank you|yo|sup|how are you|good morning)\b/;
 
   if (lightSignals.test(lower) || (words <= 6 && !heavySignals.test(lower))) {
-    return { tier: "light", reason: "короткий/бытовой запрос" };
+    return { tier: "light", reason: "reason_light" };
   }
   if (heavySignals.test(lower) || codey.test(t) || words > 120) {
-    return { tier: "heavy", reason: "сложная задача (код/большой объём)" };
+    return { tier: "heavy", reason: "reason_heavy" };
   }
-  return { tier: "standard", reason: "обычный запрос" };
+  return { tier: "standard", reason: "reason_standard" };
 }
 
 export interface Recommendation {

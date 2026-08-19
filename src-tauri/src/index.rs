@@ -93,6 +93,22 @@ fn walk(dir: &Path, docs: &mut Vec<String>) {
     }
 }
 
+/// Flat list of project files, repo-relative, for the composer's `@` picker.
+/// Reuses the same skip rules as the index so `node_modules` never shows up.
+pub fn list_files(root: &str) -> Result<Vec<String>, String> {
+    let base = Path::new(root);
+    if !base.is_dir() {
+        return Err(format!("{root}: not a directory"));
+    }
+    let mut docs: Vec<String> = Vec::new();
+    walk(base, &mut docs);
+    let prefix = format!("{}/", root.trim_end_matches('/'));
+    Ok(docs
+        .into_iter()
+        .map(|p| p.strip_prefix(&prefix).unwrap_or(&p).to_string())
+        .collect())
+}
+
 pub fn build(root: &str) -> Result<IndexStats, String> {
     let mut docs: Vec<String> = Vec::new();
     walk(Path::new(root), &mut docs);

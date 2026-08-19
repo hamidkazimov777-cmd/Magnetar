@@ -4,17 +4,40 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Magnetar</title>
-    <!-- Paint dark on the very first frame to avoid the white webview flash
-         before the bundled CSS/JS loads. -->
+    <!-- Paint the right ground on the very first frame, before the bundle
+         loads, so launching never flashes the opposite theme. Light is the
+         default; the persisted choice wins if there is one. -->
     <style>
       html,
       body,
       #root {
         margin: 0;
         height: 100%;
-        background: #050507;
+      }
+      /* Only <html> is painted here. Painting <body> too would beat the app's
+         own layered styles, since unlayered CSS outranks @layer. */
+      html {
+        background: #ffffff;
+      }
+      html[data-theme="dark"] {
+        background: #000000;
       }
     </style>
+    <script>
+      (function () {
+        try {
+          var raw = localStorage.getItem("magnetar-store");
+          var theme = raw ? JSON.parse(raw).state.theme : "light";
+          if (theme === "system")
+            theme = matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light";
+          document.documentElement.setAttribute("data-theme", theme || "light");
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
   </head>
 
   <body>

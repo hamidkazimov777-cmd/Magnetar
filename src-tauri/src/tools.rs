@@ -12,7 +12,9 @@ use std::time::Duration;
 use wait_timeout::ChildExt;
 
 /// Hard ceiling so a runaway command can't hang the agent forever.
-const BASH_TIMEOUT_SECS: u64 = 120;
+/// Default cap for a single command. Real work (`npm install`, `cargo build`)
+/// routinely runs longer than two minutes, so the caller can raise this.
+const BASH_TIMEOUT_SECS: u64 = 600;
 
 /// Hard caps so a single tool call can't blow up the context window.
 const MAX_READ_BYTES: usize = 60_000;
@@ -115,6 +117,16 @@ pub fn write_file(path: &str, content: &str) -> Result<usize, String> {
     Ok(content.len())
 }
 
+/// Delete a single file. Used to undo a file the agent created — never
+/// recursive, so it cannot take a directory tree with it.
+pub fn delete_file(path: &str) -> Result<(), String> {
+    let p = Path::new(path);
+    if p.is_dir() {
+        return Err(format!("{path}: is a directory"));
+    }
+    std::fs::remove_file(p).map_err(|e| format!("{path}: {e}"))
+}
+
 pub fn edit_file(path: &str, old: &str, new: &str) -> Result<EditResult, String> {
     let src = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
     let count = src.matches(old).count();
@@ -214,7 +226,12 @@ use once_cell::sync::Lazy;
 pub static BASH_PROCESSES: Lazy<Mutex<HashMap<u32, u32>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
-pub fn run_bash(command: &str, cwd: Option<&str>) -> Result<BashResult, String> {
+pub fn run_bash(
+    command: &str,
+    cwd: Option<&str>,
+    timeout_secs: Option<u64>,
+) -> Result<BashResult, String> {
+    let timeout = timeout_secs.filter(|t| *t > 0).unwrap_or(BASH_TIMEOUT_SECS);
     let mut cmd = std::process::Command::new("bash");
     cmd.arg("-lc").arg(command).stdout(Stdio::piped()).stderr(Stdio::piped());
     if let Some(dir) = cwd.filter(|d| !d.is_empty()) {
@@ -251,7 +268,7 @@ pub fn run_bash(command: &str, cwd: Option<&str>) -> Result<BashResult, String> 
     });
 
     let (code, timed_out) = match child
-        .wait_timeout(Duration::from_secs(BASH_TIMEOUT_SECS))
+        .wait_timeout(Duration::from_secs(timeout))
         .map_err(|e| e.to_string())?
     {
         Some(status) => (status.code().unwrap_or(-1), false),
@@ -271,7 +288,7 @@ pub fn run_bash(command: &str, cwd: Option<&str>) -> Result<BashResult, String> 
     let stdout_raw = th_o.join().unwrap_or_default();
     let mut stderr_raw = th_e.join().unwrap_or_default();
     if timed_out {
-        stderr_raw.push_str(&format!("\n[killed: exceeded {BASH_TIMEOUT_SECS}s timeout]"));
+        stderr_raw.push_str(&format!("\n[killed: exceeded {timeout}s timeout]"));
     } else if code == -1 && stdout_raw.is_empty() && stderr_raw.is_empty() {
         stderr_raw.push_str("\n[killed by user]");
     }

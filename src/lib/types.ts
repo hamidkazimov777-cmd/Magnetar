@@ -1,4 +1,4 @@
-export type ProviderKind = "openai_compat" | "gigachat" | "custom";
+export type ProviderKind = "openai_compat" | "gigachat" | "anthropic" | "custom";
 
 /** A configured provider endpoint. The API key lives in the Keychain, keyed by
  *  `id` — it is never stored here. */
@@ -15,6 +15,9 @@ export interface Connection {
 
 /** GigaChat uses fixed endpoints; base URL is not user-editable. */
 export const GIGACHAT_BASE = "https://gigachat.devices.sberbank.ru/api/v1";
+
+/** Claude's native API. Not OpenAI-shaped: x-api-key auth, /v1/messages. */
+export const ANTHROPIC_BASE = "https://api.anthropic.com/v1";
 
 export interface ModelInfo {
   id: string;
@@ -77,6 +80,32 @@ export interface Project {
   lastState?: string;
   createdAt: number;
   updatedAt: number;
+}
+
+/** What kind of memory work produced an entry in the memory log.
+ *
+ *  Everything that writes to project memory does so in the background, on a
+ *  cheap model, from several different triggers. Before this log existed those
+ *  writes were invisible: a refused model or a malformed reply left memory
+ *  silently empty and the user had no way to tell. Every one of them now
+ *  reports here — success and failure alike. */
+export type MemoryEventKind =
+  | "audit" /** folder analysis → description, stack, architecture, standards */
+  | "handoff" /** model switch → "where we stopped" */
+  | "decisions" /** transcript mining → key decisions */
+  | "graph" /** transcript mining → knowledge graph */
+  | "summary" /** rolling conversation summary */
+  | "index"; /** code search index build */
+
+export interface MemoryEvent {
+  id: string;
+  at: number;
+  kind: MemoryEventKind;
+  status: "ok" | "error" | "skipped";
+  /** Either an i18n key (known cases) or a raw provider message. */
+  detail?: string;
+  projectId?: string;
+  model?: string;
 }
 
 export interface Task {

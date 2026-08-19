@@ -1,34 +1,37 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Sparkles, ArrowUpRight, Bot, TriangleAlert, FolderOpen, Check } from "lucide-react";
+import {
+  Sparkles,
+  ArrowUpRight,
+  Bot,
+  TriangleAlert,
+  Plus,
+  PanelRightClose,
+  FolderGit2,
+  Eye,
+  RotateCcw,
+  X,
+} from "lucide-react";
 import { api } from "../lib/api";
 import { useStore } from "../lib/store";
 import { buildCatalog, recommend, type Recommendation } from "../lib/adaptive";
 import { buildOutgoing, maybeSummarize } from "../lib/handoff";
-import { runAgent } from "../lib/agent";
+import { runAgent, AGENT_SYSTEM } from "../lib/agent";
 import { buildProjectMemory } from "../lib/memory";
+import { buildMentionContext, expandSlash } from "../lib/mentions";
 import { LogoMark } from "./Logo";
+import { Hint } from "./ui/Hint";
 import { ToolPreview } from "./ToolPreview";
 import { useT } from "../lib/i18n";
 import { Composer } from "./Composer";
 import { Message } from "./Message";
 import { ModelSwitcher } from "./ModelSwitcher";
 import { cn } from "../lib/cn";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "./ui/dialog";
+import type { Attachment } from "../lib/types";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 
-export function ChatView({
-  onOpenSettings,
-  onNavigate,
-  embedded = false,
-}: {
-  onOpenSettings: () => void;
-  onNavigate: (tab: string) => void;
-  embedded?: boolean;
-}) {
+/** The agent panel: model picker, mode switches, the transcript, and the
+ *  composer. It is the one place where work is requested and reported. */
+export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
   const t = useT();
   const connections = useStore((s) => s.connections);
   const models = useStore((s) => s.models);
@@ -46,6 +49,17 @@ export function ChatView({
   const setMessageContent = useStore((s) => s.setMessageContent);
   const setActive = useStore((s) => s.setActive);
   const setSummary = useStore((s) => s.setSummary);
+  const workspaceRoot = useStore((s) => s.workspaceRoot);
+  const toggleAgentPanel = useStore((s) => s.toggleAgentPanel);
+  const pushAgentEvent = useStore((s) => s.pushAgentEvent);
+  const refreshExplorer = useStore((s) => s.refreshExplorer);
+  const lastError = useStore((s) => s.lastError);
+  const setLastError = useStore((s) => s.setLastError);
+  const setModelStatus = useStore((s) => s.setModelStatus);
+  const setTrustCommands = useStore((s) => s.setTrustCommands);
+  const setLastContext = useStore((s) => s.setLastContext);
+  const lastContext = useStore((s) => s.lastContext);
+  const [contextOpen, setContextOpen] = useState(false);
 
   const [streaming, setStreaming] = useState(false);
   const [upgrade, setUpgrade] = useState<Recommendation["upgrade"]>();
@@ -58,6 +72,8 @@ export function ChatView({
   const stopRef = useRef<null | (() => void)>(null);
   const agentCancelRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  /** Kept so the error banner's Retry can resend the exact same turn. */
+  const lastSendRef = useRef<{ text: string; attachments: Attachment[] } | null>(null);
 
   const session = useMemo(
     () => sessions.find((s) => s.id === activeSessionId),
@@ -73,7 +89,7 @@ export function ChatView({
 
   const runSend = async (
     text: string,
-    attachments: import("../lib/types").Attachment[],
+    attachments: Attachment[],
     connId: string,
     model: string,
   ) => {
@@ -84,28 +100,26 @@ export function ChatView({
     if (!sessionId) sessionId = newSession();
 
     addMessage(sessionId, { role: "user", content: text, attachments });
-    const assistantId = addMessage(sessionId, {
-      role: "assistant",
-      content: "",
-      model,
-    });
+    const assistantId = addMessage(sessionId, { role: "assistant", content: "", model });
 
     const current = useStore.getState().sessions.find((s) => s.id === sessionId)!;
     // Handoff-aware context: identity + rolling summary + tail, with a note when
     // the model changed since the previous turn.
     const { system, messages: outgoing } = await buildOutgoing(current, model);
     const history = outgoing.filter((m) => m.id !== assistantId);
+    // Files the user attached with @ ride along in the system prompt, so the
+    // canon keeps the readable message while the model sees the content.
+    const mentions = await buildMentionContext(text);
+    setLastContext({ system: system + mentions, model, at: Date.now() });
 
     setStreaming(true);
     const stop = api.chatStream(connection, model, history, {
-      system,
-      onDelta: (t) => appendToMessage(sessionId!, assistantId, t),
+      system: system + mentions,
+      onDelta: (d) => appendToMessage(sessionId!, assistantId, d),
       onDone: () => {
         setStreaming(false);
         stopRef.current = null;
-        // Persist the finished assistant turn to the canon (SQLite).
         useStore.getState().persistMessage(sessionId!, assistantId);
-        // Refresh the rolling handoff summary in the background.
         const s = useStore.getState().sessions.find((x) => x.id === sessionId);
         if (s)
           void maybeSummarize(s, connection, model, (sum, upTo) =>
@@ -113,7 +127,10 @@ export function ChatView({
           );
       },
       onError: (msg) => {
-        setMessageContent(sessionId!, assistantId, `⚠️ ${msg}`);
+        // Errors get their own retryable banner instead of masquerading as a reply.
+        setMessageContent(sessionId!, assistantId, "");
+        noteModelFailure(connId, model, msg, setModelStatus);
+        setLastError({ message: msg, sessionId: sessionId! });
         setStreaming(false);
         stopRef.current = null;
       },
@@ -123,9 +140,9 @@ export function ChatView({
 
   const runAgentPath = async (
     text: string,
-    attachments: import("../lib/types").Attachment[],
+    attachments: Attachment[],
     connId: string,
-    model: string
+    model: string,
   ) => {
     const connection = useStore.getState().connections.find((c) => c.id === connId);
     if (!connection) return;
@@ -134,10 +151,15 @@ export function ChatView({
 
     const isTeam = text.startsWith("/team ");
     const isCto = text.startsWith("/cto");
-    
-    let content = text;
-    if (isTeam) content = text.replace("/team ", "").trim();
-    if (isCto) content = text.replace("/cto", "Perform a comprehensive CTO audit of this project. Check for tech debt, architectural flaws, and suggest concrete tasks for the Roadmap.").trim();
+
+    // The transcript keeps exactly what the user typed; slash commands expand
+    // into an instruction that goes to the model via the system prompt.
+    const content = isTeam ? text.replace("/team ", "").trim() : text;
+    const slashInstruction = isCto
+      ? "\n\n## Task\nPerform a comprehensive CTO audit of this project. Check for tech debt, architectural flaws, and suggest concrete tasks for the Roadmap."
+      : expandSlash(text) !== text
+        ? `\n\n## Task\n${expandSlash(text)}`
+        : "";
 
     addMessage(sessionId, { role: "user", content, attachments });
     const assistantId = addMessage(sessionId, { role: "assistant", content: "", model });
@@ -148,41 +170,54 @@ export function ChatView({
     agentCancelRef.current = false;
     setStreaming(true);
     try {
-      if (agentMode || isTeam || isCto) {
-        const sess = useStore.getState().sessions.find((s) => s.id === sessionId);
-        const projectMemory = buildProjectMemory(sess);
-        await runAgent(connection, model, history, {
+      const sess = useStore.getState().sessions.find((s) => s.id === sessionId);
+      const projectMemory =
+        buildProjectMemory(sess) + slashInstruction + (await buildMentionContext(text));
+      setLastContext({ system: AGENT_SYSTEM + projectMemory, model, at: Date.now() });
+      await runAgent(
+        connection,
+        model,
+        history,
+        {
           confirm: (name, args) =>
             new Promise<boolean>((resolve) => setConfirm({ name, args, resolve })),
-          onText: (t) => appendToMessage(sessionId!, assistantId, t),
+          onText: (d) => appendToMessage(sessionId!, assistantId, d),
+          onTool: (e) => {
+            pushAgentEvent(assistantId, e);
+            // File-changing tools invalidate the tree the user is looking at.
+            if (
+              e.status === "done" &&
+              (e.name === "write_file" || e.name === "edit_file" || e.name === "run_bash")
+            )
+              refreshExplorer();
+          },
           cancelled: () => agentCancelRef.current,
-        }, isTeam, projectMemory);
-      } else {
-        await runSend(text, attachments, connId, model);
-      }
+        },
+        isTeam,
+        projectMemory,
+      );
     } catch (e) {
-      appendToMessage(sessionId!, assistantId, `\n\n⚠️ ${String(e)}`);
+      noteModelFailure(connId, model, String(e), setModelStatus);
+      setLastError({ message: String(e), sessionId: sessionId! });
     } finally {
       setStreaming(false);
       useStore.getState().persistMessage(sessionId!, assistantId);
     }
   };
 
-  const send = async (text: string, attachments: import("../lib/types").Attachment[] = []) => {
+  const send = async (text: string, attachments: Attachment[] = []) => {
     if (!conn || !activeModel) return;
     setUpgrade(undefined);
     setNote(null);
+    setLastError(undefined);
+    lastSendRef.current = { text, attachments };
 
     let connId = activeConnectionId!;
     let model = activeModel;
 
     if (adaptive) {
       const catalog = buildCatalog(connections, models);
-      const rec = recommend(text, catalog, {
-        connectionId: connId,
-        model,
-      });
-      // Auto-route within reach; surface a cross-connection upgrade as opt-in.
+      const rec = recommend(text, catalog, { connectionId: connId, model });
       const reason = t(`reason_${rec.tier}`);
       if (rec.pick && rec.pick.model !== model) {
         connId = rec.pick.connectionId;
@@ -193,7 +228,8 @@ export function ChatView({
       if (rec.upgrade) setUpgrade(rec.upgrade);
     }
 
-    if (agentMode) await runAgentPath(text, attachments, connId, model);
+    const isAgentTurn = agentMode || text.startsWith("/team ") || text.startsWith("/cto");
+    if (isAgentTurn) await runAgentPath(text, attachments, connId, model);
     else await runSend(text, attachments, connId, model);
   };
 
@@ -205,72 +241,157 @@ export function ChatView({
     void api.toolKillBash().catch(() => {});
   };
 
+  const retry = () => {
+    const last = lastSendRef.current;
+    setLastError(undefined);
+    if (last) void send(last.text, last.attachments);
+  };
+
   return (
-    <div className="flex h-full flex-1 flex-col">
+    <div className="flex h-full min-w-0 flex-col">
       <header
         data-tauri-drag-region
-        className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-2.5"
+        className="flex h-[var(--h-titlebar)] shrink-0 items-center gap-1.5 border-b border-[var(--color-border)] px-2"
       >
-        <div className="flex min-w-0 items-center gap-2">
-          {embedded && <Bot size={16} className="shrink-0 text-[var(--color-accent-strong)]" />}
-          {embedded && <span className="shrink-0 text-sm font-semibold">{t("agent")}</span>}
-          {conn ? <ModelSwitcher /> : <span className="px-2 text-sm text-[var(--color-text-dim)]">{t("noConnection")}</span>}
+        {/* The one violet accent in the chrome: this panel is the AI. */}
+        <Bot size={15} className="shrink-0 text-[var(--color-ai)]" />
+        <span className="shrink-0 text-[length:var(--fs-base)] font-semibold">
+          {t("agent")}
+        </span>
+        <div className="min-w-0 flex-1">
+          {conn ? (
+            <ModelSwitcher />
+          ) : (
+            <button className="btn btn-ghost btn-sm" onClick={onOpenSettings}>
+              {t("connectModel")}
+            </button>
+          )}
         </div>
-
-        <div className="flex items-center gap-1.5">
+        <Hint text={t("hintShowContext")} side="left">
           <button
-            onClick={() => setAgentMode(!agentMode)}
-            title={t("agentHint")}
-            className={cn(
-              "flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm transition",
-              agentMode
-                ? "border-[var(--color-accent)] bg-[var(--color-accent)]/15 text-[var(--color-accent-strong)]"
-                : "border-[var(--color-border)] text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)]",
-            )}
+            className="icon-btn"
+            title={t("showContext")}
+            onClick={() => setContextOpen(true)}
+            disabled={!lastContext}
           >
-            <Bot size={15} />
-            {t("agent")}
+            <Eye size={15} />
           </button>
-          <button
-            onClick={() => setAdaptive(!adaptive)}
-            title={t("adaptiveHint")}
-            className={cn(
-              "flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm transition",
-              adaptive
-                ? "border-[var(--color-accent)] bg-[var(--color-accent)]/15 text-[var(--color-accent-strong)]"
-                : "border-[var(--color-border)] text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)]",
-            )}
-          >
-            <Sparkles size={15} />
-            {t("adaptive")}
+        </Hint>
+        <Hint text={t("hintNewChat")} side="left">
+          <button className="icon-btn" title={t("newChat")} onClick={() => newSession()}>
+            <Plus size={15} />
           </button>
-        </div>
+        </Hint>
+        <button
+          className="icon-btn"
+          title={t("cmdToggleAgentPanel")}
+          onClick={() => toggleAgentPanel(false)}
+        >
+          <PanelRightClose size={15} />
+        </button>
       </header>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl px-4 py-6">
+      <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--color-border)] px-2 py-1.5">
+        <Hint text={t("hintAgentToggle")} side="bottom">
+          <button
+            className="toggle-pill"
+            data-ai="true"
+            data-on={agentMode}
+            onClick={() => setAgentMode(!agentMode)}
+            title={t("agentHint")}
+          >
+            <Bot size={13} />
+            {t("agent")}
+          </button>
+        </Hint>
+        <Hint text={t("hintAdaptive")} side="bottom">
+          <button
+            className="toggle-pill"
+            data-ai="true"
+            data-on={adaptive}
+            onClick={() => setAdaptive(!adaptive)}
+            title={t("adaptiveHint")}
+          >
+            <Sparkles size={13} />
+            {t("adaptive")}
+          </button>
+        </Hint>
+      </div>
+
+      {workspaceRoot && !agentMode && (
+        <div className="alert anim-in m-2 flex-col items-stretch" data-tone="warning">
+          <div className="flex items-start gap-2">
+            <FolderGit2 size={14} className="mt-0.5 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <div className="font-semibold">{t("agentOffTitle")}</div>
+              <p className="mt-1 text-[length:var(--fs-sm)] leading-relaxed opacity-90">
+                {t("agentOffText")}
+              </p>
+            </div>
+          </div>
+          <button
+            className="btn btn-sm btn-secondary mt-2 self-start"
+            onClick={() => setAgentMode(true)}
+          >
+            <Bot size={13} />
+            {t("agentOffEnable")}
+          </button>
+        </div>
+      )}
+
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+        <div className="w-full px-3 py-4">
           {messages.length === 0 ? (
-            <EmptyState
+            <EmptyChat
               ready={ready}
-              hasWorkspace={Boolean(useStore.getState().workspaceRoot)}
+              hasWorkspace={Boolean(workspaceRoot)}
               onOpenSettings={onOpenSettings}
-              onNavigate={onNavigate}
             />
           ) : (
-            <div className="space-y-5">
+            <div className="space-y-4">
               {messages.map((m) => (
                 <Message key={m.id} message={m} />
               ))}
+            </div>
+          )}
+
+          {lastError && lastError.sessionId === activeSessionId && (
+            <div className="alert anim-in mt-3 flex-col items-stretch">
+              <div className="flex items-start gap-2">
+                <TriangleAlert size={15} className="mt-0.5 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold">{t("errorRequestFailed")}</div>
+                  <p className="mt-1 break-words text-[length:var(--fs-sm)] opacity-90">
+                    {lastError.message}
+                  </p>
+                </div>
+                <button
+                  className="icon-btn h-5 w-5 shrink-0"
+                  title={t("errorDismiss")}
+                  onClick={() => setLastError(undefined)}
+                >
+                  <X size={12} />
+                </button>
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button className="btn btn-sm btn-secondary" onClick={retry}>
+                  <RotateCcw size={13} />
+                  {t("retry")}
+                </button>
+                <button className="btn btn-sm btn-ghost" onClick={onOpenSettings}>
+                  {t("errorCheckSettings")}
+                </button>
+              </div>
             </div>
           )}
         </div>
       </div>
 
       {(note || upgrade) && (
-        <div className="mx-auto w-full max-w-3xl px-4">
+        <div className="shrink-0 px-3">
           {note && (
-            <div className="mb-1 flex items-center gap-1.5 text-xs text-[var(--color-text-dim)]">
-              <Sparkles size={12} className="text-[var(--color-accent-strong)]" />
+            <div className="mb-1 flex items-center gap-1.5 text-[length:var(--fs-xs)] text-[var(--color-text-dim)]">
+              <Sparkles size={11} className="text-[var(--color-ai)]" />
               {note}
             </div>
           )}
@@ -281,7 +402,7 @@ export function ChatView({
                 setNote(t("switchedTo", { model: upgrade.model }));
                 setUpgrade(undefined);
               }}
-              className="mb-2 flex items-center gap-1.5 rounded-lg border border-[var(--color-accent)]/50 bg-[var(--color-accent)]/10 px-2.5 py-1.5 text-xs text-[var(--color-accent-strong)] hover:bg-[var(--color-accent)]/20"
+              className="mb-2 flex items-center gap-1.5 rounded-[var(--r-md)] border border-[color-mix(in_srgb,var(--color-accent)_50%,transparent)] bg-[color-mix(in_srgb,var(--color-accent)_10%,transparent)] px-2.5 py-1.5 text-[length:var(--fs-xs)] text-[var(--color-accent-strong)] hover:bg-[color-mix(in_srgb,var(--color-accent)_20%,transparent)]"
             >
               <ArrowUpRight size={13} />
               {t("upgradeSuggest", {
@@ -293,45 +414,94 @@ export function ChatView({
         </div>
       )}
 
-      <Composer
-        disabled={!ready}
-        streaming={streaming}
-        onSend={send}
-        onStop={stop}
-      />
+      <Composer disabled={!ready} streaming={streaming} onSend={send} onStop={stop} />
+
+      {contextOpen && lastContext && (
+        <Dialog open onOpenChange={() => setContextOpen(false)}>
+          <DialogContent className="max-w-3xl gap-0 border-[var(--color-border)] bg-[var(--color-surface)] p-0 text-[var(--color-text)]">
+            <DialogHeader className="border-b border-[var(--color-border)] px-5 py-3.5">
+              <DialogTitle className="text-[length:var(--fs-md)] font-semibold">
+                {t("showContext")}
+              </DialogTitle>
+              <p className="mt-0.5 text-[length:var(--fs-sm)] text-[var(--color-text-dim)]">
+                {t("showContextHint", { model: lastContext.model })}
+              </p>
+            </DialogHeader>
+            <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words px-5 py-4 font-mono text-[length:var(--fs-xs)] leading-relaxed text-[var(--color-text-dim)]">
+              {lastContext.system || "—"}
+            </pre>
+            <div className="flex justify-end gap-2 border-t border-[var(--color-border)] px-5 py-3">
+              <button
+                className="btn btn-secondary"
+                onClick={() => void navigator.clipboard.writeText(lastContext.system)}
+              >
+                {t("copy")}
+              </button>
+              <button className="btn btn-primary" onClick={() => setContextOpen(false)}>
+                {t("close")}
+              </button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {confirm && (
-        <Dialog open onOpenChange={() => {
-          confirm.resolve(false);
-          setConfirm(null);
-        }}>
-          <DialogContent className="max-w-2xl p-0 gap-0 border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)]">
-            <DialogHeader className="border-b border-[var(--color-border)] px-5 py-3.5 flex flex-row items-center gap-2">
-              <TriangleAlert size={17} className="text-[var(--color-accent-strong)]" />
-              <DialogTitle className="text-sm font-semibold">{t("confirmTitle")}</DialogTitle>
+        <Dialog
+          open
+          onOpenChange={() => {
+            confirm.resolve(false);
+            setConfirm(null);
+          }}
+        >
+          <DialogContent className="max-w-2xl gap-0 border-[var(--color-border)] bg-[var(--color-surface)] p-0 text-[var(--color-text)]">
+            <DialogHeader className="flex flex-row items-center gap-2.5 border-b border-[var(--color-border)] px-5 py-3.5">
+              <TriangleAlert size={17} className="shrink-0 text-[var(--color-warning)]" />
+              <div className="min-w-0">
+                <DialogTitle className="text-[length:var(--fs-md)] font-semibold">
+                  {t("confirmTitle")}
+                </DialogTitle>
+                <p className="mt-0.5 text-[length:var(--fs-sm)] text-[var(--color-text-dim)]">
+                  {t("confirmSubtitle")}
+                </p>
+              </div>
             </DialogHeader>
             <div className="space-y-2 px-5 py-4">
-              <div className="font-mono text-sm font-medium text-[var(--color-accent-strong)]">
+              <div className="font-mono text-[length:var(--fs-base)] font-medium text-[var(--color-accent-strong)]">
                 {confirm.name}
               </div>
               <ToolPreview name={confirm.name} args={confirm.args} />
             </div>
-            <div className="flex justify-end gap-2 border-t border-[var(--color-border)] px-5 py-3">
+            <div className="flex items-center gap-2 border-t border-[var(--color-border)] px-5 py-3">
+              {confirm.name === "run_bash" && (
+                <button
+                  className="btn btn-ghost mr-auto"
+                  title={t("confirmTrustHint")}
+                  onClick={() => {
+                    // Long builds run dozens of commands; asking each time makes
+                    // the agent unusable for real work.
+                    setTrustCommands(true);
+                    confirm.resolve(true);
+                    setConfirm(null);
+                  }}
+                >
+                  {t("confirmTrustAll")}
+                </button>
+              )}
               <button
+                className="btn btn-secondary"
                 onClick={() => {
                   confirm.resolve(false);
                   setConfirm(null);
                 }}
-                className="rounded-lg border border-[var(--color-border)] px-3.5 py-1.5 text-sm text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)]"
               >
                 {t("confirmDecline")}
               </button>
               <button
+                className="btn btn-primary"
                 onClick={() => {
                   confirm.resolve(true);
                   setConfirm(null);
                 }}
-                className="rounded-lg bg-[var(--color-accent)] px-3.5 py-1.5 text-sm font-medium text-[var(--color-accent-fg)]"
               >
                 {t("confirmApprove")}
               </button>
@@ -343,46 +513,66 @@ export function ChatView({
   );
 }
 
-function EmptyState({
+/** Providers answer "no access to model" / 403 / 404 when the token cannot use
+ *  a model. Remember that, so the picker can flag it instead of failing twice. */
+function noteModelFailure(
+  connectionId: string,
+  model: string,
+  message: string,
+  mark: (c: string, m: string, s: "ok" | "denied") => void,
+) {
+  if (/no access to model|403|404|model_not_found|does not exist/i.test(message))
+    mark(connectionId, model, "denied");
+}
+
+/** Empty transcript: brand, plus whichever setup step is still missing. */
+function EmptyChat({
   ready,
   hasWorkspace,
   onOpenSettings,
-  onNavigate,
 }: {
   ready: boolean;
   hasWorkspace: boolean;
   onOpenSettings: () => void;
-  onNavigate: (tab: string) => void;
 }) {
   const t = useT();
+  const setSidePanel = useStore((s) => s.setSidePanel);
+
   return (
-    <div className="grid min-h-[52vh] place-items-center">
-      <div className="w-full max-w-2xl text-center">
-        <LogoMark size={64} className="mb-5" />
-        <h1
-          className="text-xl font-light uppercase text-[var(--color-text)]"
-          style={{ letterSpacing: "0.4em" }}
-        >
-          Magnetar
-        </h1>
-        <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[var(--color-text-dim)]">
-          {ready ? t("emptyReady") : t("onboardingIntro")}
-        </p>
-        <div className="mt-7 grid gap-3 text-left sm:grid-cols-2">
-          <button onClick={onOpenSettings} className="onboarding-card group">
-            <span className="onboarding-step">{ready ? <Check size={14} /> : "1"}</span>
-            <span><b>{t("onboardingModelTitle")}</b><small>{t("onboardingModelText")}</small></span>
+    <div className="flex min-h-[40vh] flex-col items-center justify-center px-1 text-center">
+      <LogoMark size={52} className="opacity-90" />
+      <p className="mt-4 max-w-[300px] text-[length:var(--fs-base)] leading-relaxed text-[var(--color-text-dim)]">
+        {ready ? t("emptyReady") : t("stepConnectText")}
+      </p>
+
+      <div className="mt-5 w-full space-y-2 text-left">
+        {!ready && (
+          <button className="card" onClick={onOpenSettings}>
+            <span className="step-chip">1</span>
+            <span className="min-w-0">
+              <span className="card-title">{t("stepConnectTitle")}</span>
+              <span className="card-text">{t("stepConnectAction")}</span>
+            </span>
           </button>
-          <button onClick={() => onNavigate("code")} className="onboarding-card group">
-            <span className="onboarding-step">{hasWorkspace ? <Check size={14} /> : "2"}</span>
-            <span><b>{t("onboardingProjectTitle")}</b><small>{t("onboardingProjectText")}</small></span>
-            <FolderOpen size={17} className="ml-auto text-[var(--color-text-dim)] group-hover:text-[var(--color-accent-strong)]" />
+        )}
+        {!hasWorkspace && (
+          <button className="card" onClick={() => setSidePanel("explorer")}>
+            <span className="step-chip" data-done={hasWorkspace}>
+              2
+            </span>
+            <span className="min-w-0">
+              <span className="card-title">{t("stepFolderTitle")}</span>
+              <span className="card-text">{t("stepFolderAction")}</span>
+            </span>
           </button>
-        </div>
-        {ready && (
-          <p className="mt-5 text-xs text-[var(--color-text-dim)]">{t("onboardingReady")}</p>
         )}
       </div>
+
+      {ready && hasWorkspace && (
+        <p className={cn("mt-4 text-[length:var(--fs-xs)] text-[var(--color-text-mute)]")}>
+          {t("stepStartText")}
+        </p>
+      )}
     </div>
   );
 }

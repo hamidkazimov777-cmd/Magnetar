@@ -1,5 +1,17 @@
-import { invoke, Channel } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke, Channel } from "@tauri-apps/api/core";
 import type { ChatMessage, Connection, ModelInfo, StreamEvent } from "./types";
+
+/** True when we are running inside the Tauri shell (not a plain browser tab). */
+export const HAS_BACKEND =
+  typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+/** Outside Tauri every command would hang forever, leaving the UI stuck on a
+ *  loading state. Fail fast with a clear message instead. */
+function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  if (!HAS_BACKEND)
+    return Promise.reject(new Error(`Backend unavailable (${cmd})`));
+  return tauriInvoke<T>(cmd, args);
+}
 
 export interface ToolDef {
   name: string;
@@ -139,6 +151,10 @@ export const api = {
     }),
   toolWriteFile: (path: string, content: string) =>
     invoke<number>("tool_write_file", { path, content }),
+  listProjectFiles: (root: string) =>
+    invoke<string[]>("list_project_files", { root }),
+  toolDeleteFile: (path: string) =>
+    invoke<void>("tool_delete_file", { path }),
   editorReadFile: (path: string) =>
     invoke<string>("editor_read_file", { path }),
   indexBuild: (root: string) =>
@@ -159,10 +175,10 @@ export const api = {
       oldString,
       newString,
     }),
-  toolRunBash: (command: string, cwd?: string) =>
+  toolRunBash: (command: string, cwd?: string, timeoutSecs?: number) =>
     invoke<{ stdout: string; stderr: string; code: number; truncated: boolean }>(
       "tool_run_bash",
-      { command, cwd: cwd ?? null },
+      { command, cwd: cwd ?? null, timeoutSecs: timeoutSecs ?? null },
     ),
   toolKillBash: (pid?: number) =>
     invoke<void>("tool_kill_bash", { pid: pid ?? null }),

@@ -2,7 +2,83 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { db, type SessionMetaRow } from "./db";
 import type { Lang } from "./i18n";
+import { applyTheme, type Theme } from "./theme";
 import type { ChatMessage, Connection, ModelInfo, Session } from "./types";
+
+/** Which panel the activity bar shows in the primary (left) sidebar. */
+export type SidePanel =
+  | "explorer"
+  | "chats"
+  | "git"
+  | "search"
+  | "changes"
+  | "problems"
+  | "project";
+
+/** What the center area renders: the code editor, or a full-width page. */
+export type CenterView =
+  | "editor"
+  | "settings"
+  | "projects"
+  | "roadmap"
+  | "knowledge"
+  | "timeline"
+  | "subscriptions";
+
+/** An open editor tab. Tabs live in the store so the agent and Source Control
+ *  can open things too. `kind: "diff"` renders a git diff instead of an editor. */
+export interface EditorTab {
+  path: string;
+  name: string;
+  kind?: "file" | "diff";
+  /** Diff tabs only: show the staged diff rather than the working-tree diff. */
+  staged?: boolean;
+}
+
+/** Sentinel title for a freshly created chat; the UI renders it translated. */
+export const NEW_CHAT_TITLE = "__new_chat__";
+
+/** One file mutation made by the agent, kept so the user can review and undo.
+ *  `before === null` means the agent created the file. */
+export interface FileChange {
+  id: string;
+  path: string;
+  before: string | null;
+  after: string;
+  tool: "write_file" | "edit_file";
+  at: number;
+  reverted?: boolean;
+}
+
+/** User-facing behaviour switches, surfaced in Settings. */
+export interface Prefs {
+  /** Apply agent edits immediately and let the user review/undo (VS Code-like),
+   *  instead of blocking on a confirm dialog for every single write. */
+  autoApplyEdits: boolean;
+  /** Shell commands are never auto-approved unless the user opts in. */
+  confirmBash: boolean;
+  /** How many tool-use rounds the agent may take before stopping. */
+  agentMaxSteps: number;
+  /** Seconds a single shell command may run (npm install/cargo build are slow). */
+  bashTimeoutSecs: number;
+  /** Model used for background work: project memory, handoff notes, knowledge
+   *  graph. Undefined = pick automatically. Explicit is safer — the automatic
+   *  pick can land on a catalogue entry the token cannot actually call. */
+  memoryModel?: { connectionId: string; model: string };
+  editorFontSize: number;
+  editorWordWrap: boolean;
+  editorMinimap: boolean;
+}
+
+export const DEFAULT_PREFS: Prefs = {
+  autoApplyEdits: true,
+  confirmBash: true,
+  agentMaxSteps: 40,
+  bashTimeoutSecs: 600,
+  editorFontSize: 13,
+  editorWordWrap: false,
+  editorMinimap: true,
+};
 
 const uid = () =>
   (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)) as string;
@@ -39,8 +115,61 @@ interface State {
   setAgentMode: (on: boolean) => void;
   workspaceRoot?: string;
   setWorkspaceRoot: (path: string | undefined) => void;
+  /** Most-recently opened folders, newest first (for the welcome screen). */
+  recentFolders: string[];
+  closeFolder: () => void;
+
+  prefs: Prefs;
+  setPrefs: (patch: Partial<Prefs>) => void;
+
+  /** Agent file mutations awaiting review. */
+  changes: FileChange[];
+  addChange: (c: Omit<FileChange, "id" | "at">) => void;
+  markReverted: (id: string) => void;
+  clearChanges: () => void;
   lang: Lang;
   setLang: (lang: Lang) => void;
+  /** Light / dark / follow-OS. Light is the default on a fresh install. */
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
+  /** Learn mode: hover any control to get a short explanation of what it does
+   *  and when it runs. Off by default; toggled by the "i" button in the rail. */
+  hintsOn: boolean;
+  toggleHints: (v?: boolean) => void;
+  /** Per subscription provider: present a desktop Safari user agent in the
+   *  embedded browser. Needed to get Google sign-in through, but it can break
+   *  the app afterwards (ChatGPT's composer), so it is a per-site switch. */
+  subsSafariUa: Record<string, boolean>;
+  setSubsSafariUa: (providerId: string, on: boolean) => void;
+
+  // --- Workspace shell -----------------------------------------------------
+  /** False until the user finishes (or skips) the first-launch walkthrough. */
+  onboarded: boolean;
+  setOnboarded: (v: boolean) => void;
+  sidePanel: SidePanel;
+  sidebarOpen: boolean;
+  setSidePanel: (p: SidePanel) => void;
+  toggleSidebar: () => void;
+  centerView: CenterView;
+  setCenterView: (v: CenterView) => void;
+  terminalOpen: boolean;
+  toggleTerminal: (v?: boolean) => void;
+  agentPanelOpen: boolean;
+  toggleAgentPanel: (v?: boolean) => void;
+  /** Bumped to force the file tree to re-read from disk (after agent edits). */
+  explorerVersion: number;
+  refreshExplorer: () => void;
+  /** Git status letter per repo-relative path, for badges in the file tree. */
+  gitStatus: Record<string, string>;
+  setGitStatus: (map: Record<string, string>) => void;
+
+  // --- Editor tabs ---------------------------------------------------------
+  tabs: EditorTab[];
+  activeTabPath?: string;
+  openTab: (tab: EditorTab) => void;
+  closeTab: (path: string) => void;
+  closeAllTabs: () => void;
+  setActiveTab: (path: string) => void;
 
   sessions: Session[];
   activeSessionId?: string;
@@ -55,6 +184,28 @@ interface State {
   addProject: (p: import("./types").Project) => void;
   updateProject: (p: import("./types").Project) => void;
   deleteProject: (id: string) => void;
+  renameProject: (id: string, name: string) => void;
+
+  /** Audit trail of every background write to project memory. */
+  memoryLog: import("./types").MemoryEvent[];
+  logMemory: (
+    e: Omit<import("./types").MemoryEvent, "id" | "at">,
+  ) => void;
+  clearMemoryLog: () => void;
+
+  /** Line a newly opened tab should scroll to (set by Problems / Search).
+   *  The editor consumes and clears it once the file is on screen. */
+  pendingReveal?: { path: string; line: number; column?: number };
+  revealInFile: (path: string, line: number, column?: number) => void;
+  clearReveal: () => void;
+
+  /** Latest result per project check (types, lint, tests). */
+  checkRuns: Record<string, import("./problems").CheckRun>;
+  setCheckRun: (id: string, run: import("./problems").CheckRun) => void;
+
+  /** State of the code-search index for the open folder. */
+  indexState: { status: "unknown" | "building" | "ready" | "error"; files?: number; at?: number };
+  setIndexState: (s: State["indexState"]) => void;
 
   hydrate: () => Promise<void>;
 
@@ -78,6 +229,43 @@ interface State {
   setMessageContent: (sessionId: string, messageId: string, content: string) => void;
   /** Persist a message's current in-memory content to the DB (e.g. after a stream ends). */
   persistMessage: (sessionId: string, messageId: string) => void;
+
+  // --- Agent run trace (transient: process, not canon — never persisted) ----
+  agentTrace: Record<string, import("./agent").AgentToolEvent[]>;
+  pushAgentEvent: (messageId: string, e: import("./agent").AgentToolEvent) => void;
+  clearAgentTrace: (messageId: string) => void;
+
+  // --- Last request error, shown as a retryable banner in the chat ----------
+  lastError?: { message: string; sessionId: string };
+  setLastError: (e: { message: string; sessionId: string } | undefined) => void;
+
+  /** Per-model health learned from real calls: models a token cannot use are
+   *  marked so the picker can warn instead of failing again. */
+  modelStatus: Record<string, "ok" | "denied">;
+  setModelStatus: (connectionId: string, model: string, status: "ok" | "denied") => void;
+  /** Whether a model really performs native function-calling. Learned from the
+   *  first agent turn: providers happily accept `tools` and then ignore them. */
+  modelTools: Record<string, "native" | "react">;
+  setModelTools: (connectionId: string, model: string, mode: "native" | "react") => void;
+
+  /** Why the last project-memory analysis failed (shown in the Explorer). */
+  memoryError?: string;
+  setMemoryError: (e: string | undefined) => void;
+
+  /** Exactly what was sent to the model as context on the last turn, so the
+   *  user can inspect it instead of guessing where an answer came from. */
+  lastContext?: { system: string; model: string; at: number };
+  setLastContext: (c: { system: string; model: string; at: number }) => void;
+
+  /** Set when the user approves shell commands for the rest of this session,
+   *  so a long build does not ask on every single command. Never persisted. */
+  trustCommands: boolean;
+  setTrustCommands: (v: boolean) => void;
+
+  /** One-shot text handed to the agent composer (e.g. "Run audit" → /cto). */
+  pendingPrompt?: string;
+  requestPrompt: (text: string) => void;
+  consumePrompt: () => string | undefined;
 }
 
 export const useStore = create<State>()(
@@ -88,9 +276,102 @@ export const useStore = create<State>()(
       adaptive: false,
       agentMode: false,
       setAgentMode: (on) => set({ agentMode: on }),
-      setWorkspaceRoot: (path) => set({ workspaceRoot: path }),
+      recentFolders: [],
+      setWorkspaceRoot: (path) =>
+        set((s) => ({
+          workspaceRoot: path,
+          recentFolders: path
+            ? [path, ...s.recentFolders.filter((p) => p !== path)].slice(0, 8)
+            : s.recentFolders,
+        })),
+      closeFolder: () =>
+        set({
+          workspaceRoot: undefined,
+          tabs: [],
+          activeTabPath: undefined,
+          changes: [],
+          activeProjectId: undefined,
+        }),
+
+      prefs: DEFAULT_PREFS,
+      setPrefs: (patch) => set((s) => ({ prefs: { ...s.prefs, ...patch } })),
+
+      changes: [],
+      addChange: (c) =>
+        set((s) => ({
+          changes: [
+            ...s.changes,
+            { ...c, id: uid(), at: Date.now() },
+          ],
+        })),
+      markReverted: (id) =>
+        set((s) => ({
+          changes: s.changes.map((c) => (c.id === id ? { ...c, reverted: true } : c)),
+        })),
+      clearChanges: () => set({ changes: [] }),
       lang: "ru",
       setLang: (lang) => set({ lang }),
+      theme: "light",
+      setTheme: (theme) => {
+        applyTheme(theme);
+        set({ theme });
+      },
+      hintsOn: false,
+      toggleHints: (v) => set((s) => ({ hintsOn: v ?? !s.hintsOn })),
+      // Gemini defaults to on: it is behind Google sign-in, which is exactly
+      // the flow the plain webview user agent gets refused for.
+      subsSafariUa: { gemini: true },
+      setSubsSafariUa: (providerId, on) =>
+        set((s) => ({ subsSafariUa: { ...s.subsSafariUa, [providerId]: on } })),
+
+      onboarded: false,
+      setOnboarded: (v) => set({ onboarded: v }),
+      sidePanel: "explorer",
+      sidebarOpen: true,
+      setSidePanel: (p) =>
+        set((s) => ({
+          sidePanel: p,
+          // Clicking the active icon collapses the panel, like VS Code.
+          sidebarOpen: s.sidePanel === p ? !s.sidebarOpen : true,
+        })),
+      toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+      centerView: "editor",
+      setCenterView: (v) =>
+        set(
+          // Project pages need a project selected — surface the picker with them.
+          v === "projects" || v === "roadmap" || v === "knowledge" || v === "timeline"
+            ? { centerView: v, sidePanel: "project", sidebarOpen: true }
+            : { centerView: v },
+        ),
+      terminalOpen: false,
+      toggleTerminal: (v) => set((s) => ({ terminalOpen: v ?? !s.terminalOpen })),
+      agentPanelOpen: true,
+      toggleAgentPanel: (v) =>
+        set((s) => ({ agentPanelOpen: v ?? !s.agentPanelOpen })),
+      explorerVersion: 0,
+      refreshExplorer: () => set((s) => ({ explorerVersion: s.explorerVersion + 1 })),
+      gitStatus: {},
+      setGitStatus: (map) => set({ gitStatus: map }),
+
+      tabs: [],
+      openTab: (tab) =>
+        set((s) => ({
+          tabs: s.tabs.some((x) => x.path === tab.path) ? s.tabs : [...s.tabs, tab],
+          activeTabPath: tab.path,
+          centerView: "editor",
+        })),
+      closeTab: (path) =>
+        set((s) => {
+          const idx = s.tabs.findIndex((x) => x.path === path);
+          const tabs = s.tabs.filter((x) => x.path !== path);
+          if (s.activeTabPath !== path) return { tabs };
+          // Focus the neighbour that takes the closed tab's place.
+          const next = tabs[Math.min(idx, tabs.length - 1)];
+          return { tabs, activeTabPath: next?.path };
+        }),
+      closeAllTabs: () => set({ tabs: [], activeTabPath: undefined }),
+      setActiveTab: (path) => set({ activeTabPath: path, centerView: "editor" }),
+
       sessions: [],
       projects: [],
       hydrated: false,
@@ -117,6 +398,9 @@ export const useStore = create<State>()(
               activeConnectionId: connections.some((c) => c.id === s.activeConnectionId)
                 ? s.activeConnectionId
                 : connections[0]?.id,
+              // An existing install is already set up — don't re-run the
+              // first-launch walkthrough on upgrade.
+              onboarded: s.onboarded || connections.length > 0,
             }));
           } else {
             // migrate whatever was persisted in localStorage
@@ -176,11 +460,34 @@ export const useStore = create<State>()(
         set({ projects });
       },
 
-      setActiveProject: (id) => set({ activeProjectId: id }),
+      // Selecting a project also re-points the current chat at it, as long as
+      // that chat is not already someone else's work. Without this the chat
+      // keeps whatever project it was born with (often none), and every
+      // memory-writing background task silently skips it.
+      setActiveProject: (id) =>
+        set((s) => {
+          if (!id) return { activeProjectId: undefined };
+          const cur = s.sessions.find((x) => x.id === s.activeSessionId);
+          const adoptable = cur && (!cur.projectId || cur.messages.length === 0);
+          if (!adoptable) return { activeProjectId: id };
+          const sessions = s.sessions.map((x) =>
+            x.id === cur.id ? { ...x, projectId: id, updatedAt: now() } : x,
+          );
+          persistMeta(sessions.find((x) => x.id === cur.id)!);
+          return { activeProjectId: id, sessions };
+        }),
 
       addProject: (p) => {
         void db.saveProject(p).catch(() => {});
         set((s) => ({ projects: [p, ...s.projects], activeProjectId: p.id }));
+      },
+
+      renameProject: (id, name) => {
+        const p = get().projects.find((x) => x.id === id);
+        if (!p || !name.trim()) return;
+        const next = { ...p, name: name.trim(), updatedAt: now() };
+        void db.saveProject(next).catch(() => {});
+        set((s) => ({ projects: s.projects.map((x) => (x.id === id ? next : x)) }));
       },
 
       updateProject: (p) => {
@@ -198,6 +505,29 @@ export const useStore = create<State>()(
           };
         });
       },
+
+      // The log is capped: it is a recent-activity feed, not an archive.
+      memoryLog: [],
+      logMemory: (e) =>
+        set((s) => ({
+          memoryLog: [{ ...e, id: uid(), at: Date.now() }, ...s.memoryLog].slice(0, 60),
+        })),
+      clearMemoryLog: () => set({ memoryLog: [] }),
+
+      // Opening the tab and asking for the line are one intent, so they are one
+      // action — otherwise the reveal races the file load.
+      revealInFile: (path, line, column) => {
+        get().openTab({ path, name: path.split(/[/\\]/).pop() ?? path });
+        set({ pendingReveal: { path, line, column } });
+      },
+      clearReveal: () => set({ pendingReveal: undefined }),
+
+      checkRuns: {},
+      setCheckRun: (id, run) =>
+        set((s) => ({ checkRuns: { ...s.checkRuns, [id]: run } })),
+
+      indexState: { status: "unknown" },
+      setIndexState: (indexState) => set({ indexState }),
 
       setModels: (connectionId, models) =>
         set((s) => ({ models: { ...s.models, [connectionId]: models } })),
@@ -271,7 +601,7 @@ export const useStore = create<State>()(
         const id = uid();
         const session: Session = {
           id,
-          title: "New chat",
+          title: NEW_CHAT_TITLE,
           messages: [],
           connectionId: get().activeConnectionId,
           model: get().activeModel,
@@ -317,8 +647,8 @@ export const useStore = create<State>()(
             if (sess.id !== sessionId) return sess;
             const messages = [...sess.messages, { ...m, id, createdAt }];
             const title =
-              sess.title === "New chat" && m.role === "user"
-                ? m.content.slice(0, 48) || "New chat"
+              sess.title === NEW_CHAT_TITLE && m.role === "user"
+                ? m.content.slice(0, 48) || NEW_CHAT_TITLE
                 : sess.title;
             touched = { ...sess, messages, title, updatedAt: createdAt };
             return touched;
@@ -375,6 +705,48 @@ export const useStore = create<State>()(
         get().persistMessage(sessionId, messageId);
       },
 
+      agentTrace: {},
+      pushAgentEvent: (messageId, e) =>
+        set((s) => {
+          const prev = s.agentTrace[messageId] ?? [];
+          // A second event for the same call id replaces the running placeholder.
+          const idx = prev.findIndex((x) => x.id === e.id);
+          const next = idx >= 0 ? prev.map((x, i) => (i === idx ? e : x)) : [...prev, e];
+          return { agentTrace: { ...s.agentTrace, [messageId]: next } };
+        }),
+      clearAgentTrace: (messageId) =>
+        set((s) => {
+          const { [messageId]: _drop, ...rest } = s.agentTrace;
+          return { agentTrace: rest };
+        }),
+
+      setLastError: (e) => set({ lastError: e }),
+
+      modelStatus: {},
+      modelTools: {},
+      setModelTools: (connectionId, model, mode) =>
+        set((s) => ({
+          modelTools: { ...s.modelTools, [`${connectionId}::${model}`]: mode },
+        })),
+      setModelStatus: (connectionId, model, status) =>
+        set((s) => ({
+          modelStatus: { ...s.modelStatus, [`${connectionId}::${model}`]: status },
+        })),
+
+      setMemoryError: (e) => set({ memoryError: e }),
+
+      setLastContext: (c) => set({ lastContext: c }),
+
+      trustCommands: false,
+      setTrustCommands: (v) => set({ trustCommands: v }),
+
+      requestPrompt: (text) => set({ pendingPrompt: text, agentPanelOpen: true }),
+      consumePrompt: () => {
+        const p = get().pendingPrompt;
+        if (p) set({ pendingPrompt: undefined });
+        return p;
+      },
+
       persistMessage: (sessionId, messageId) => {
         const sess = get().sessions.find((x) => x.id === sessionId);
         const msg = sess?.messages.find((m) => m.id === messageId);
@@ -401,8 +773,23 @@ export const useStore = create<State>()(
         adaptive: s.adaptive,
         agentMode: s.agentMode,
         workspaceRoot: s.workspaceRoot,
+        recentFolders: s.recentFolders,
+        prefs: s.prefs,
+        modelStatus: s.modelStatus,
+        modelTools: s.modelTools,
         lang: s.lang,
+        theme: s.theme,
+        hintsOn: s.hintsOn,
+        subsSafariUa: s.subsSafariUa,
         activeProjectId: s.activeProjectId,
+        onboarded: s.onboarded,
+        sidePanel: s.sidePanel,
+        sidebarOpen: s.sidebarOpen,
+        agentPanelOpen: s.agentPanelOpen,
+        terminalOpen: s.terminalOpen,
+        tabs: s.tabs,
+        activeTabPath: s.activeTabPath,
+        memoryLog: s.memoryLog.slice(0, 30),
       }),
     },
   ),

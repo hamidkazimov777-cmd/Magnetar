@@ -1,28 +1,31 @@
-import { useRef, useState } from "react";
-import { ArrowUp, Square, Paperclip, X, FileImage } from "lucide-react";
-import { useT } from "../lib/i18n";
-import { cn } from "../lib/cn";
+import { useEffect, useRef, useState } from "react";
+import { ArrowUp, Square, Paperclip, X, FileText } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { readFile } from "@tauri-apps/plugin-fs";
+import { useT } from "../lib/i18n";
+import { cn } from "../lib/cn";
 import { api } from "../lib/api";
+import { useStore } from "../lib/store";
+import { SLASH_COMMANDS, projectFiles, rankFiles } from "../lib/mentions";
+import { AutocompletePopup, type AutocompleteItem } from "./composer/AutocompletePopup";
 import type { Attachment } from "../lib/types";
 
-function arrayBufferToBase64(buffer: ArrayBuffer) {
+function arrayBufferToBase64(bytes: Uint8Array) {
   let binary = "";
-  const bytes = new Uint8Array(buffer);
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
+  const CHUNK = 0x8000; // avoid blowing the argument limit on big files
+  for (let i = 0; i < bytes.length; i += CHUNK)
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
   return btoa(binary);
 }
 
 function getMimeType(path: string): string {
-  const ext = path.split('.').pop()?.toLowerCase();
-  if (ext === 'png') return 'image/png';
-  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
-  if (ext === 'webp') return 'image/webp';
-  if (ext === 'pdf') return 'application/pdf';
-  return 'application/octet-stream';
+  const ext = path.split(".").pop()?.toLowerCase();
+  if (ext === "png") return "image/png";
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if (ext === "webp") return "image/webp";
+  if (ext === "gif") return "image/gif";
+  if (ext === "pdf") return "application/pdf";
+  return "application/octet-stream";
 }
 
 export function Composer({
@@ -39,144 +42,305 @@ export function Composer({
   const t = useT();
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [dragging, setDragging] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
+  const pendingPrompt = useStore((s) => s.pendingPrompt);
+  const consumePrompt = useStore((s) => s.consumePrompt);
+  const workspaceRoot = useStore((s) => s.workspaceRoot);
+
+  /** Open autocomplete: `@` for files, `/` for commands. `start` is the index
+   *  of the trigger character so we can replace the token on pick. */
+  const [ac, setAc] = useState<{
+    kind: "file" | "command";
+    start: number;
+    query: string;
+  } | null>(null);
+  const [acItems, setAcItems] = useState<AutocompleteItem[]>([]);
+  const [acCursor, setAcCursor] = useState(0);
+  const [files, setFiles] = useState<string[]>([]);
+
+  // Warm the file list once a folder is open, so `@` is instant.
+  useEffect(() => {
+    if (!workspaceRoot) {
+      setFiles([]);
+      return;
+    }
+    void projectFiles().then(setFiles);
+  }, [workspaceRoot]);
+
+  // Another surface (e.g. "Run audit") can hand us a prompt to pre-fill.
+  useEffect(() => {
+    if (!pendingPrompt) return;
+    const injected = consumePrompt();
+    if (!injected) return;
+    setText(injected);
+    requestAnimationFrame(() => {
+      ref.current?.focus();
+      grow();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingPrompt]);
+
+  // Recompute visible suggestions whenever the trigger or its query changes.
+  useEffect(() => {
+    if (!ac) {
+      setAcItems([]);
+      return;
+    }
+    if (ac.kind === "command") {
+      const q = ac.query.toLowerCase();
+      setAcItems(
+        SLASH_COMMANDS.filter((c) => c.id.slice(1).startsWith(q)).map((c) => ({
+          value: c.insert,
+          label: c.id,
+          hint: t(c.descKey),
+        })),
+      );
+    } else {
+      setAcItems(
+        rankFiles(files, ac.query).map((path) => ({
+          value: `@${path} `,
+          label: path.split("/").pop() ?? path,
+          hint: path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : undefined,
+        })),
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ac, files]);
+
+  /** Work out whether the caret sits inside an `@…` or a leading `/…` token. */
+  const updateAutocomplete = (value: string, caret: number) => {
+    const before = value.slice(0, caret);
+
+    // Slash commands only make sense as the first thing in the message.
+    const slash = before.match(/^\/([a-z]*)$/i);
+    if (slash) {
+      setAc({ kind: "command", start: 0, query: slash[1] });
+      setAcCursor(0);
+      return;
+    }
+
+    // `@` mention: from the last @ preceded by whitespace or the start.
+    const at = before.lastIndexOf("@");
+    if (at >= 0 && (at === 0 || /\s/.test(before[at - 1]))) {
+      const token = before.slice(at + 1);
+      if (!/\s/.test(token)) {
+        setAc({ kind: "file", start: at, query: token });
+        setAcCursor(0);
+        return;
+      }
+    }
+    setAc(null);
+  };
 
   const grow = () => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 220) + "px";
+    el.style.height = Math.min(el.scrollHeight, 200) + "px";
+  };
+
+  /** Replace the trigger token with the chosen value. */
+  const applyPick = (item: AutocompleteItem) => {
+    if (!ac) return;
+    const el = ref.current;
+    const caret = el?.selectionStart ?? text.length;
+    const next = text.slice(0, ac.start) + item.value + text.slice(caret);
+    setText(next);
+    setAc(null);
+    requestAnimationFrame(() => {
+      if (!el) return;
+      const pos = ac.start + item.value.length;
+      el.focus();
+      el.setSelectionRange(pos, pos);
+      grow();
+    });
+  };
+
+  const addImageFromDataUrl = (dataUrl: string, name: string) => {
+    const [header, base64] = dataUrl.split(",");
+    const mime = header.split(":")[1].split(";")[0];
+    setAttachments((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), type: "image", mimeType: mime, name, data: base64 },
+    ]);
+  };
+
+  /** Read files chosen from the picker: images inline, PDFs as extracted text. */
+  const ingestPaths = async (paths: string[]) => {
+    const next: Attachment[] = [];
+    for (const file of paths) {
+      const mime = getMimeType(file);
+      const name = file.split(/[/\\]/).pop() || file;
+      if (mime === "application/pdf") {
+        let extractedText = "";
+        try {
+          extractedText = await api.extractPdfText(file);
+        } catch {
+          /* unreadable PDF still attaches by name */
+        }
+        next.push({
+          id: crypto.randomUUID(),
+          type: "file",
+          mimeType: mime,
+          name,
+          path: file,
+          extractedText,
+        });
+      } else {
+        const contents = await readFile(file);
+        next.push({
+          id: crypto.randomUUID(),
+          type: "image",
+          mimeType: mime,
+          name,
+          data: arrayBufferToBase64(contents),
+        });
+      }
+    }
+    if (next.length) setAttachments((prev) => [...prev, ...next]);
   };
 
   const handleAttach = async () => {
     try {
       const selected = await open({
         multiple: true,
-        filters: [{
-          name: "Images & PDF",
-          extensions: ["png", "jpg", "jpeg", "webp", "gif", "pdf"]
-        }]
+        filters: [
+          { name: "Images & PDF", extensions: ["png", "jpg", "jpeg", "webp", "gif", "pdf"] },
+        ],
       });
-      if (selected && Array.isArray(selected)) {
-        const newAtts: Attachment[] = [];
-        for (const file of selected) {
-          const mime = getMimeType(file);
-          const name = file.split(/[/\\]/).pop() || file;
-          if (mime === "application/pdf") {
-            // Extract text locally so the model can read the PDF.
-            let extractedText = "";
-            try {
-              extractedText = await api.extractPdfText(file);
-            } catch (err) {
-              console.error("pdf extract failed", err);
-            }
-            newAtts.push({
-              id: crypto.randomUUID(),
-              type: "file",
-              mimeType: mime,
-              name,
-              path: file,
-              extractedText,
-            });
-          } else {
-            const contents = await readFile(file);
-            const base64 = arrayBufferToBase64(contents);
-            newAtts.push({
-              id: crypto.randomUUID(),
-              type: "image",
-              mimeType: mime,
-              name,
-              data: base64,
-            });
-          }
-        }
-        setAttachments(prev => [...prev, ...newAtts]);
-      }
-    } catch (e) {
-      console.error(e);
+      if (Array.isArray(selected)) await ingestPaths(selected);
+    } catch {
+      /* the user cancelled the dialog */
     }
   };
 
-  const removeAttachment = (id: string) => {
-    setAttachments(prev => prev.filter(a => a.id !== id));
-  };
+  const removeAttachment = (id: string) =>
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
 
   const submit = () => {
-    const t = text.trim();
-    if ((!t && attachments.length === 0) || disabled) return;
-    onSend(t, attachments);
+    const body = text.trim();
+    if ((!body && attachments.length === 0) || disabled) return;
+    onSend(body, attachments);
     setText("");
     setAttachments([]);
+    setAc(null);
     requestAnimationFrame(() => {
       if (ref.current) ref.current.style.height = "auto";
     });
   };
 
   const handlePaste = (e: React.ClipboardEvent) => {
-    const items = e.clipboardData.items;
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].type.indexOf("image") !== -1) {
-        const blob = items[i].getAsFile();
-        if (blob) {
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            if (event.target?.result) {
-              const dataUrl = event.target.result as string;
-              const [header, base64] = dataUrl.split(",");
-              const mime = header.split(":")[1].split(";")[0];
-              setAttachments(prev => [...prev, {
-                id: crypto.randomUUID(),
-                type: "image",
-                mimeType: mime,
-                name: `image_${Date.now()}.png`,
-                data: base64
-              }]);
-            }
-          };
-          reader.readAsDataURL(blob);
-        }
+    for (const item of Array.from(e.clipboardData.items)) {
+      if (!item.type.startsWith("image")) continue;
+      const blob = item.getAsFile();
+      if (!blob) continue;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        if (ev.target?.result)
+          addImageFromDataUrl(ev.target.result as string, `image_${Date.now()}.png`);
+      };
+      reader.readAsDataURL(blob);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const files = Array.from(e.dataTransfer.files ?? []);
+    for (const file of files) {
+      if (file.type.startsWith("image/")) {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          if (ev.target?.result)
+            addImageFromDataUrl(ev.target.result as string, file.name);
+        };
+        reader.readAsDataURL(file);
+      } else if (file.type === "application/pdf") {
+        // Tauri exposes a real path for dropped files; fall back to name only.
+        const path = (file as File & { path?: string }).path;
+        if (path) await ingestPaths([path]);
+        else
+          setAttachments((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              type: "file",
+              mimeType: file.type,
+              name: file.name,
+            },
+          ]);
       }
     }
   };
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 pb-5">
+    <div className="relative shrink-0 px-3 pb-3 pt-1">
+      {ac && (
+        <div className="absolute inset-x-3 bottom-[calc(100%-8px)]">
+          <AutocompletePopup
+            kind={ac.kind}
+            items={acItems}
+            cursor={acCursor}
+            onPick={applyPick}
+            onHover={setAcCursor}
+          />
+        </div>
+      )}
       <div
+        onDrop={handleDrop}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
         className={cn(
-          "flex flex-col rounded-2xl border border-[var(--color-border)]",
-          "bg-[var(--color-surface)] px-3 py-2.5 shadow-lg",
-          "focus-within:border-[var(--color-accent)]",
+          "flex flex-col rounded-[var(--r-lg)] border bg-[var(--color-bg)] px-2.5 py-2 transition-colors",
+          dragging
+            ? "border-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_8%,var(--color-bg))]"
+            : "border-[var(--color-border)] focus-within:border-[var(--color-accent)]",
         )}
       >
         {attachments.length > 0 && (
           <div className="flex flex-wrap gap-2 pb-2">
             {attachments.map((a) => (
-              <div key={a.id} className="relative group rounded-lg overflow-hidden border border-[var(--color-border)] bg-[var(--color-surface-2)]">
+              <div
+                key={a.id}
+                className="group/att relative overflow-hidden rounded-[var(--r-md)] border border-[var(--color-border)] bg-[var(--color-surface-2)]"
+                title={a.name}
+              >
                 {a.type === "image" && a.data ? (
-                  <img src={`data:${a.mimeType};base64,${a.data}`} alt={a.name} className="h-16 w-16 object-cover" />
+                  <img
+                    src={`data:${a.mimeType};base64,${a.data}`}
+                    alt={a.name}
+                    className="h-14 w-14 object-cover"
+                  />
                 ) : (
-                  <div className="flex h-16 w-16 items-center justify-center">
-                    <FileImage size={24} className="text-[var(--color-text-dim)]" />
+                  <div className="grid h-14 w-14 place-items-center">
+                    <FileText size={20} className="text-[var(--color-text-dim)]" />
                   </div>
                 )}
                 <button
                   onClick={() => removeAttachment(a.id)}
-                  className="absolute -top-1 -right-1 hidden group-hover:grid h-5 w-5 place-items-center rounded-full bg-black/60 text-white"
+                  title={t("removeAttachment")}
+                  className="absolute right-0.5 top-0.5 hidden h-5 w-5 place-items-center rounded-full bg-black/70 text-white group-hover/att:grid"
                 >
-                  <X size={12} />
+                  <X size={11} />
                 </button>
               </div>
             ))}
           </div>
         )}
-        <div className="flex items-end gap-2">
+
+        <div className="flex items-end gap-1.5">
           <button
             onClick={handleAttach}
             disabled={disabled}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-[var(--color-text-dim)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)] transition disabled:opacity-30"
-            title="Attach file"
+            className="icon-btn h-8 w-8 shrink-0"
+            title={t("attachFile")}
+            aria-label={t("attachFile")}
           >
-            <Paperclip size={18} />
+            <Paperclip size={17} />
           </button>
           <textarea
             ref={ref}
@@ -186,66 +350,70 @@ export function Composer({
             placeholder={disabled ? t("addConnFirst") : t("messagePlaceholder")}
             onChange={(e) => {
               setText(e.target.value);
+              updateAutocomplete(e.target.value, e.target.selectionStart ?? 0);
               grow();
             }}
+            onKeyUp={(e) => {
+              // Arrow keys move the caret without firing onChange.
+              if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key))
+                updateAutocomplete(text, e.currentTarget.selectionStart ?? 0);
+            }}
+            onBlur={() => setAc(null)}
             onKeyDown={(e) => {
+              if (ac && acItems.length > 0) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setAcCursor((c) => Math.min(c + 1, acItems.length - 1));
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setAcCursor((c) => Math.max(c - 1, 0));
+                  return;
+                }
+                if (e.key === "Enter" || e.key === "Tab") {
+                  e.preventDefault();
+                  applyPick(acItems[acCursor]);
+                  return;
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setAc(null);
+                  return;
+                }
+              }
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 submit();
               }
             }}
             onPaste={handlePaste}
-            onDrop={(e) => {
-              e.preventDefault();
-              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                const files = Array.from(e.dataTransfer.files);
-                for (const file of files) {
-                  if (file.type.startsWith("image/")) {
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                      if (event.target?.result) {
-                        const dataUrl = event.target.result as string;
-                        const [header, base64] = dataUrl.split(",");
-                        const mime = header.split(":")[1].split(";")[0];
-                        setAttachments(prev => [...prev, {
-                          id: crypto.randomUUID(),
-                          type: "image",
-                          mimeType: mime,
-                          name: file.name,
-                          data: base64
-                        }]);
-                      }
-                    };
-                    reader.readAsDataURL(file);
-                  }
-                }
-              }
-            }}
-            onDragOver={(e) => e.preventDefault()}
-            className="max-h-[220px] flex-1 resize-none bg-transparent py-1.5 text-[15px] leading-6 text-[var(--color-text)] outline-none placeholder:text-[var(--color-text-dim)] disabled:opacity-60"
+            className="max-h-[200px] flex-1 resize-none bg-transparent py-1.5 text-[length:var(--fs-md)] leading-6 text-[var(--color-text)] outline-none placeholder:text-[var(--color-text-mute)] disabled:opacity-60"
           />
           {streaming ? (
             <button
               onClick={onStop}
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[var(--color-surface-2)] text-[var(--color-text)] hover:opacity-80"
-              title="Stop"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-[var(--r-md)] bg-[var(--color-surface-3)] text-[var(--color-text)] transition hover:opacity-80"
+              title={t("stopGenerating")}
+              aria-label={t("stopGenerating")}
             >
-              <Square size={16} />
+              <Square size={14} />
             </button>
           ) : (
             <button
               onClick={submit}
               disabled={disabled || (!text.trim() && attachments.length === 0)}
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[var(--color-accent)] text-[var(--color-accent-fg)] transition disabled:cursor-not-allowed disabled:opacity-30"
-              title="Send"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-[var(--r-md)] bg-[var(--color-accent)] text-[var(--color-accent-fg)] transition hover:bg-[var(--color-accent-strong)] disabled:cursor-not-allowed disabled:opacity-30"
+              title={t("sendMessage")}
+              aria-label={t("sendMessage")}
             >
-              <ArrowUp size={18} />
+              <ArrowUp size={17} />
             </button>
           )}
         </div>
       </div>
-      <p className="mt-2 text-center text-xs text-[var(--color-text-dim)]">
-        {t("sendHint")}
+      <p className="mt-1.5 text-center text-[length:var(--fs-xs)] text-[var(--color-text-mute)]">
+        {workspaceRoot ? t("sendHintMentions") : t("sendHint")}
       </p>
     </div>
   );

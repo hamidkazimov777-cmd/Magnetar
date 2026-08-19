@@ -6,6 +6,7 @@
 //! any OpenAI-shaped endpoint). GigaChat and custom/self-hosted are laid into
 //! the architecture and filled in on later phases.
 
+pub mod anthropic;
 pub mod gigachat;
 pub mod openai_compat;
 
@@ -40,6 +41,8 @@ impl serde::Serialize for ProviderError {
 pub enum ProviderKind {
     OpenaiCompat,
     Gigachat,
+    /// Native Claude API — not OpenAI-shaped (x-api-key, /v1/messages).
+    Anthropic,
     Custom,
 }
 
@@ -175,6 +178,7 @@ pub fn build_provider(
             openai_compat::OpenAiCompat::new(conn.clone(), api_key),
         )),
         ProviderKind::Gigachat => Ok(Box::new(gigachat::GigaChat::new(conn.clone(), api_key)?)),
+        ProviderKind::Anthropic => Ok(Box::new(anthropic::Anthropic::new(conn.clone(), api_key))),
         // Custom/self-hosted: wired but hidden in the UI for now.
         ProviderKind::Custom => Err(ProviderError::NotImplemented),
     }

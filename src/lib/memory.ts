@@ -16,15 +16,38 @@ function stripJson(s: string): string {
  *  analysis) so we don't burn the expensive model on housekeeping. */
 export function cheapModel(): { connection: Connection; model: string } | null {
   const st = useStore.getState();
+
+  // 1. An explicit choice always wins — this is what Settings sets.
+  const pinned = st.prefs?.memoryModel;
+  if (pinned) {
+    const conn = st.connections.find((c) => c.id === pinned.connectionId);
+    if (conn) return { connection: conn, model: pinned.model };
+  }
+
+  const usable = (connId: string, modelId: string) =>
+    // Never re-pick a model the provider already refused (403/404), and only
+    // consider connections whose catalogue loaded (i.e. the key works).
+    st.modelStatus?.[`${connId}::${modelId}`] !== "denied";
+
+  // 2. Otherwise look for a small/cheap model, skipping known-bad ones.
   const cheapRe = /(haiku|mini|nano|flash|lite|small|8b|7b|1\.5b|3b)/i;
   for (const conn of st.connections) {
     for (const m of st.models[conn.id] ?? []) {
-      if (cheapRe.test(m.id)) return { connection: conn, model: m.id };
+      if (cheapRe.test(m.id) && usable(conn.id, m.id))
+        return { connection: conn, model: m.id };
     }
   }
-  // Fallback: the active connection/model.
-  const conn = st.connections.find((c) => c.id === st.activeConnectionId);
-  if (conn && st.activeModel) return { connection: conn, model: st.activeModel };
+
+  // 3. Fall back to the active model, then to anything that is not refused.
+  const active = st.connections.find((c) => c.id === st.activeConnectionId);
+  if (active && st.activeModel && usable(active.id, st.activeModel))
+    return { connection: active, model: st.activeModel };
+
+  for (const conn of st.connections) {
+    for (const m of st.models[conn.id] ?? []) {
+      if (usable(conn.id, m.id)) return { connection: conn, model: m.id };
+    }
+  }
   return null;
 }
 
@@ -42,21 +65,50 @@ const KEY_FILES = [
   "Gemfile",
 ];
 
+/** A folder IS a project. Opening one must select its project immediately —
+ *  before, and independently of, the audit that fills memory. Otherwise a
+ *  failed or slow audit leaves the workspace pointing at someone else's
+ *  project (or none), and every memory write goes to the wrong place. */
+export function activateProjectForPath(root: string): boolean {
+  const st = useStore.getState();
+  const existing = st.projects.find((p) => p.path === root);
+  if (!existing) return false;
+  st.setActiveProject(existing.id);
+  const sid = st.activeSessionId;
+  const session = st.sessions.find((x) => x.id === sid);
+  // Adopt the current chat only when it is not already someone else's work.
+  if (sid && session && (!session.projectId || session.messages.length === 0))
+    st.attachSessionToProject(sid, existing.id);
+  return true;
+}
+
 /** Onboarding: the app analyzes a project folder and fills long-term memory
  *  (Project Brain) — so a model can later work from memory instead of re-reading
  *  the whole project. Best-effort, uses the cheap model. */
 export async function analyzeFolderIntoMemory(
   root: string,
 ): Promise<Project | null> {
+  const store = useStore.getState();
+  store.setMemoryError(undefined);
+
   const picked = cheapModel();
-  if (!picked) return null;
+  if (!picked) {
+    // No usable model — say so instead of leaving an empty "New Project".
+    store.setMemoryError("memErrNoModel");
+    store.logMemory({ kind: "audit", status: "error", detail: "memErrNoModel" });
+    return null;
+  }
   const { connection, model } = picked;
 
   // Build the retrieval index too (used later by search_code).
+  store.setIndexState({ status: "building" });
   try {
-    await api.indexBuild(root);
-  } catch {
-    /* ignore */
+    const r = await api.indexBuild(root);
+    store.setIndexState({ status: "ready", files: r.files, at: Date.now() });
+    store.logMemory({ kind: "index", status: "ok", detail: String(r.files) });
+  } catch (e) {
+    store.setIndexState({ status: "error", at: Date.now() });
+    store.logMemory({ kind: "index", status: "error", detail: String(e).slice(0, 200) });
   }
 
   let signals = "";
@@ -97,10 +149,23 @@ export async function analyzeFolderIntoMemory(
       "You extract terse, information-dense project memory. Return raw JSON only.",
     );
     parsed = JSON.parse(stripJson(res));
-  } catch {
+  } catch (e) {
+    // The provider rejected the call (bad key, no access to this model, offline).
+    // Surface it — a silent failure here is what leaves memory empty.
+    store.setMemoryError(String(e).slice(0, 300));
+    store.logMemory({
+      kind: "audit",
+      status: "error",
+      detail: String(e).slice(0, 200),
+      model,
+    });
     return null;
   }
-  if (!parsed) return null;
+  if (!parsed) {
+    store.setMemoryError("memErrParse");
+    store.logMemory({ kind: "audit", status: "error", detail: "memErrParse", model });
+    return null;
+  }
 
   const st = useStore.getState();
   const existing = st.projects.find((p) => p.path === root);
@@ -132,21 +197,38 @@ export async function analyzeFolderIntoMemory(
   const sid = st.activeSessionId;
   if (sid) st.attachSessionToProject(sid, project.id);
 
+  st.logMemory({
+    kind: "audit",
+    status: "ok",
+    detail: project.name,
+    projectId: project.id,
+    model,
+  });
+
   return project;
 }
 
 /** On model switch: flush the just-done work into project memory as a terse
  *  "current state / next step" thesis, so the next model continues from memory
  *  without re-reading the transcript or the project. */
-export async function flushHandoffToMemory(): Promise<void> {
+export async function flushHandoffToMemory(
+  opts: { manual?: boolean } = {},
+): Promise<void> {
   const st = useStore.getState();
   const session = st.sessions.find((s) => s.id === st.activeSessionId);
-  if (!session?.projectId) return;
+
+  // A manual "save state" click must explain itself when it cannot run;
+  // the automatic path on model switch stays quiet about preconditions.
+  const bail = (detail: string) => {
+    if (opts.manual) st.logMemory({ kind: "handoff", status: "skipped", detail });
+  };
+
+  if (!session?.projectId) return bail("memLogNoProject");
   const msgs = session.messages.filter((m) => m.content);
-  if (msgs.length < 2) return;
+  if (msgs.length < 2) return bail("memLogTooShort");
 
   const picked = cheapModel();
-  if (!picked) return;
+  if (!picked) return bail("memErrNoModel");
 
   const recent = msgs
     .slice(-8)
@@ -169,25 +251,52 @@ export async function flushHandoffToMemory(): Promise<void> {
       [instruction],
       "You write terse engineering handoff notes.",
     );
-    if (!note.trim()) return;
+    if (!note.trim()) {
+      st.logMemory({ kind: "handoff", status: "error", detail: "memErrEmpty" });
+      return;
+    }
     const p = useStore.getState().projects.find((x) => x.id === session.projectId);
-    if (p)
+    if (p) {
       useStore
         .getState()
         .updateProject({ ...p, lastState: note.trim(), updatedAt: Date.now() });
-  } catch {
-    /* non-critical */
+      useStore.getState().logMemory({
+        kind: "handoff",
+        status: "ok",
+        projectId: p.id,
+        model: picked.model,
+      });
+    }
+  } catch (e) {
+    st.logMemory({
+      kind: "handoff",
+      status: "error",
+      detail: String(e).slice(0, 200),
+      model: picked.model,
+    });
   }
 }
 
 /** Build the project-memory preamble injected into the AGENT system prompt so
  *  the agent starts from memory (brain + last handoff), not a cold read. */
 export function buildProjectMemory(session: Session | undefined): string {
-  if (!session?.projectId) return "";
   const st = useStore.getState();
-  const p = st.projects.find((x) => x.id === session.projectId);
-  if (!p) return "";
-  const parts: string[] = [`\n## Project memory: ${p.name}`];
+  const parts: string[] = [];
+
+  // The open folder must reach the agent even when the project brain is empty —
+  // without a root, list_dir/read_file have no path to work from.
+  const root = st.workspaceRoot;
+  if (root)
+    parts.push(
+      `\n## Workspace root\n${root}\nAll relative paths resolve here. Use search_code to locate things, then read_file.`,
+    );
+
+  const p = session?.projectId
+    ? st.projects.find((x) => x.id === session.projectId)
+    : undefined;
+  if (!p) return parts.join("\n");
+
+  parts.push(`\n## Project memory: ${p.name}`);
   if (p.path) parts.push(`Path: ${p.path}`);
   if (p.description) parts.push(`Description: ${p.description}`);
   if (p.techStack) parts.push(`Tech stack:\n${p.techStack}`);
@@ -197,7 +306,11 @@ export function buildProjectMemory(session: Session | undefined): string {
   if (p.lastState)
     parts.push(`\n## Where the previous model stopped (continue from here)\n${p.lastState}`);
   parts.push(
-    `\nWork from this memory first. Prefer search_code / read_file(offset,limit) over reading whole files — save tokens.`,
+    `\nThis memory is background context about the project — it is NOT a substitute for the code.` +
+      ` To change or explain anything concrete, always locate it in the real files first` +
+      ` (search_code, then read_file). Never answer from memory alone about code you have not read,` +
+      ` and never claim a file or symbol exists without finding it.` +
+      ` Prefer read_file(offset,limit) over reading whole files to save tokens.`,
   );
   return parts.join("\n");
 }

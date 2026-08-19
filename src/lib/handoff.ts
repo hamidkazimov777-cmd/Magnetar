@@ -1,4 +1,6 @@
 import { api } from "./api";
+import { useStore } from "./store";
+import { cheapModel } from "./memory";
 import type { ChatMessage, Connection, Session } from "./types";
 
 /** Keep this many most-recent messages verbatim; older ones get compressed into
@@ -7,7 +9,9 @@ const TAIL = 4;
 /** Only bother summarizing once the transcript grows past this. */
 const SUMMARY_THRESHOLD = 10;
 
-const BASE_SYSTEM = `You are Magnetar, a local coding agent. You may be a different underlying model than the one that wrote earlier turns — the conversation is kept in a provider-neutral canon, so continue seamlessly regardless of which model spoke before. Be concise and precise.`;
+const BASE_SYSTEM = `You are Magnetar, a local coding agent. You may be a different underlying model than the one that wrote earlier turns — the conversation is kept in a provider-neutral canon, so continue seamlessly regardless of which model spoke before. Be concise and precise.
+
+You are currently in plain chat mode: you have NO tools and cannot read files, list folders, search the code, or run commands. If the user asks you to look at their project, files or folders, say plainly that this needs Agent mode and tell them to switch the "Agent" toggle on above the composer — do not pretend you inspected anything.`;
 
 /** Build what actually goes to the provider: a system prompt (identity + handoff
  *  summary + a note when the model just changed) and the message tail. When a
@@ -81,8 +85,6 @@ export async function buildOutgoing(
 /** Refresh the rolling summary when the transcript has grown. Uses a cheap,
  *  single-shot completion on the given connection/model. Best-effort: failures
  *  are swallowed so chat never breaks because summarization hiccuped. */
-import { useStore } from "./store";
-
 export async function maybeSummarize(
   session: Session,
   defaultConnection: Connection,
@@ -110,22 +112,12 @@ export async function maybeSummarize(
     createdAt: 0,
   };
 
-  // Find cheapest model for summarization
-  let useConn = defaultConnection;
-  let useModel = defaultModel;
-  const state = useStore.getState();
-  
-  outer: for (const conn of state.connections) {
-    const models = state.models[conn.id] || [];
-    for (const m of models) {
-      const id = m.id.toLowerCase();
-      if (id.includes("haiku") || id.includes("mini") || id.includes("lite") || id.includes("flash") || id.includes("8b")) {
-        useConn = conn;
-        useModel = m.id;
-        break outer;
-      }
-    }
-  }
+  // One shared picker for every background task (memory.ts): it honours the
+  // "background model" setting and skips models the provider already refused.
+  // This used to be a second, divergent copy of the same heuristic.
+  const picked = cheapModel();
+  const useConn = picked?.connection ?? defaultConnection;
+  const useModel = picked?.model ?? defaultModel;
 
   try {
     const summary = await api.complete(
@@ -134,9 +126,17 @@ export async function maybeSummarize(
       [instruction],
       "You write terse, information-dense engineering handoff notes.",
     );
-    if (summary.trim()) setSummary(summary.trim(), upToId);
-  } catch {
-    // ignore — non-critical
+    if (summary.trim()) {
+      setSummary(summary.trim(), upToId);
+      useStore.getState().logMemory({ kind: "summary", status: "ok", model: useModel });
+    }
+  } catch (e) {
+    useStore.getState().logMemory({
+      kind: "summary",
+      status: "error",
+      detail: String(e).slice(0, 200),
+      model: useModel,
+    });
   }
 
   // Also try to extract project brain updates if this session belongs to a project.
@@ -173,6 +173,13 @@ If there are no new updates for a category, omit the key or return null. Keep no
     try {
       parsed = JSON.parse(res.trim().replace(/^```json/, "").replace(/```$/, ""));
     } catch {
+      useStore.getState().logMemory({
+        kind: "decisions",
+        status: "error",
+        detail: "memErrParse",
+        projectId,
+        model,
+      });
       return;
     }
 
@@ -201,9 +208,21 @@ If there are no new updates for a category, omit the key or return null. Keep no
     if (updated) {
       newP.updatedAt = Date.now();
       useStore.getState().updateProject(newP);
+      useStore.getState().logMemory({
+        kind: "decisions",
+        status: "ok",
+        projectId,
+        model,
+      });
     }
-  } catch {
-    // ignore
+  } catch (e) {
+    useStore.getState().logMemory({
+      kind: "decisions",
+      status: "error",
+      detail: String(e).slice(0, 200),
+      projectId,
+      model,
+    });
   }
 }
 
@@ -225,6 +244,13 @@ Keep the extraction minimal and focused on important architecture, tools, or dom
     try {
       parsed = JSON.parse(res.trim().replace(/^```json/, "").replace(/```$/, ""));
     } catch {
+      useStore.getState().logMemory({
+        kind: "graph",
+        status: "error",
+        detail: "memErrParse",
+        projectId,
+        model,
+      });
       return;
     }
 
@@ -261,8 +287,23 @@ Keep the extraction minimal and focused on important architecture, tools, or dom
           }
         }
       }
+
+      if (parsed.nodes.length)
+        useStore.getState().logMemory({
+          kind: "graph",
+          status: "ok",
+          detail: String(parsed.nodes.length),
+          projectId,
+          model,
+        });
     }
-  } catch {
-    // ignore
+  } catch (e) {
+    useStore.getState().logMemory({
+      kind: "graph",
+      status: "error",
+      detail: String(e).slice(0, 200),
+      projectId,
+      model,
+    });
   }
 }
