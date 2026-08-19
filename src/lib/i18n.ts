@@ -65,6 +65,7 @@ const ru: Dict = {
 
   // --- Problems panel ------------------------------------------------------
   subsOpenExternal: "Открыть в системном браузере",
+  subsExternalOnly: "в браузере",
   subsBridgeHint:
     "Соберите нужные части контекста, проверьте текст ниже и скопируйте его в чат подписочной модели. Ответ можно вернуть обратно в память проекта.",
   subsPartMemory: "Память проекта",
@@ -568,6 +569,7 @@ const en: Dict = {
   memoryEmptyHint: "Memory is still empty. Open a folder and Magnetar will collect the project's facts.",
 
   subsOpenExternal: "Open in the system browser",
+  subsExternalOnly: "in browser",
   subsBridgeHint:
     "Pick the parts you need, check the text below, and paste it into your subscription chat. The reply can come back into project memory.",
   subsPartMemory: "Project memory",
@@ -1043,6 +1045,7 @@ const es: Dict = {
     "La memoria está vacía. Abre una carpeta y Magnetar reunirá los datos del proyecto.",
 
   subsOpenExternal: "Abrir en el navegador del sistema",
+  subsExternalOnly: "en el navegador",
   subsBridgeHint:
     "Elige las partes que necesitas, revisa el texto y pégalo en el chat de tu suscripción. La respuesta puede volver a la memoria del proyecto.",
   subsPartMemory: "Memoria del proyecto",

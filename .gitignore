@@ -28,3 +28,6 @@ dist-ssr
 
 # Claude Code local settings (machine-specific)
 .claude/settings.local.json
+
+# Local API keys (never commit)
+secrets.json

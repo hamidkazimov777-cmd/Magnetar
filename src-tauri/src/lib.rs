@@ -21,6 +21,9 @@ pub fn run() {
                 if let Err(e) = db::init(&dir) {
                     eprintln!("db init failed: {e}");
                 }
+                // The secret store needs the same directory; without this it
+                // has nowhere to write and every key lookup falls through.
+                keychain::init(&dir);
             }
             Ok(())
         })

@@ -362,15 +362,18 @@ function Fact({
   value?: string;
   emptyHint?: string;
 }) {
-  if (!value?.trim() && !emptyHint) return null;
+  // Defensive: older projects may hold a non-string here, written before the
+  // model output was flattened. Rendering must not be able to crash the panel.
+  const text = typeof value === "string" ? value : value == null ? "" : String(value);
+  if (!text.trim() && !emptyHint) return null;
   return (
     <div>
       <div className="text-[length:var(--fs-2xs)] font-semibold uppercase tracking-[0.07em] text-[var(--color-text-mute)]">
         {label}
       </div>
-      {value?.trim() ? (
+      {text.trim() ? (
         <p className="mt-1 line-clamp-4 text-[length:var(--fs-sm)] leading-[var(--lh-base)] text-[var(--color-text-dim)]">
-          {value}
+          {text}
         </p>
       ) : (
         // An empty field should say how it gets filled, not just sit blank.

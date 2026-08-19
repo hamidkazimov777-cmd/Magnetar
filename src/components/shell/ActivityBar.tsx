@@ -6,7 +6,7 @@ import {
   Search,
   BrainCircuit,
   History,
-  AlertCircle,
+  Zap,
   KeyRound,
   Settings,
   BookOpen,
@@ -65,7 +65,7 @@ export function ActivityBar({
     { id: "explorer", icon: Files, label: t("navExplorer"), hint: t("hintExplorer") },
     { id: "search", icon: Search, label: t("navSearch"), hint: t("hintSearch") },
     { id: "git", icon: GitBranch, label: t("navSourceControl"), hint: t("hintGit") },
-    { id: "problems", icon: AlertCircle, label: t("problemsTitle"), hint: t("hintProblems") },
+    { id: "problems", icon: Zap, label: t("problemsTitle"), hint: t("hintProblems") },
     { id: "changes", icon: History, label: t("navChanges"), hint: t("hintChanges") },
   ];
 

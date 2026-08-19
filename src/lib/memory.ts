@@ -5,6 +5,27 @@ import type { ChatMessage, Connection, Project, Session } from "./types";
 const uid = () =>
   (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)) as string;
 
+/** Memory fields are typed as strings, but they come from a model's JSON and it
+ *  routinely answers with arrays ("techStack": ["React","Tauri"]) or nested
+ *  objects. Storing those verbatim crashed every consumer that called .trim()
+ *  on them — the project panel died with "e?.trim is not a function". Flatten
+ *  everything to text at the boundary. */
+function asText(v: unknown): string | undefined {
+  if (v == null) return undefined;
+  if (typeof v === "string") return v;
+  if (Array.isArray(v))
+    return v
+      .map((x) => (typeof x === "string" ? x : asText(x)))
+      .filter(Boolean)
+      .map((line) => (line!.startsWith("-") ? line! : `- ${line}`))
+      .join("\n");
+  if (typeof v === "object")
+    return Object.entries(v as Record<string, unknown>)
+      .map(([k, val]) => `- ${k}: ${asText(val) ?? ""}`)
+      .join("\n");
+  return String(v);
+}
+
 function stripJson(s: string): string {
   const t = s.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   const a = t.indexOf("{");
@@ -140,7 +161,7 @@ export async function analyzeFolderIntoMemory(
     createdAt: 0,
   };
 
-  let parsed: Record<string, string> | null = null;
+  let parsed: Record<string, unknown> | null = null;
   try {
     const res = await api.complete(
       connection,
@@ -170,15 +191,15 @@ export async function analyzeFolderIntoMemory(
   const st = useStore.getState();
   const existing = st.projects.find((p) => p.path === root);
   const now = Date.now();
-  const name = parsed.name || root.split(/[/\\]/).pop() || "Project";
+  const name = asText(parsed.name) || root.split(/[/\\]/).pop() || "Project";
 
   const project: Project = {
     id: existing?.id ?? uid(),
     name,
-    description: parsed.description ?? existing?.description,
-    techStack: parsed.techStack ?? existing?.techStack,
-    architectureNotes: parsed.architectureNotes ?? existing?.architectureNotes,
-    codingStandards: parsed.codingStandards ?? existing?.codingStandards,
+    description: asText(parsed.description) ?? existing?.description,
+    techStack: asText(parsed.techStack) ?? existing?.techStack,
+    architectureNotes: asText(parsed.architectureNotes) ?? existing?.architectureNotes,
+    codingStandards: asText(parsed.codingStandards) ?? existing?.codingStandards,
     decisions: existing?.decisions,
     activeGoals: existing?.activeGoals,
     roadmap: existing?.roadmap,

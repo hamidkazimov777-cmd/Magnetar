@@ -146,6 +146,19 @@ export async function maybeSummarize(
   }
 }
 
+/** Same reason as memory.ts: the model may answer with arrays or objects, and
+ *  a non-string in a memory field crashes the panel that renders it. */
+function asText(v: unknown): string | undefined {
+  if (v == null) return undefined;
+  if (typeof v === "string") return v;
+  if (Array.isArray(v)) return v.map((x) => asText(x)).filter(Boolean).join("\n");
+  if (typeof v === "object")
+    return Object.entries(v as Record<string, unknown>)
+      .map(([k, val]) => `${k}: ${asText(val) ?? ""}`)
+      .join("\n");
+  return String(v);
+}
+
 async function maybeExtractProjectBrain(transcript: string, projectId: string, conn: Connection, model: string) {
   const p = useStore.getState().projects.find((x) => x.id === projectId);
   if (!p) return;
@@ -188,20 +201,24 @@ If there are no new updates for a category, omit the key or return null. Keep no
     let updated = false;
     const newP = { ...p };
     
-    if (parsed.techStack && !p.techStack?.includes(parsed.techStack)) {
-      newP.techStack = p.techStack ? `${p.techStack}\n- ${parsed.techStack}` : `- ${parsed.techStack}`;
+    const techStack = asText(parsed.techStack);
+    if (techStack && !p.techStack?.includes(techStack)) {
+      newP.techStack = p.techStack ? `${p.techStack}\n- ${techStack}` : `- ${techStack}`;
       updated = true;
     }
-    if (parsed.architectureNotes && !p.architectureNotes?.includes(parsed.architectureNotes)) {
-      newP.architectureNotes = p.architectureNotes ? `${p.architectureNotes}\n- ${parsed.architectureNotes}` : `- ${parsed.architectureNotes}`;
+    const architectureNotes = asText(parsed.architectureNotes);
+    if (architectureNotes && !p.architectureNotes?.includes(architectureNotes)) {
+      newP.architectureNotes = p.architectureNotes ? `${p.architectureNotes}\n- ${architectureNotes}` : `- ${architectureNotes}`;
       updated = true;
     }
-    if (parsed.codingStandards && !p.codingStandards?.includes(parsed.codingStandards)) {
-      newP.codingStandards = p.codingStandards ? `${p.codingStandards}\n- ${parsed.codingStandards}` : `- ${parsed.codingStandards}`;
+    const codingStandards = asText(parsed.codingStandards);
+    if (codingStandards && !p.codingStandards?.includes(codingStandards)) {
+      newP.codingStandards = p.codingStandards ? `${p.codingStandards}\n- ${codingStandards}` : `- ${codingStandards}`;
       updated = true;
     }
-    if (parsed.decisions && !p.decisions?.includes(parsed.decisions)) {
-      newP.decisions = p.decisions ? `${p.decisions}\n- ${parsed.decisions}` : `- ${parsed.decisions}`;
+    const decisions = asText(parsed.decisions);
+    if (decisions && !p.decisions?.includes(decisions)) {
+      newP.decisions = p.decisions ? `${p.decisions}\n- ${decisions}` : `- ${decisions}`;
       updated = true;
     }
 

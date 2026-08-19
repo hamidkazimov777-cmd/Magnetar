@@ -22,6 +22,14 @@ interface ProviderDef {
   name: string;
   url: string;
   color: string;
+  /** Open in the system browser instead of the embedded webview.
+   *
+   *  ChatGPT is the case this exists for: inside WKWebView it loads the shell
+   *  but its composer never becomes usable — with the Safari user agent and
+   *  without it alike. Rather than hand the user a window they cannot type in,
+   *  it opens in a real browser. The context bridge below is unaffected: it
+   *  moves text through the clipboard, not through the window. */
+  external?: boolean;
 }
 
 /** Google refuses OAuth from anything it recognises as an embedded webview
@@ -34,7 +42,7 @@ const DESKTOP_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15";
 
 const PROVIDERS: ProviderDef[] = [
-  { id: "chatgpt", name: "ChatGPT", url: "https://chatgpt.com", color: "#10a37f" },
+  { id: "chatgpt", name: "ChatGPT", url: "https://chatgpt.com", color: "#10a37f", external: true },
   { id: "claude", name: "Claude", url: "https://claude.ai", color: "#c96442" },
   { id: "gemini", name: "Gemini", url: "https://gemini.google.com/app", color: "#4285f4" },
   { id: "deepseek", name: "DeepSeek", url: "https://chat.deepseek.com", color: "#4d6bfe" },
@@ -131,11 +139,20 @@ export function SubscriptionsView() {
 
   const openProvider = async (p: ProviderDef) => {
     const { id, url, name } = p;
+    if (p.external) {
+      await openUrl(url).catch(() => {});
+      return;
+    }
     const label = `subs-${id}`;
     try {
       const existing = await WebviewWindow.getByLabel(label);
       if (existing) {
-        await existing.setFocus();
+        // setFocus() alone does nothing to a minimised window: it stays in the
+        // Dock and the card looks dead, with no way to get the window back.
+        // Un-minimise and show first, then focus.
+        await existing.unminimize().catch(() => {});
+        await existing.show().catch(() => {});
+        await existing.setFocus().catch(() => {});
         return;
       }
     } catch {
@@ -211,6 +228,11 @@ export function SubscriptionsView() {
                     <Globe size={18} />
                   </span>
                   <span className="text-[length:var(--fs-base)]">{p.name}</span>
+                  {p.external && (
+                    <span className="text-[length:var(--fs-2xs)] text-[var(--color-text-mute)]">
+                      {t("subsExternalOnly")}
+                    </span>
+                  )}
                 </button>
                 {/* Escape hatch: the embedded webview is not a full browser, and
                     some of these apps only behave in a real one. */}

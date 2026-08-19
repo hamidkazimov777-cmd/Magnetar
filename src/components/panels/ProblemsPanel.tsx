@@ -8,6 +8,7 @@ import {
   RefreshCw,
   ChevronRight,
   ChevronDown,
+  Zap,
 } from "lucide-react";
 import { useStore } from "../../lib/store";
 import { useT } from "../../lib/i18n";
@@ -70,7 +71,7 @@ export function ProblemsPanel() {
           <span className="panel-title flex-1">{t("problemsTitle")}</span>
         </header>
         <EmptyState
-          icon={AlertCircle}
+          icon={Zap}
           title={t("explorerNoFolder")}
           text={t("problemsNoFolderHint")}
           action={{

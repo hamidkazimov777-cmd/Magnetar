@@ -6,7 +6,7 @@ import {
   TerminalSquare,
   Bot,
   Command,
-  CircleAlert,
+  Zap,
 } from "lucide-react";
 import { api } from "../../lib/api";
 import { useStore } from "../../lib/store";
@@ -147,7 +147,7 @@ function ProblemsItem() {
 
   return (
     <Item
-      icon={CircleAlert}
+      icon={Zap}
       label={ran ? `${errors} · ${warnings}` : t("problemsTitle")}
       title={t("problemsTitle")}
       onClick={() => setSidePanel("problems")}
