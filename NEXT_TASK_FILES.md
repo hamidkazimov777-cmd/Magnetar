@@ -1,7 +1,7 @@
 # Magnetar — состояние проекта для следующего ИИ
 
 > Прочитай этот файл + последние записи `HANDOFF.md` — и за несколько минут
-> поймёшь текущее состояние. Актуально на **2026-08-19** (после Записи 42).
+> поймёшь текущее состояние. Актуально на **2026-08-19** (после Записи 43).
 >
 > Правило: код изменён → этот файл и `HANDOFF.md` обновлены. Работа без
 > обновлённой документации считается незавершённой. В `HANDOFF.md` только
@@ -86,6 +86,10 @@ Tauri v2 (Rust) + React 19 + TypeScript + Tailwind v4 + zustand + SQLite
     перебивает `@layer base`, поэтому покраска `body` там ломала фон приложения.
 20. **Safari-UA в подписках — per-site, не глобально** (`store.subsSafariUa`).
     Он нужен для входа через Google, но ломает композер ChatGPT. См. Запись 42.
+21. **Буфер обмена — только через `lib/clipboard.ts::copyText()`**, и результат
+    обязан быть виден пользователю. `navigator.clipboard` в webview отказывает
+    без user gesture; прежний код глотал отказ в `console.error`, и кнопка
+    «Скопировать контекст» молча не делала ничего (Запись 43).
 
 ---
 
@@ -172,6 +176,7 @@ ActivityBar (48px) │ Primary panel │ Центр (редактор/стран
 | `lib/memory.ts` | Анализ папки в память, флаш состояния (`{manual:true}` для кнопки), `activateProjectForPath`, `cheapModel` |
 | `lib/problems.ts` | `discoverChecks` (из package.json / Cargo.toml), `runCheck`, `parseProblems` (tsc, ESLint, cargo, generic) |
 | `lib/theme.ts` / `lib/useTheme.ts` / `lib/hljs-theme.ts` | Тема: применение к `<html>`, хук текущей палитры, подсветка кода под тему |
+| `lib/clipboard.ts` | `copyText()` с fallback на `execCommand` и честным результатом |
 | `lib/adaptive.ts` | Подбор модели под запрос |
 | `lib/api.ts` / `lib/db.ts` | Обёртки над Tauri-командами |
 | `src/index.css` | Дизайн-система: токены + `@layer components` |

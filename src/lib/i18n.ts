@@ -65,6 +65,15 @@ const ru: Dict = {
 
   // --- Problems panel ------------------------------------------------------
   subsOpenExternal: "Открыть в системном браузере",
+  subsBridgeHint:
+    "Соберите нужные части контекста, проверьте текст ниже и скопируйте его в чат подписочной модели. Ответ можно вернуть обратно в память проекта.",
+  subsPartMemory: "Память проекта",
+  subsPartTasks: "Открытые задачи",
+  subsPartSummary: "Резюме чата",
+  subsPartRecent: "Последние сообщения",
+  subsChars: "{n} символов",
+  subsNoProject: "Проект не выбран — память в выгрузку не попадёт",
+  subsCopyFailed: "Скопировать не удалось. Выделите текст выше и скопируйте вручную.",
   subsSafariUa: "Режим совместимости (Safari) — нужен для входа через Google",
   subsSafariUaHint:
     "Значок щита включает режим Safari: он нужен, чтобы Google пустил вас во встроенном окне. После входа его лучше выключить — с ним ChatGPT грузится, но не даёт печатать. Если сайт всё равно капризничает, откройте его в системном браузере.",
@@ -559,6 +568,15 @@ const en: Dict = {
   memoryEmptyHint: "Memory is still empty. Open a folder and Magnetar will collect the project's facts.",
 
   subsOpenExternal: "Open in the system browser",
+  subsBridgeHint:
+    "Pick the parts you need, check the text below, and paste it into your subscription chat. The reply can come back into project memory.",
+  subsPartMemory: "Project memory",
+  subsPartTasks: "Open tasks",
+  subsPartSummary: "Chat summary",
+  subsPartRecent: "Recent messages",
+  subsChars: "{n} characters",
+  subsNoProject: "No project selected — memory will not be included",
+  subsCopyFailed: "Copy failed. Select the text above and copy it by hand.",
   subsSafariUa: "Compatibility mode (Safari) — needed for Google sign-in",
   subsSafariUaHint:
     "The shield turns on Safari mode, which is what gets Google sign-in through in the embedded window. Turn it back off afterwards: with it on, ChatGPT loads but will not let you type. If a site still misbehaves, open it in the system browser.",
@@ -1025,6 +1043,15 @@ const es: Dict = {
     "La memoria está vacía. Abre una carpeta y Magnetar reunirá los datos del proyecto.",
 
   subsOpenExternal: "Abrir en el navegador del sistema",
+  subsBridgeHint:
+    "Elige las partes que necesitas, revisa el texto y pégalo en el chat de tu suscripción. La respuesta puede volver a la memoria del proyecto.",
+  subsPartMemory: "Memoria del proyecto",
+  subsPartTasks: "Tareas abiertas",
+  subsPartSummary: "Resumen del chat",
+  subsPartRecent: "Mensajes recientes",
+  subsChars: "{n} caracteres",
+  subsNoProject: "Ningún proyecto seleccionado: la memoria no se incluirá",
+  subsCopyFailed: "No se pudo copiar. Selecciona el texto y cópialo a mano.",
   subsSafariUa: "Modo de compatibilidad (Safari), necesario para entrar con Google",
   subsSafariUaHint:
     "El escudo activa el modo Safari, necesario para el acceso con Google en la ventana integrada. Desactívalo después: con él, ChatGPT carga pero no deja escribir. Si el sitio sigue fallando, ábrelo en el navegador del sistema.",

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Globe,
   Copy,
@@ -7,12 +7,14 @@ import {
   ArrowDownToLine,
   ExternalLink,
   ShieldCheck,
+  Plus,
 } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useStore } from "../lib/store";
 import { db } from "../lib/db";
 import { useT } from "../lib/i18n";
+import { copyText } from "../lib/clipboard";
 import { LogoMark } from "./Logo";
 
 interface ProviderDef {
@@ -38,25 +40,46 @@ const PROVIDERS: ProviderDef[] = [
   { id: "deepseek", name: "DeepSeek", url: "https://chat.deepseek.com", color: "#4d6bfe" },
 ];
 
+/** Which slices of context to export. The whole point of the bridge is pasting
+ *  into someone else's chat window, where length costs you — so this is a
+ *  choice, not a fixed dump. */
+export interface ContextParts {
+  memory: boolean;
+  tasks: boolean;
+  summary: boolean;
+  recent: boolean;
+}
+
+const DEFAULT_PARTS: ContextParts = {
+  memory: true,
+  tasks: true,
+  summary: true,
+  recent: false,
+};
+
 /** Build a portable project brief the user can paste into a subscription AI. */
-async function buildProjectContext(): Promise<string> {
+async function buildProjectContext(parts: ContextParts): Promise<string> {
   const st = useStore.getState();
   const p = st.projects.find((x) => x.id === st.activeProjectId);
   const session = st.sessions.find((s) => s.id === st.activeSessionId);
-  const parts: string[] = ["# Project context (exported from Magnetar)"];
+  const out: string[] = ["# Project context (exported from Magnetar)"];
 
-  if (p) {
-    parts.push(`## Project: ${p.name}`);
-    if (p.description) parts.push(`Description: ${p.description}`);
-    if (p.techStack) parts.push(`Tech stack:\n${p.techStack}`);
-    if (p.architectureNotes) parts.push(`Architecture:\n${p.architectureNotes}`);
-    if (p.decisions) parts.push(`Key decisions:\n${p.decisions}`);
-    if (p.codingStandards) parts.push(`Coding standards:\n${p.codingStandards}`);
+  if (p && parts.memory) {
+    out.push(`## Project: ${p.name}`);
+    if (p.description) out.push(`Description: ${p.description}`);
+    if (p.techStack) out.push(`Tech stack:\n${p.techStack}`);
+    if (p.architectureNotes) out.push(`Architecture:\n${p.architectureNotes}`);
+    if (p.decisions) out.push(`Key decisions:\n${p.decisions}`);
+    if (p.codingStandards) out.push(`Coding standards:\n${p.codingStandards}`);
+    if (p.lastState) out.push(`Where we stopped:\n${p.lastState}`);
+  }
+
+  if (p && parts.tasks) {
     try {
       const tasks = await db.listTasks(p.id);
       const open = tasks.filter((t) => (t.status || "").toUpperCase() !== "DONE");
       if (open.length)
-        parts.push(
+        out.push(
           `## Open tasks\n${open.map((t) => `- [${t.status}] ${t.title}`).join("\n")}`,
         );
     } catch {
@@ -64,29 +87,47 @@ async function buildProjectContext(): Promise<string> {
     }
   }
 
-  if (session?.summary) parts.push(`## Conversation summary so far\n${session.summary}`);
-  if (session) {
+  if (parts.summary && session?.summary)
+    out.push(`## Conversation summary so far\n${session.summary}`);
+
+  if (parts.recent && session) {
     const tail = session.messages
       .slice(-6)
       .filter((m) => m.content)
       .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
       .join("\n\n");
-    if (tail) parts.push(`## Recent messages\n${tail}`);
+    if (tail) out.push(`## Recent messages\n${tail}`);
   }
 
-  parts.push(
+  out.push(
     "\n---\nUse this context to continue the work. Reply with your analysis or changes.",
   );
-  return parts.join("\n\n");
+  return out.join("\n\n");
 }
 
 export function SubscriptionsView() {
   const t = useT();
   const safariUa = useStore((s) => s.subsSafariUa);
   const setSafariUa = useStore((s) => s.setSubsSafariUa);
-  const [copied, setCopied] = useState(false);
+  const [parts, setParts] = useState<ContextParts>(DEFAULT_PARTS);
+  const [preview, setPreview] = useState("");
+  const [copied, setCopied] = useState<"idle" | "ok" | "fail">("idle");
   const [reply, setReply] = useState("");
   const [imported, setImported] = useState(false);
+
+  // Rebuild the preview whenever the selection changes. Seeing the payload is
+  // half the feature: it is what tells you whether memory is empty before you
+  // paste an empty brief into someone else's chat.
+  const projects = useStore((s) => s.projects);
+  const activeProjectId = useStore((s) => s.activeProjectId);
+  const sessions = useStore((s) => s.sessions);
+  useEffect(() => {
+    let alive = true;
+    void buildProjectContext(parts).then((text) => alive && setPreview(text));
+    return () => {
+      alive = false;
+    };
+  }, [parts, projects, activeProjectId, sessions]);
 
   const openProvider = async (p: ProviderDef) => {
     const { id, url, name } = p;
@@ -111,14 +152,11 @@ export function SubscriptionsView() {
   };
 
   const copyContext = async () => {
-    const ctx = await buildProjectContext();
-    try {
-      await navigator.clipboard.writeText(ctx);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch (e) {
-      console.error(e);
-    }
+    // Report the real outcome. The old version swallowed a clipboard rejection
+    // into console.error, so the button silently did nothing.
+    const ok = await copyText(preview);
+    setCopied(ok ? "ok" : "fail");
+    setTimeout(() => setCopied("idle"), 2500);
   };
 
   const importReply = () => {
@@ -204,14 +242,63 @@ export function SubscriptionsView() {
 
         {/* Context bridge */}
         <div className="panel space-y-4 p-5">
-          <div className="text-[length:var(--fs-md)] font-semibold">
-            {t("subsBridgeTitle")}
+          <div>
+            <div className="text-[length:var(--fs-md)] font-semibold">
+              {t("subsBridgeTitle")}
+            </div>
+            <p className="mt-1 text-[length:var(--fs-xs)] leading-relaxed text-[var(--color-text-mute)]">
+              {t("subsBridgeHint")}
+            </p>
           </div>
 
-          <button onClick={copyContext} className="btn btn-primary">
-            {copied ? <Check size={16} /> : <Copy size={16} />}
-            {copied ? t("subsCopied") : t("subsCopyContext")}
-          </button>
+          {/* Pick what goes in */}
+          <div className="flex flex-wrap gap-1.5">
+            {(
+              [
+                ["memory", t("subsPartMemory")],
+                ["tasks", t("subsPartTasks")],
+                ["summary", t("subsPartSummary")],
+                ["recent", t("subsPartRecent")],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                className="toggle-pill"
+                data-on={parts[key]}
+                onClick={() => setParts((v) => ({ ...v, [key]: !v[key] }))}
+              >
+                {parts[key] ? <Check size={12} /> : <Plus size={12} />}
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Show the payload: selectable, so it is copyable by hand too */}
+          <div>
+            <textarea
+              readOnly
+              value={preview}
+              rows={8}
+              onFocus={(e) => e.currentTarget.select()}
+              className="input font-mono text-[length:var(--fs-xs)] leading-relaxed"
+            />
+            <div className="mt-1 flex items-center justify-between text-[length:var(--fs-2xs)] text-[var(--color-text-mute)]">
+              <span>{t("subsChars", { n: String(preview.length) })}</span>
+              {!activeProjectId && <span>{t("subsNoProject")}</span>}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button onClick={copyContext} className="btn btn-primary">
+              {copied === "ok" ? <Check size={16} /> : <Copy size={16} />}
+              {copied === "ok" ? t("subsCopied") : t("subsCopyContext")}
+            </button>
+            {copied === "fail" && (
+              <span className="text-[length:var(--fs-xs)] text-[var(--color-danger)]">
+                {t("subsCopyFailed")}
+              </span>
+            )}
+          </div>
 
           <div className="space-y-2">
             <div className="flex items-center gap-1.5 text-[length:var(--fs-base)] text-[var(--color-text-dim)]">
