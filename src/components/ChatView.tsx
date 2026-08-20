@@ -19,10 +19,12 @@ import { buildCatalog, recommend, type Recommendation } from "../lib/adaptive";
 import { buildOutgoing, maybeSummarize } from "../lib/handoff";
 import { runAgent, AGENT_SYSTEM } from "../lib/agent";
 import { buildProjectMemory } from "../lib/memory";
+import type { AskRequest } from "../lib/agent";
 import { buildMentionContext, expandSlash } from "../lib/mentions";
 import { LogoMark } from "./Logo";
 import { Hint } from "./ui/Hint";
 import { ToolPreview } from "./ToolPreview";
+import { AskDialog } from "./AskDialog";
 import { useT } from "../lib/i18n";
 import { Composer } from "./Composer";
 import { Message } from "./Message";
@@ -76,6 +78,12 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     name: string;
     args: Record<string, unknown>;
     resolve: (ok: boolean) => void;
+  } | null>(null);
+  /** A choice the agent has put to the user mid-run. Blocking, like confirm —
+   *  the whole point is that it arrives at the moment of the decision. */
+  const [ask, setAsk] = useState<{
+    req: AskRequest;
+    resolve: (answer: string) => void;
   } | null>(null);
   const stopRef = useRef<null | (() => void)>(null);
   const agentCancelRef = useRef(false);
@@ -219,6 +227,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
         {
           confirm: (name, args) =>
             new Promise<boolean>((resolve) => setConfirm({ name, args, resolve })),
+          ask: (req) => new Promise<string>((resolve) => setAsk({ req, resolve })),
           onText: (d) => appendToMessage(sessionId!, assistantId, d),
           onReasoning: (d) =>
             useStore.getState().appendReasoning(sessionId!, assistantId, d),
@@ -544,6 +553,8 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
           </DialogContent>
         </Dialog>
       )}
+
+      {ask && <AskDialog req={ask.req} onAnswer={(a) => { ask.resolve(a); setAsk(null); }} />}
 
       {confirm && (
         <Dialog

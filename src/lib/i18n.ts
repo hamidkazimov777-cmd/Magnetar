@@ -94,6 +94,12 @@ const ru: Dict = {
   decisionByUser: "решил пользователь",
   decisionByAgent: "решение агента",
   decisionByLegacy: "старая заметка",
+  askTitle: "Агент спрашивает",
+  askSubtitle: "Заметный выбор — ответ попадёт в журнал решений",
+  askRecommends: "агент предлагает",
+  askPlaceholder: "Свой ответ",
+  askAnswer: "Ответить",
+  askDecideYourself: "Решай сам",
   memoryEmptyHint: "Память пока пуста. Откройте папку — Magnetar соберёт факты о проекте.",
 
   // --- Problems panel ------------------------------------------------------
@@ -652,6 +658,12 @@ const en: Dict = {
   decisionByUser: "decided by you",
   decisionByAgent: "decided with the agent",
   decisionByLegacy: "older note",
+  askTitle: "The agent is asking",
+  askSubtitle: "A notable choice — your answer goes into the decision log",
+  askRecommends: "the agent suggests",
+  askPlaceholder: "Your own answer",
+  askAnswer: "Answer",
+  askDecideYourself: "Decide yourself",
   memoryEmptyHint: "Memory is still empty. Open a folder and Magnetar will collect the project's facts.",
 
   modelToolsReset: "Reset tool mode — it will be detected again on the next agent run",
@@ -1180,6 +1192,12 @@ const es: Dict = {
   decisionByUser: "lo decidiste tú",
   decisionByAgent: "decidido con el agente",
   decisionByLegacy: "nota antigua",
+  askTitle: "El agente pregunta",
+  askSubtitle: "Una elección importante — tu respuesta irá al registro de decisiones",
+  askRecommends: "el agente sugiere",
+  askPlaceholder: "Tu propia respuesta",
+  askAnswer: "Responder",
+  askDecideYourself: "Decide tú mismo",
   memoryEmptyHint:
     "La memoria está vacía. Abre una carpeta y Magnetar reunirá los datos del proyecto.",
 

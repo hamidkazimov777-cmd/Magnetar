@@ -1,5 +1,6 @@
 import { api, type ToolDef } from "./api";
 import { useStore } from "./store";
+import { recordDecision } from "./decisions";
 import { alwaysConfirm, checkLoop, newLoopWatch } from "./guards";
 import { tr } from "./i18n";
 import type { ChatMessage, Connection } from "./types";
@@ -89,6 +90,24 @@ export const AGENT_TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "ask_decision",
+    description:
+      "Ask the user to settle a notable choice before you build on it — which library, which data schema, which approach. Use it when the choice would be expensive to reverse and the project's memory does not already answer it; do NOT use it for ordinary steps you can just take. The answer is recorded in the project's decision log, with your question as the context, so it survives this conversation.",
+    parameters: {
+      type: "object",
+      properties: {
+        question: { type: "string", description: "The choice, in one sentence" },
+        options: {
+          type: "array",
+          description: "The options you are weighing (optional)",
+          items: { type: "string" },
+        },
+        recommendation: { type: "string", description: "What you would pick, and why (optional)" },
+      },
+      required: ["question"],
+    },
+  },
+  {
     name: "attach_file",
     description: "Attach a file from the local filesystem to the chat so the user can view or save it. Use this to send generated images, documents, or data to the user.",
     parameters: {
@@ -136,6 +155,7 @@ How to work:
 - Long-running processes (servers, bots, watchers) never exit, so never run them in the foreground. Detach them completely — redirect ALL three streams: \`npm run dev > /tmp/dev.log 2>&1 < /dev/null &\`. Leaving stdout attached keeps the pipe open after the shell exits and the call appears to hang for minutes. Then wait a moment, read the log, and report what it says.
 - Speak while you work. Before a group of tool calls, say in one short line what you are about to do ("checking the logs", "fixing the config"); after they run, say in one line what you found. The user watches this live — a dozen silent calls in a row reads as a hang, not as focus. Do not re-describe the trace in detail, and do not pad.
 - If the user writes to you mid-run, answer them on your very next turn before continuing.
+- When you are about to make a choice that is expensive to reverse — a library, a data schema, an approach — and memory does not already settle it, call ask_decision with your options and your recommendation. One short question at the moment of choosing beats a rewrite later. Ordinary steps do not need permission.
 
 When the task is complete, end with:
 ## Handoff Note
@@ -176,6 +196,19 @@ function resolvePath(raw: unknown): string {
   }
   return `${root}/${p.replace(/^\.\//, "")}`;
 }
+
+/** What `ask_decision` needs from the UI. */
+export interface AskRequest {
+  question: string;
+  options: string[];
+  recommendation?: string;
+}
+
+/** The live question channel, installed by `runAgent` for the duration of a
+ *  run. `executeTool` is a plain function shared by both loops (native and
+ *  ReAct), so the bridge lives here rather than being threaded through every
+ *  call site. */
+let askUser: ((r: AskRequest) => Promise<string>) | null = null;
 
 /** Execute one tool and return a compact string result for the model. */
 export async function executeTool(name: string, args: ToolArgs): Promise<string> {
@@ -244,6 +277,39 @@ export async function executeTool(name: string, args: ToolArgs): Promise<string>
         );
         return `exit ${r.code}\n${r.stdout}${r.stderr ? `\n[stderr]\n${r.stderr}` : ""}`;
       }
+      case "ask_decision": {
+        const question = String(args.question ?? "").trim();
+        if (!question) return "error: question is required";
+        const options = Array.isArray(args.options)
+          ? args.options.map((o) => String(o)).filter(Boolean)
+          : [];
+        if (!askUser)
+          // No UI is listening (a headless run). Saying so is better than
+          // pretending the user answered.
+          return "No one is available to answer. Decide yourself, state the assumption, and continue.";
+
+        const answer = (
+          await askUser({
+            question,
+            options,
+            recommendation: args.recommendation ? String(args.recommendation) : undefined,
+          })
+        ).trim();
+        if (!answer) return "The user did not answer. Decide yourself, state the assumption, and continue.";
+
+        // The answer is the decision. Recording it here — not asking the model
+        // to remember to write it down — is what makes memory grow out of the
+        // work instead of out of good intentions.
+        const projectId = useStore.getState().activeProjectId;
+        if (projectId)
+          await recordDecision(projectId, {
+            title: answer.length < 120 ? `${question} → ${answer}` : question,
+            rationale: answer,
+            alternatives: options.filter((o) => o !== answer).join("; ") || undefined,
+            origin: "agent",
+          });
+        return `The user answered: ${answer}`;
+      }
       case "attach_file": {
         const result = await api.toolAttachFile(resolvePath(args.path));
         return result;
@@ -276,6 +342,9 @@ export interface AgentToolEvent {
 export interface AgentHandlers {
   /** Ask the user to approve a destructive tool call. */
   confirm: (name: string, args: ToolArgs) => Promise<boolean>;
+  /** Put a decision to the user mid-run. The answer becomes a decision entry.
+   *  Absent means nobody is watching, and the agent is told to decide itself. */
+  ask?: (r: AskRequest) => Promise<string>;
   /** Append visible assistant prose to the chat. */
   onText: (text: string) => void;
   /** Report a tool step starting/finishing (structured, rendered as a card). */
@@ -317,6 +386,24 @@ export async function runAgent(
   projectMemory = "",
 ): Promise<void> {
   const system = AGENT_SYSTEM + projectMemory;
+  // Open the question channel for the length of the run, and close it after —
+  // a stale bridge would let a finished run put a dialog on screen.
+  askUser = h.ask ?? null;
+  try {
+    return await dispatchAgent(connection, model, history, h, system, isTeam);
+  } finally {
+    askUser = null;
+  }
+}
+
+async function dispatchAgent(
+  connection: Connection,
+  model: string,
+  history: ChatMessage[],
+  h: AgentHandlers,
+  system: string,
+  isTeam: boolean,
+): Promise<void> {
   if (isTeam) {
     return runTeamAgent(connection, model, history, h, system);
   }
@@ -572,7 +659,8 @@ Available tools (Action Input is JSON):
 - write_file {"path":"...","content":"..."}
 - edit_file {"path":"...","old_string":"...","new_string":"..."}
 - run_bash {"command":"...","cwd"?:"..."}
-- attach_file {"path":"..."}`;
+- attach_file {"path":"..."}
+- ask_decision {"question":"...","options"?:["...","..."],"recommendation"?:"..."}  ← put a hard-to-reverse choice to the user; the answer is stored in the decision log`;
 
 interface ReActParse {
   thought?: string;
@@ -781,6 +869,8 @@ export function summarizeArgs(name: string, args: ToolArgs): string {
     case "edit_file":
     case "attach_file":
       return `→ ${args.path ?? ""}`;
+    case "ask_decision":
+      return `→ ${String(args.question ?? "").slice(0, 80)}`;
     case "grep":
       return `→ "${args.pattern ?? ""}"`;
     case "run_bash":

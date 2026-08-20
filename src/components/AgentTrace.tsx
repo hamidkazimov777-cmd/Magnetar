@@ -15,6 +15,7 @@ import {
   Ban,
   ChevronRight,
   Square,
+  MessageCircleQuestion,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { summarizeArgs, type AgentToolEvent } from "../lib/agent";
@@ -31,6 +32,7 @@ const ICONS: Record<string, LucideIcon> = {
   edit_file: FilePenLine,
   run_bash: TerminalSquare,
   attach_file: Paperclip,
+  ask_decision: MessageCircleQuestion,
 };
 
 /** The agent's run, rendered as a sequence of steps: which tool, on what, and
