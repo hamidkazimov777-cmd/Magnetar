@@ -272,12 +272,27 @@ pub fn run_bash(
     // must still be there. `read_to_string` would have handed us nothing.
     fn pump<R: Read + Send + 'static>(mut src: R, sink: Arc<Mutex<String>>) {
         let mut chunk = [0u8; 8192];
+        // A command that prints Russian (or any non-ASCII) fills the pipe with
+        // multi-byte characters, and an 8 KiB read lands mid-character sooner
+        // or later. Decoding per read would corrupt those letters.
+        let mut decoder = crate::utf8::Utf8Stream::new();
         loop {
             match src.read(&mut chunk) {
-                Ok(0) | Err(_) => return,
+                Ok(0) | Err(_) => {
+                    let rest = decoder.finish();
+                    if !rest.is_empty() {
+                        if let Ok(mut b) = sink.lock() {
+                            b.push_str(&rest);
+                        }
+                    }
+                    return;
+                }
                 Ok(n) => {
-                    if let Ok(mut b) = sink.lock() {
-                        b.push_str(&String::from_utf8_lossy(&chunk[..n]));
+                    let text = decoder.push(&chunk[..n]);
+                    if !text.is_empty() {
+                        if let Ok(mut b) = sink.lock() {
+                            b.push_str(&text);
+                        }
                     }
                 }
             }

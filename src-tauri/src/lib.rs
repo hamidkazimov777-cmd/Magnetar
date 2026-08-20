@@ -6,6 +6,7 @@ mod keychain;
 mod providers;
 mod pty;
 mod tools;
+mod utf8;
 mod workspace;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

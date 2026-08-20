@@ -308,6 +308,9 @@ impl Provider for GigaChat {
         // Same SSE shape as OpenAI: `data: {json}` lines, then `data: [DONE]`.
         let mut stream = resp.bytes_stream();
         let mut buf = String::new();
+        // Decode across chunk boundaries: a Cyrillic letter is two bytes and
+        // the network splits wherever it likes (see utf8.rs).
+        let mut decoder = crate::utf8::Utf8Stream::new();
         while let Some(chunk) = stream.next().await {
             if cancel.load(std::sync::atomic::Ordering::Relaxed) {
                 let _ = channel.send(StreamEvent::Done {
@@ -316,7 +319,7 @@ impl Provider for GigaChat {
                 return Ok(());
             }
             let bytes = chunk.map_err(|e| ProviderError::Network(e.to_string()))?;
-            buf.push_str(&String::from_utf8_lossy(&bytes));
+            buf.push_str(&decoder.push(&bytes));
             while let Some(nl) = buf.find('\n') {
                 let line = buf[..nl].trim().to_string();
                 buf.drain(..=nl);

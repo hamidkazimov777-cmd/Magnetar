@@ -55,11 +55,17 @@ pub fn spawn(
     // Stream output → frontend.
     std::thread::spawn(move || {
         let mut buf = [0u8; 4096];
+        // The terminal is the most likely place to split a character: reads are
+        // small and output is whatever the program prints, Cyrillic included.
+        let mut decoder = crate::utf8::Utf8Stream::new();
         loop {
             match reader.read(&mut buf) {
                 Ok(0) => break,
                 Ok(n) => {
-                    let s = String::from_utf8_lossy(&buf[..n]).into_owned();
+                    let s = decoder.push(&buf[..n]);
+                    if s.is_empty() {
+                        continue; // held back half a character; wait for the rest
+                    }
                     if on_data.send(s).is_err() {
                         break;
                     }
