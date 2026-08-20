@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import { useStore } from "../lib/store";
 import {
   ANTHROPIC_BASE,
+  KIMI_BASES,
   GIGACHAT_BASE,
   OPENAI_COMPAT_PRESETS,
   type ProviderKind,
@@ -51,13 +52,24 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     })();
   }, [connections]);
 
-  const selectKind = (k: ProviderKind) => {
-    setKind(k);
+  /** What the form offers. "kimi" is not a ProviderKind — Moonshot speaks
+   *  plain OpenAI — but it deserves its own button so the base URL and the
+   *  region are not something the user has to know. */
+  type FormKind = ProviderKind | "kimi";
+  const [formKind, setFormKind] = useState<FormKind>("openai_compat");
+  const [kimiRegion, setKimiRegion] = useState<keyof typeof KIMI_BASES>("global");
+
+  const selectKind = (k: FormKind) => {
+    setFormKind(k);
+    setKind(k === "kimi" ? "openai_compat" : k);
     setError(null);
     if (k === "gigachat") {
       setName("GigaChat");
     } else if (k === "anthropic") {
       setName("Claude");
+    } else if (k === "kimi") {
+      setName("Kimi");
+      setBaseUrl(KIMI_BASES[kimiRegion]);
     } else {
       setName("OpenRouter");
       setBaseUrl(OPENAI_COMPAT_PRESETS[0].baseUrl);
@@ -290,6 +302,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                 [
                   ["openai_compat", t("providerOpenai")],
                   ["anthropic", t("providerAnthropic")],
+                  ["kimi", t("providerKimi")],
                   ["gigachat", t("providerGiga")],
                 ] as const
               ).map(([k, label]) => (
@@ -297,14 +310,43 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                   key={k}
                   onClick={() => selectKind(k)}
                   className="toggle-pill flex-1 justify-center"
-                  data-on={kind === k}
+                  data-on={formKind === k}
                 >
                   {label}
                 </button>
               ))}
             </div>
 
-            {kind === "openai_compat" && (
+            {formKind === "kimi" && (
+              <div className="flex gap-1.5">
+                {(
+                  [
+                    ["global", t("kimiGlobal")],
+                    ["cn", t("kimiCn")],
+                  ] as const
+                ).map(([r, label]) => (
+                  <button
+                    key={r}
+                    onClick={() => {
+                      setKimiRegion(r);
+                      setBaseUrl(KIMI_BASES[r]);
+                    }}
+                    className="toggle-pill h-6 flex-1 justify-center text-[length:var(--fs-xs)]"
+                    data-on={kimiRegion === r}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {formKind === "kimi" && (
+              <p className="text-[length:var(--fs-xs)] leading-relaxed text-[var(--color-text-mute)]">
+                {t("kimiNote")}
+              </p>
+            )}
+
+            {formKind === "openai_compat" && (
               <div className="flex flex-wrap gap-1.5">
                 {OPENAI_COMPAT_PRESETS.map((p) => (
                   <button
@@ -330,7 +372,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               />
             </Field>
 
-            {kind === "openai_compat" && (
+            {formKind === "openai_compat" && (
               <Field label={t("fieldBaseUrl")}>
                 <input
                   value={baseUrl}

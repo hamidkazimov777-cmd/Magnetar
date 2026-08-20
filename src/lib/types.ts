@@ -19,6 +19,15 @@ export const GIGACHAT_BASE = "https://gigachat.devices.sberbank.ru/api/v1";
 /** Claude's native API. Not OpenAI-shaped: x-api-key auth, /v1/messages. */
 export const ANTHROPIC_BASE = "https://api.anthropic.com/v1";
 
+/** Moonshot (Kimi) speaks plain OpenAI, so it needs no adapter of its own —
+ *  only its own slot in the connection form, because the two regions are
+ *  separate services with separate keys and a key from one is rejected by the
+ *  other. Global is the default; .cn is for mainland accounts. */
+export const KIMI_BASES = {
+  global: "https://api.moonshot.ai/v1",
+  cn: "https://api.moonshot.cn/v1",
+} as const;
+
 export interface ModelInfo {
   id: string;
   label?: string | null;
@@ -168,7 +177,7 @@ export type StreamEvent =
 /** Preset base URLs for the "add connection" form. */
 export const OPENAI_COMPAT_PRESETS: { name: string; baseUrl: string }[] = [
   { name: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1" },
-  { name: "Moonshot / Kimi", baseUrl: "https://api.moonshot.cn/v1" },
+  { name: "Kimi (Moonshot)", baseUrl: "https://api.moonshot.ai/v1" },
   { name: "OpenAI", baseUrl: "https://api.openai.com/v1" },
   { name: "Together", baseUrl: "https://api.together.xyz/v1" },
   { name: "Local (LM Studio)", baseUrl: "http://localhost:1234/v1" },
