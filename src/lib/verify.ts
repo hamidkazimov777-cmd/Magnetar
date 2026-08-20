@@ -52,7 +52,25 @@ export async function verifyFact(
     } catch {
       return null; // A malformed pattern is our bug, not the project's.
     }
-    return re.test(content) ? settle("verified", "verified") : settle("refuted", "refuted");
+    if (re.test(content)) return settle("verified", "verified");
+
+    // Not in the file the fact named — but the model naming the wrong file is
+    // far more likely than the project not using what it plainly uses (a Rust
+    // crate was once looked for in package.json). Before calling a fact false,
+    // look for it across the project. Refuting a true fact is the worst
+    // outcome available here: it turns correct memory into a chore to review.
+    for (const alt of spec.pattern.split("|").slice(0, 3)) {
+      const needle = alt.replace(/\\(.)/g, "$1").trim();
+      if (needle.length < 3) continue;
+      try {
+        const hits = await api.toolGrep(needle, root);
+        if (hits.length) return settle("verified", "verified");
+      } catch {
+        // Search unavailable: staying silent beats guessing.
+        return null;
+      }
+    }
+    return settle("refuted", "refuted");
   }
 
   // spec.kind === "check": the fact holds while a project check passes.

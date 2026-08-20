@@ -98,6 +98,7 @@ function metaOf(s: Session): SessionMetaRow {
     summary: s.summary ?? null,
     summaryUpToId: s.summaryUpToId ?? null,
     projectId: s.projectId ?? null,
+    track: s.track ?? null,
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
   };
@@ -111,8 +112,14 @@ interface State {
   activeModel?: string;
   models: Record<string, ModelInfo[]>;
   adaptive: boolean;
+  /** Mirror of the active conversation's track, kept for the UI. The truth is
+   *  `session.track`; toggling this switches tracks, which is why turning the
+   *  agent off does not disarm the conversation you are in — it moves you to
+   *  the other one, with its own model and its own history. */
   agentMode: boolean;
   setAgentMode: (on: boolean) => void;
+  /** Move to a track, adopting (or starting) that track's conversation. */
+  switchTrack: (track: "agent" | "chat") => void;
   workspaceRoot?: string;
   setWorkspaceRoot: (path: string | undefined) => void;
   /** Most-recently opened folders, newest first (for the welcome screen). */
@@ -240,7 +247,7 @@ interface State {
 
   setSummary: (sessionId: string, summary: string, upToId: string) => void;
 
-  newSession: () => string;
+  newSession: (track?: "agent" | "chat") => string;
   selectSession: (id: string) => void;
   deleteSession: (id: string) => void;
   renameSession: (id: string, title: string) => void;
@@ -337,7 +344,7 @@ export const useStore = create<State>()(
       models: {},
       adaptive: false,
       agentMode: false,
-      setAgentMode: (on) => set({ agentMode: on }),
+      setAgentMode: (on) => get().switchTrack(on ? "agent" : "chat"),
       recentFolders: [],
       setWorkspaceRoot: (path) =>
         set((s) => ({
@@ -495,6 +502,9 @@ export const useStore = create<State>()(
                 summary: m.summary ?? undefined,
                 summaryUpToId: m.summaryUpToId ?? undefined,
                 projectId: m.projectId ?? undefined,
+                // Conversations that predate tracks are agent chats: that is
+                // all Magnetar had, and every one of them was tool-enabled.
+                track: (m.track as Session["track"]) ?? "agent",
                 createdAt: m.createdAt,
                 updatedAt: m.updatedAt,
                 messages: rows.map((r) => ({
@@ -523,8 +533,24 @@ export const useStore = create<State>()(
         try {
           const rows = await db.listFacts(projectId);
           set((s) => ({ facts: { ...s.facts, [projectId]: rows } }));
-        } catch {
-          /* an unreadable memory table must not take the panel down */
+          // Say how many arrived. An empty panel has two very different causes
+          // — nothing stored, or nothing delivered — and they need telling
+          // apart without a debugger.
+          get().logMemory({
+            kind: "audit",
+            status: "ok",
+            detail: `facts loaded: ${rows.length}`,
+            projectId,
+          });
+        } catch (e) {
+          // Never silent: a swallowed failure here looks exactly like a project
+          // that has no memory, and that is indistinguishable from a bug.
+          get().logMemory({
+            kind: "audit",
+            status: "error",
+            detail: `facts: ${String(e).slice(0, 160)}`,
+            projectId,
+          });
         }
       },
 
@@ -551,6 +577,12 @@ export const useStore = create<State>()(
             [projectId]: (s.facts[projectId] ?? []).filter((x) => x.id !== id),
           },
         }));
+        // A queued disagreement about a fact that no longer exists is nothing
+        // but noise in the pile — and a pile of noise is a pile nobody opens.
+        for (const d of get().divergences[projectId] ?? []) {
+          if (d.factId === id && d.status === "open")
+            get().saveDivergence({ ...d, status: "dismissed", resolvedAt: now() });
+        }
       },
 
       divergences: {},
@@ -559,8 +591,13 @@ export const useStore = create<State>()(
         try {
           const rows = await db.listDivergences(projectId);
           set((s) => ({ divergences: { ...s.divergences, [projectId]: rows } }));
-        } catch {
-          /* the queue is a convenience; it must not break the panel */
+        } catch (e) {
+          get().logMemory({
+            kind: "audit",
+            status: "error",
+            detail: `divergences: ${String(e).slice(0, 160)}`,
+            projectId,
+          });
         }
       },
 
@@ -585,8 +622,13 @@ export const useStore = create<State>()(
         try {
           const rows = await db.listDecisions(projectId);
           set((s) => ({ decisions: { ...s.decisions, [projectId]: rows } }));
-        } catch {
-          /* memory must not be able to take the panel down */
+        } catch (e) {
+          get().logMemory({
+            kind: "audit",
+            status: "error",
+            detail: `decisions: ${String(e).slice(0, 160)}`,
+            projectId,
+          });
         }
       },
 
@@ -743,7 +785,19 @@ export const useStore = create<State>()(
       setActiveConnection: (id) =>
         set({ activeConnectionId: id, activeModel: undefined }),
 
-      setActiveModel: (model) => set({ activeModel: model }),
+      // A model choice belongs to the conversation it was made in, so coming
+      // back to that conversation brings the model back with it.
+      setActiveModel: (model) => {
+        set({ activeModel: model });
+        const st = get();
+        const sess = st.sessions.find((x) => x.id === st.activeSessionId);
+        if (!sess) return;
+        const next = { ...sess, model, connectionId: st.activeConnectionId, updatedAt: now() };
+        set((s) => ({
+          sessions: s.sessions.map((x) => (x.id === next.id ? next : x)),
+        }));
+        persistMeta(next);
+      },
 
       setSummary: (sessionId, summary, upToId) =>
         set((s) => {
@@ -757,7 +811,7 @@ export const useStore = create<State>()(
           return { sessions };
         }),
 
-      newSession: () => {
+      newSession: (track) => {
         const id = uid();
         const session: Session = {
           id,
@@ -766,15 +820,55 @@ export const useStore = create<State>()(
           connectionId: get().activeConnectionId,
           model: get().activeModel,
           projectId: get().activeProjectId,
+          track: track ?? (get().agentMode ? "agent" : "chat"),
           createdAt: now(),
           updatedAt: now(),
         };
-        set((s) => ({ sessions: [session, ...s.sessions], activeSessionId: id }));
+        set((s) => ({
+          sessions: [session, ...s.sessions],
+          activeSessionId: id,
+          agentMode: session.track === "agent",
+        }));
         persistMeta(session);
         return id;
       },
 
-      selectSession: (id) => set({ activeSessionId: id }),
+      // Selecting a conversation restores everything about it: its track, and
+      // the model that was talking. Otherwise you return to a discussion held
+      // with one model and continue it, unannounced, with another.
+      selectSession: (id) =>
+        set((s) => {
+          const sess = s.sessions.find((x) => x.id === id);
+          if (!sess) return { activeSessionId: id };
+          return {
+            activeSessionId: id,
+            agentMode: sess.track !== "chat",
+            activeConnectionId: sess.connectionId ?? s.activeConnectionId,
+            activeModel: sess.model ?? s.activeModel,
+          };
+        }),
+
+      switchTrack: (track) => {
+        const st = get();
+        const current = st.sessions.find((x) => x.id === st.activeSessionId);
+        if (current?.track === track) {
+          set({ agentMode: track === "agent" });
+          return;
+        }
+
+        // Prefer this project's most recent conversation on that track — the
+        // discussion you were having is the one you want back, not a blank one.
+        const mine = st.sessions.find(
+          (x) =>
+            (x.track ?? "agent") === track &&
+            (!st.activeProjectId || x.projectId === st.activeProjectId),
+        );
+        if (mine) {
+          get().selectSession(mine.id);
+          return;
+        }
+        get().newSession(track);
+      },
 
       deleteSession: (id) => {
         void db.deleteSession(id).catch(() => {});

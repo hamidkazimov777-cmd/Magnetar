@@ -3,9 +3,10 @@ import { useStore } from "./store";
 import { recordDecision } from "./decisions";
 import { queueDivergence } from "./divergence";
 import { projectFacts } from "./facts";
+import { similarity } from "./relevance";
 import { alwaysConfirm, checkLoop, newLoopWatch } from "./guards";
 import { tr } from "./i18n";
-import type { ChatMessage, Connection } from "./types";
+import type { ChatMessage, Connection, MemoryFact } from "./types";
 
 /** Tools exposed to the model (OpenAI function schemas). */
 export const AGENT_TOOLS: ToolDef[] = [
@@ -337,10 +338,21 @@ export async function executeTool(name: string, args: ToolArgs): Promise<string>
         // accepting the note can rewrite that fact rather than leaving the
         // user to find it.
         const evidence = args.evidence ? String(args.evidence) : undefined;
-        const hay = `${summary} ${args.proposal ?? ""}`.toLowerCase();
-        const fact = projectFacts(projectId).find(
-          (f) => f.text.length > 12 && hay.includes(f.text.toLowerCase().slice(0, 40)),
-        );
+        // Match by overlap, not by substring: the model restates a fact in its
+        // own words ("memory claims keys live in the Keychain"), so demanding
+        // a verbatim prefix left every note unattached — and an unattached note
+        // cannot be applied, only read and dismissed.
+        const claim = `${summary} ${args.proposal ?? ""}`;
+        let fact: MemoryFact | undefined;
+        let best = 0;
+        for (const f of projectFacts(projectId)) {
+          const score = similarity(claim, f.text);
+          if (score > best) {
+            best = score;
+            fact = f;
+          }
+        }
+        if (best < 0.35) fact = undefined; // too vague to pin on one fact
         queueDivergence(projectId, {
           summary,
           factId: fact?.id,

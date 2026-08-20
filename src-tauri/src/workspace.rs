@@ -659,3 +659,160 @@ pub fn save_timeline_event(t: TimelineEvent) -> Result<(), String> {
         Ok(())
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One test, not five: `db::init` installs a process-wide connection, so
+    /// every test in this binary would share whatever the first one opened.
+    ///
+    /// What is being guarded here is the class of bug the compiler cannot see —
+    /// a column added to `projects` without shifting every positional index in
+    /// the SELECT and every `?N` in the INSERT. That silently reads the wrong
+    /// field rather than failing to build, which is exactly how `DirEntry`
+    /// started reporting folders as files.
+    #[test]
+    fn memory_tables_round_trip() {
+        let dir = std::env::temp_dir().join(format!("magnetar-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::db::init(&dir).expect("init");
+
+        let now = 1_700_000_000_000i64;
+        let project = Project {
+            id: "p1".into(),
+            name: "Test".into(),
+            description: Some("desc".into()),
+            tech_stack: Some("legacy stack".into()),
+            architecture_notes: None,
+            coding_standards: None,
+            decisions: Some("legacy decision".into()),
+            active_goals: None,
+            roadmap: None,
+            risks: None,
+            path: Some("/tmp/test".into()),
+            last_state: Some("stopped here".into()),
+            facts_migrated_at: Some(now),
+            decisions_migrated_at: None,
+            created_at: now,
+            updated_at: now,
+        };
+        save_project(project.clone()).expect("save project");
+
+        let back = list_projects().expect("list").into_iter().next().expect("one project");
+        // Every field must survive the round trip in its own column.
+        assert_eq!(back.name, "Test");
+        assert_eq!(back.path.as_deref(), Some("/tmp/test"));
+        assert_eq!(back.last_state.as_deref(), Some("stopped here"));
+        assert_eq!(back.facts_migrated_at, Some(now));
+        assert_eq!(back.decisions_migrated_at, None);
+        assert_eq!(back.created_at, now);
+        assert_eq!(back.updated_at, now);
+
+        // Facts: insert a batch, then update one of them by id.
+        let fact = MemoryFact {
+            id: "f1".into(),
+            project_id: "p1".into(),
+            kind: "stack".into(),
+            text: "SQLite via rusqlite".into(),
+            origin: "extracted".into(),
+            origin_detail: Some("Cargo.toml".into()),
+            verify: Some(r#"{"kind":"grep","pattern":"rusqlite","file":"Cargo.toml"}"#.into()),
+            status: "unverified".into(),
+            checked_at: None,
+            created_at: now,
+            updated_at: now,
+        };
+        save_facts(vec![
+            fact.clone(),
+            MemoryFact { id: "f2".into(), text: "second".into(), ..fact.clone() },
+        ])
+        .expect("save facts");
+        assert_eq!(list_facts("p1").expect("list facts").len(), 2);
+
+        save_facts(vec![MemoryFact {
+            status: "verified".into(),
+            checked_at: Some(now + 1),
+            ..fact.clone()
+        }])
+        .expect("update fact");
+        let facts = list_facts("p1").expect("list facts");
+        assert_eq!(facts.len(), 2, "updating by id must not insert a duplicate");
+        let f1 = facts.iter().find(|f| f.id == "f1").expect("f1");
+        assert_eq!(f1.status, "verified");
+        assert_eq!(f1.checked_at, Some(now + 1));
+        assert_eq!(f1.origin_detail.as_deref(), Some("Cargo.toml"));
+
+        delete_fact("f1").expect("delete");
+        let left = list_facts("p1").expect("list facts");
+        assert_eq!(left.len(), 1, "a deleted fact must stay deleted");
+        assert_eq!(left[0].id, "f2");
+
+        // Decisions and divergences: the same shape, and both must filter by
+        // project so one project's memory never leaks into another's prompt.
+        save_decision(Decision {
+            id: "d1".into(),
+            project_id: "p1".into(),
+            title: "Use SQLite".into(),
+            rationale: Some("local, no server".into()),
+            alternatives: Some("Postgres".into()),
+            files: Some(r#"["src-tauri/src/db.rs"]"#.into()),
+            commit_sha: Some("abc1234".into()),
+            origin: "user".into(),
+            created_at: now,
+        })
+        .expect("save decision");
+        save_decision(Decision {
+            id: "d2".into(),
+            project_id: "other".into(),
+            title: "Someone else's".into(),
+            rationale: None,
+            alternatives: None,
+            files: None,
+            commit_sha: None,
+            origin: "agent".into(),
+            created_at: now,
+        })
+        .expect("save decision 2");
+
+        let decisions = list_decisions("p1").expect("list decisions");
+        assert_eq!(decisions.len(), 1, "decisions must not cross projects");
+        assert_eq!(decisions[0].commit_sha.as_deref(), Some("abc1234"));
+        assert_eq!(decisions[0].alternatives.as_deref(), Some("Postgres"));
+
+        save_divergence(Divergence {
+            id: "v1".into(),
+            project_id: "p1".into(),
+            fact_id: Some("f2".into()),
+            summary: "memory says X, code shows Y".into(),
+            proposal: Some("Y".into()),
+            evidence: Some("src/main.rs:12".into()),
+            source: "agent".into(),
+            status: "open".into(),
+            created_at: now,
+            resolved_at: None,
+        })
+        .expect("save divergence");
+        save_divergence(Divergence {
+            id: "v1".into(),
+            project_id: "p1".into(),
+            fact_id: Some("f2".into()),
+            summary: "memory says X, code shows Y".into(),
+            proposal: Some("Y".into()),
+            evidence: Some("src/main.rs:12".into()),
+            source: "agent".into(),
+            status: "applied".into(),
+            created_at: now,
+            resolved_at: Some(now + 2),
+        })
+        .expect("resolve divergence");
+
+        let queue = list_divergences("p1").expect("list divergences");
+        assert_eq!(queue.len(), 1, "resolving must update, not duplicate");
+        assert_eq!(queue[0].status, "applied");
+        assert_eq!(queue[0].resolved_at, Some(now + 2));
+        assert_eq!(queue[0].fact_id.as_deref(), Some("f2"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

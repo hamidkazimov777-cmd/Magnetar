@@ -25,7 +25,7 @@ const STOP = new Set([
   "make","add","fix","use","del","los","las","por","para","que","una","uno",
 ]);
 
-function tokens(s: string): string[] {
+export function tokens(s: string): string[] {
   return (s.toLowerCase().match(/[\p{L}\p{N}_./-]{3,}/gu) ?? []).filter((w) => !STOP.has(w));
 }
 
@@ -43,6 +43,13 @@ function overlap(queryTokens: Set<string>, text: string): number {
       hits += 0.5;
   }
   return hits / Math.sqrt(t.length);
+}
+
+/** How strongly a piece of text matches a query, 0 upwards. Shared so that
+ *  matching a divergence to the fact it contradicts uses the same notion of
+ *  "about the same thing" as choosing what goes into the prompt. */
+export function similarity(query: string, text: string): number {
+  return overlap(new Set(tokens(query)), text);
 }
 
 export interface Picked {

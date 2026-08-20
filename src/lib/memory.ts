@@ -2,11 +2,16 @@ import { api } from "./api";
 import { projectDecisions, renderDecisions } from "./decisions";
 import { ensureProjectFacts, newFact, projectFacts, renderFacts } from "./facts";
 import { pickMemory } from "./relevance";
+import { buildVerify } from "./verifyspec";
+import { verifyProjectFacts } from "./verify";
 import { useStore } from "./store";
 import type { ChatMessage, Connection, FactKind, MemoryFact, Project, Session } from "./types";
 
 const uid = () =>
   (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)) as string;
+
+/** Provenance marker for the auto-written "where we stopped" fact. */
+const HANDOFF_SOURCE = "handoff";
 
 /** Memory fields are typed as strings, but they come from a model's JSON and it
  *  routinely answers with arrays ("techStack": ["React","Tauri"]) or nested
@@ -27,16 +32,6 @@ function asText(v: unknown): string | undefined {
       .map(([k, val]) => `- ${k}: ${asText(val) ?? ""}`)
       .join("\n");
   return String(v);
-}
-
-/** A stack claim like "SQLite via rusqlite (bundled)" is confirmed by finding
- *  its most distinctive word in the manifest it came from. The longest token is
- *  a crude but honest pick: it favours "rusqlite" over "via", and when it
- *  guesses wrong the fact simply stays unverified rather than being invented. */
-function grepPatternFor(text: string): string {
-  const tokens = text.match(/[A-Za-z][A-Za-z0-9_.-]{2,}/g) ?? [];
-  const best = tokens.sort((a, b) => b.length - a.length)[0] ?? text.trim();
-  return best.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function stripJson(s: string): string {
@@ -170,6 +165,35 @@ export async function analyzeFolderIntoMemory(
     }
   }
 
+  // No manifest, no README, nothing to read: asking a model anyway is how the
+  // memory of an empty folder filled up with a paraphrase of our own prompt —
+  // "Outputs raw JSON format" recorded as the project's stack. A weak model
+  // given no signals describes the instruction instead of the project. Empty
+  // memory is the honest answer here, and the whole point of this design.
+  if (sentFiles.length === 0) {
+    const st0 = useStore.getState();
+    const existing0 = st0.projects.find((p) => p.path === root);
+    const at = Date.now();
+    const project0: Project = existing0
+      ? { ...existing0, path: root, updatedAt: at }
+      : {
+          id: uid(),
+          name: root.split(/[/\\]/).pop() || "Project",
+          path: root,
+          // Nothing to migrate from, so the project starts out already migrated.
+          factsMigratedAt: at,
+          createdAt: at,
+          updatedAt: at,
+        };
+    if (existing0) st0.updateProject(project0);
+    else st0.addProject(project0);
+    st0.setActiveProject(project0.id);
+    const sid0 = st0.activeSessionId;
+    if (sid0) st0.attachSessionToProject(sid0, project0.id);
+    st0.logMemory({ kind: "audit", status: "skipped", detail: "memLogNoSignals" });
+    return project0;
+  }
+
   const instruction: ChatMessage = {
     id: "an",
     role: "user",
@@ -214,7 +238,11 @@ export async function analyzeFolderIntoMemory(
   const st = useStore.getState();
   const existing = st.projects.find((p) => p.path === root);
   const now = Date.now();
-  const name = asText(parsed.name) || root.split(/[/\\]/).pop() || "Project";
+  // Prefer what the model read out of a manifest, but never let it name a
+  // project after the task it was given.
+  const folderName = root.split(/[/\\]/).pop() || "Project";
+  const proposed = asText(parsed.name)?.trim();
+  const name = proposed && proposed.length < 60 ? proposed : folderName;
 
   const project: Project = {
     id: existing?.id ?? uid(),
@@ -264,17 +292,40 @@ export async function analyzeFolderIntoMemory(
         extracted ? source : model,
         // A stack claim tied to a manifest is checkable by grep — the verifier
         // runs it later, nothing here believes it yet.
-        extracted && kind === "stack"
-          ? { kind: "grep", pattern: grepPatternFor(text), file: source! }
-          : undefined,
+        buildVerify(extracted, kind, text, source),
       ),
     );
   }
+  // A re-analysis replaces what a previous analysis produced — it does not pile
+  // a second copy on top. Pressing the button three times used to mean three
+  // copies of every fact, in the panel and in the prompt.
+  //
+  // Only machine-written facts are cleared: what the user typed, what was
+  // migrated from the old notes, and the rolling handoff state were not written
+  // by this pass and are not ours to discard.
+  const stale = projectFacts(project.id).filter(
+    (f) =>
+      (f.origin === "extracted" || f.origin === "inferred") &&
+      f.originDetail !== HANDOFF_SOURCE,
+  );
+  for (const f of stale) st.deleteFact(project.id, f.id);
   if (rows.length) st.saveFacts(rows);
 
   // Attach the current chat to this project so it works from memory.
   const sid = st.activeSessionId;
   if (sid) st.attachSessionToProject(sid, project.id);
+
+  // Verify immediately, in the same pass. The check that runs on project open
+  // happened seconds ago, before these facts existed — leaving every freshly
+  // extracted fact sitting at "unverified" even though its evidence is one
+  // grep away. Producing a checkable fact and checking it are one act.
+  if (rows.length) {
+    try {
+      await verifyProjectFacts(root, project.id);
+    } catch {
+      /* verification reports its own failures through the memory log */
+    }
+  }
 
   st.logMemory({
     kind: "audit",
@@ -286,9 +337,6 @@ export async function analyzeFolderIntoMemory(
 
   return project;
 }
-
-/** Provenance marker for the auto-written "where we stopped" fact. */
-const HANDOFF_SOURCE = "handoff";
 
 /** On model switch: flush the just-done work into project memory as a terse
  *  "current state / next step" thesis, so the next model continues from memory
