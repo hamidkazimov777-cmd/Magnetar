@@ -29,7 +29,12 @@ pub struct ReadResult {
     pub bytes: usize,
 }
 
+/// Serialised as camelCase: the whole frontend reads `isDir`, and without this
+/// rename the field arrived as `is_dir`, came back `undefined`, and every
+/// directory in the tree rendered — and behaved — as a file. Clicking one tried
+/// to open it in the editor and failed with "Is a directory (os error 21)".
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DirEntry {
     pub name: String,
     pub is_dir: bool,

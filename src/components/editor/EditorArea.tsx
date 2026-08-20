@@ -48,10 +48,16 @@ export function EditorArea() {
         if (!cancelled) setBuffers((b) => ({ ...b, [active.path]: text }));
       })
       .catch((e) => {
-        if (!cancelled) {
-          setError(`${t("editorOpenError")}: ${String(e)}`);
-          setBuffers((b) => ({ ...b, [active.path]: "" }));
+        if (cancelled) return;
+        // A directory is not an editor error worth a red banner across the
+        // whole editor — just close the tab that should never have opened.
+        if (/is a directory/i.test(String(e))) {
+          loadedRef.current.delete(active.path);
+          closeTab(active.path);
+          return;
         }
+        setError(`${t("editorOpenError")}: ${String(e)}`);
+        setBuffers((b) => ({ ...b, [active.path]: "" }));
       });
     return () => {
       cancelled = true;
@@ -216,8 +222,10 @@ export function EditorArea() {
       </div>
 
       {error && (
-        <div className="alert m-2 text-[length:var(--fs-sm)]">
-          <span className="flex-1">{error}</span>
+        <div className="alert mx-2 mt-2 items-center py-1.5 text-[length:var(--fs-xs)]">
+          <span className="min-w-0 flex-1 truncate" title={error}>
+            {error}
+          </span>
           <button className="icon-btn h-5 w-5" onClick={() => setError(null)}>
             <X size={12} />
           </button>
