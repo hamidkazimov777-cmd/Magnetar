@@ -141,6 +141,26 @@ pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
         );
         CREATE INDEX IF NOT EXISTS idx_decisions_project ON decisions(project_id);
 
+        -- Divergences: contradictions between memory and the code, queued
+        -- rather than raised. Confirmation fatigue is not a minor annoyance —
+        -- it is what led the user to switch approvals off entirely and get a
+        -- `pkill` without warning. So a model that notices memory is wrong
+        -- leaves a note and keeps working; the human reviews the pile when it
+        -- suits them.
+        CREATE TABLE IF NOT EXISTS divergences (
+            id          TEXT PRIMARY KEY,
+            project_id  TEXT NOT NULL,
+            fact_id     TEXT,
+            summary     TEXT NOT NULL,
+            proposal    TEXT,
+            evidence    TEXT,
+            source      TEXT NOT NULL,
+            status      TEXT NOT NULL,
+            created_at  INTEGER NOT NULL,
+            resolved_at INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_divergences_project ON divergences(project_id);
+
         -- Provider connections (durable — не в хрупком localStorage). Ключи
         -- по-прежнему в Keychain по connection id; здесь только метаданные.
         CREATE TABLE IF NOT EXISTS connections (

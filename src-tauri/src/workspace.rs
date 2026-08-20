@@ -367,6 +367,83 @@ pub fn delete_decision(id: &str) -> Result<(), String> {
     })
 }
 
+// --- Divergences ---
+//
+// A queue, not an interruption. Everything here is a claim that memory and the
+// project disagree; the human decides, in a batch, when they choose to.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Divergence {
+    pub id: String,
+    pub project_id: String,
+    /// The fact this contradicts, when it is about a specific one.
+    pub fact_id: Option<String>,
+    pub summary: String,
+    /// What the fact should say instead — empty means "drop it".
+    pub proposal: Option<String>,
+    /// Where it was seen: a path, a line, a quote.
+    pub evidence: Option<String>,
+    /// agent | check — who noticed.
+    pub source: String,
+    /// open | applied | dismissed
+    pub status: String,
+    pub created_at: i64,
+    pub resolved_at: Option<i64>,
+}
+
+pub fn list_divergences(project_id: &str) -> Result<Vec<Divergence>, String> {
+    with_conn(|c| {
+        let mut stmt = c
+            .prepare(
+                "SELECT id, project_id, fact_id, summary, proposal, evidence, source, status, \
+                 created_at, resolved_at \
+                 FROM divergences \
+                 WHERE project_id = ?1 \
+                 ORDER BY created_at DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![project_id], |r| {
+                Ok(Divergence {
+                    id: r.get(0)?,
+                    project_id: r.get(1)?,
+                    fact_id: r.get(2)?,
+                    summary: r.get(3)?,
+                    proposal: r.get(4)?,
+                    evidence: r.get(5)?,
+                    source: r.get(6)?,
+                    status: r.get(7)?,
+                    created_at: r.get(8)?,
+                    resolved_at: r.get(9)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    })
+}
+
+pub fn save_divergence(d: Divergence) -> Result<(), String> {
+    with_conn(|c| {
+        c.execute(
+            "INSERT INTO divergences \
+               (id, project_id, fact_id, summary, proposal, evidence, source, status, \
+                created_at, resolved_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10) \
+             ON CONFLICT(id) DO UPDATE SET \
+               summary=excluded.summary, proposal=excluded.proposal, \
+               evidence=excluded.evidence, status=excluded.status, \
+               resolved_at=excluded.resolved_at",
+            params![
+                d.id, d.project_id, d.fact_id, d.summary, d.proposal, d.evidence, d.source,
+                d.status, d.created_at, d.resolved_at
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+}
+
 // --- Tasks ---
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -171,6 +171,28 @@ export interface Decision {
   createdAt: number;
 }
 
+/** A contradiction between memory and the project, waiting to be reviewed.
+ *
+ *  Queued deliberately: a model that finds memory wrong mid-task leaves a note
+ *  and keeps going. Interrupting the work to confirm each one is how
+ *  confirmation fatigue starts, and confirmation fatigue is what made the user
+ *  switch approvals off entirely. */
+export interface Divergence {
+  id: string;
+  projectId: string;
+  /** The fact this contradicts, when it is about a specific one. */
+  factId?: string;
+  summary: string;
+  /** What the fact should say instead. Empty means "drop it". */
+  proposal?: string;
+  /** Where it was seen: a path, a line, a quote. */
+  evidence?: string;
+  source: "agent" | "check";
+  status: "open" | "applied" | "dismissed";
+  createdAt: number;
+  resolvedAt?: number;
+}
+
 export interface MemoryFact {
   id: string;
   projectId: string;

@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { queueDivergence } from "./divergence";
 import { parseVerify, projectFacts } from "./facts";
 import { discoverChecks, runCheck } from "./problems";
 import { useStore } from "./store";
@@ -96,6 +97,19 @@ export async function verifyProjectFacts(
       // Only write when something actually changed — a no-op write would churn
       // the panel and rewrite updatedAt for facts nobody touched.
       if (res.fact.status !== f.status || !f.checkedAt) updated.push(res.fact);
+
+      // A refuted fact is a contradiction like any other, so it lands in the
+      // same queue instead of quietly changing colour in a panel nobody has
+      // open. Marking it is not the same as telling anyone.
+      if (res.outcome === "refuted" && f.status !== "refuted") {
+        const spec = parseVerify(f);
+        queueDivergence(projectId, {
+          summary: f.text,
+          factId: f.id,
+          evidence: spec?.kind === "grep" ? spec.file : spec?.checkId,
+          source: "check",
+        });
+      }
     } catch (e) {
       st.logMemory({
         kind: "audit",

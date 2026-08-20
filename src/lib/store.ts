@@ -196,6 +196,11 @@ interface State {
   saveFacts: (facts: import("./types").MemoryFact[]) => void;
   deleteFact: (projectId: string, id: string) => void;
 
+  /** Queued contradictions between memory and the code, keyed by project. */
+  divergences: Record<string, import("./types").Divergence[]>;
+  loadDivergences: (projectId: string) => Promise<void>;
+  saveDivergence: (d: import("./types").Divergence) => void;
+
   /** The decision log, keyed by project id. Newest first. */
   decisions: Record<string, import("./types").Decision[]>;
   loadDecisions: (projectId: string) => Promise<void>;
@@ -546,6 +551,32 @@ export const useStore = create<State>()(
             [projectId]: (s.facts[projectId] ?? []).filter((x) => x.id !== id),
           },
         }));
+      },
+
+      divergences: {},
+
+      loadDivergences: async (projectId) => {
+        try {
+          const rows = await db.listDivergences(projectId);
+          set((s) => ({ divergences: { ...s.divergences, [projectId]: rows } }));
+        } catch {
+          /* the queue is a convenience; it must not break the panel */
+        }
+      },
+
+      saveDivergence: (d) => {
+        void db.saveDivergence(d).catch(() => {});
+        set((s) => {
+          const list = s.divergences[d.projectId] ?? [];
+          const at = list.findIndex((x) => x.id === d.id);
+          return {
+            divergences: {
+              ...s.divergences,
+              [d.projectId]:
+                at < 0 ? [d, ...list] : list.map((x) => (x.id === d.id ? d : x)),
+            },
+          };
+        });
       },
 
       decisions: {},

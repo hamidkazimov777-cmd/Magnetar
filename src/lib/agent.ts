@@ -1,6 +1,8 @@
 import { api, type ToolDef } from "./api";
 import { useStore } from "./store";
 import { recordDecision } from "./decisions";
+import { queueDivergence } from "./divergence";
+import { projectFacts } from "./facts";
 import { alwaysConfirm, checkLoop, newLoopWatch } from "./guards";
 import { tr } from "./i18n";
 import type { ChatMessage, Connection } from "./types";
@@ -108,6 +110,20 @@ export const AGENT_TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "flag_memory",
+    description:
+      "Report that the project's memory contradicts what you just saw in the code. Does not interrupt anyone: the note is queued for the user to review later, and you keep working. Use it whenever a remembered fact turns out to be wrong or out of date — do not silently work around it, and do not stop to ask.",
+    parameters: {
+      type: "object",
+      properties: {
+        summary: { type: "string", description: "What memory says versus what the code shows" },
+        proposal: { type: "string", description: "What the fact should say instead; omit to suggest dropping it" },
+        evidence: { type: "string", description: "Where you saw it: path, line, or a short quote" },
+      },
+      required: ["summary"],
+    },
+  },
+  {
     name: "attach_file",
     description: "Attach a file from the local filesystem to the chat so the user can view or save it. Use this to send generated images, documents, or data to the user.",
     parameters: {
@@ -155,6 +171,7 @@ How to work:
 - Long-running processes (servers, bots, watchers) never exit, so never run them in the foreground. Detach them completely — redirect ALL three streams: \`npm run dev > /tmp/dev.log 2>&1 < /dev/null &\`. Leaving stdout attached keeps the pipe open after the shell exits and the call appears to hang for minutes. Then wait a moment, read the log, and report what it says.
 - Speak while you work. Before a group of tool calls, say in one short line what you are about to do ("checking the logs", "fixing the config"); after they run, say in one line what you found. The user watches this live — a dozen silent calls in a row reads as a hang, not as focus. Do not re-describe the trace in detail, and do not pad.
 - If the user writes to you mid-run, answer them on your very next turn before continuing.
+- Project memory can be out of date. If a remembered fact contradicts what the code actually shows, believe the code, call flag_memory once with what you saw, and keep going — it queues a note for the user and never blocks you.
 - When you are about to make a choice that is expensive to reverse — a library, a data schema, an approach — and memory does not already settle it, call ask_decision with your options and your recommendation. One short question at the moment of choosing beats a rewrite later. Ordinary steps do not need permission.
 
 When the task is complete, end with:
@@ -309,6 +326,29 @@ export async function executeTool(name: string, args: ToolArgs): Promise<string>
             origin: "agent",
           });
         return `The user answered: ${answer}`;
+      }
+      case "flag_memory": {
+        const projectId = useStore.getState().activeProjectId;
+        if (!projectId) return "No project is open, so there is no memory to correct.";
+        const summary = String(args.summary ?? "").trim();
+        if (!summary) return "error: summary is required";
+
+        // Attach it to the fact it contradicts when one is recognisable, so
+        // accepting the note can rewrite that fact rather than leaving the
+        // user to find it.
+        const evidence = args.evidence ? String(args.evidence) : undefined;
+        const hay = `${summary} ${args.proposal ?? ""}`.toLowerCase();
+        const fact = projectFacts(projectId).find(
+          (f) => f.text.length > 12 && hay.includes(f.text.toLowerCase().slice(0, 40)),
+        );
+        queueDivergence(projectId, {
+          summary,
+          factId: fact?.id,
+          proposal: args.proposal ? String(args.proposal) : undefined,
+          evidence,
+          source: "agent",
+        });
+        return "Noted for the user to review. Carry on with the task — trust the code, not the memory, for this one.";
       }
       case "attach_file": {
         const result = await api.toolAttachFile(resolvePath(args.path));
@@ -660,7 +700,8 @@ Available tools (Action Input is JSON):
 - edit_file {"path":"...","old_string":"...","new_string":"..."}
 - run_bash {"command":"...","cwd"?:"..."}
 - attach_file {"path":"..."}
-- ask_decision {"question":"...","options"?:["...","..."],"recommendation"?:"..."}  ← put a hard-to-reverse choice to the user; the answer is stored in the decision log`;
+- ask_decision {"question":"...","options"?:["...","..."],"recommendation"?:"..."}  ← put a hard-to-reverse choice to the user; the answer is stored in the decision log
+- flag_memory {"summary":"...","proposal"?:"...","evidence"?:"..."}  ← memory contradicts the code; queued for later, does not interrupt you`;
 
 interface ReActParse {
   thought?: string;
@@ -871,6 +912,8 @@ export function summarizeArgs(name: string, args: ToolArgs): string {
       return `→ ${args.path ?? ""}`;
     case "ask_decision":
       return `→ ${String(args.question ?? "").slice(0, 80)}`;
+    case "flag_memory":
+      return `→ ${String(args.summary ?? "").slice(0, 80)}`;
     case "grep":
       return `→ "${args.pattern ?? ""}"`;
     case "run_bash":

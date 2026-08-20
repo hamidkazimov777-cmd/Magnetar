@@ -17,6 +17,7 @@ import {
   Loader2,
   RefreshCw,
   ShieldCheck,
+  GitCompare,
   type LucideIcon,
 } from "lucide-react";
 import { useStore, type CenterView } from "../../lib/store";
@@ -121,6 +122,8 @@ export function ProjectPanel() {
                   <span className="truncate">{s.label}</span>
                 </button>
               ))}
+
+              <DivergenceBadge projectId={active.id} />
 
               {/* The memory itself, so it is visible without navigating */}
               <div className="section-label">{t("memoryKnown")}</div>
@@ -296,6 +299,24 @@ function SaveStateButton() {
         </button>
       </Hint>
     </div>
+  );
+}
+
+/** The queue has to be visible from here, or nobody will ever open it: a pile
+ *  that only exists on another page is a pile that silently grows. */
+function DivergenceBadge({ projectId }: { projectId: string }) {
+  const t = useT();
+  const setCenterView = useStore((s) => s.setCenterView);
+  const open = (useStore((s) => s.divergences[projectId]) ?? []).filter(
+    (d) => d.status === "open",
+  );
+  if (!open.length) return null;
+  return (
+    <button className="row mt-1" onClick={() => setCenterView("projects")}>
+      <GitCompare size={14} className="shrink-0 opacity-70" />
+      <span className="truncate">{t("divergencesTitle")}</span>
+      <span className="badge ml-auto">{open.length}</span>
+    </button>
   );
 }
 

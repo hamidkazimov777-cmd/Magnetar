@@ -8,6 +8,7 @@ import { pickWorkspaceFolder } from "./panels/ExplorerPanel";
 import type { Project } from "../lib/types";
 import { FactsEditor } from "./FactsEditor";
 import { DecisionLog } from "./DecisionLog";
+import { DivergenceQueue } from "./DivergenceQueue";
 
 /** The project brain editor: everything Magnetar remembers about a project and
  *  injects into the model's context instead of re-reading the codebase. */
@@ -134,6 +135,10 @@ export function ProjectsView() {
                 onChange={(v) => set({ description: v })}
                 rows={4}
               />
+              {/* Contradictions first: reviewing them is what keeps the rest
+                  of this page worth reading. */}
+              <DivergenceQueue projectId={active.id} />
+
               {/* Memory itself: facts with their provenance, not prose. The
                   old textareas made a guess and a manifest read look the same. */}
               <FactsEditor projectId={active.id} />

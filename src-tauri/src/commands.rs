@@ -2,7 +2,8 @@
 
 use crate::canon::{self, MessageRow, SessionMeta};
 use crate::workspace::{
-    self, ConnectionRow, Decision, KnowledgeEdge, KnowledgeNode, MemoryFact, Project, Task,
+    self, ConnectionRow, Decision, Divergence, KnowledgeEdge, KnowledgeNode, MemoryFact,
+    Project, Task,
     TimelineEvent,
 };
 use crate::keychain;
@@ -124,6 +125,16 @@ pub fn save_decision(decision: Decision) -> Result<(), String> {
 #[tauri::command]
 pub fn delete_decision(id: String) -> Result<(), String> {
     workspace::delete_decision(&id)
+}
+
+#[tauri::command]
+pub fn list_divergences(project_id: String) -> Result<Vec<Divergence>, String> {
+    workspace::list_divergences(&project_id)
+}
+
+#[tauri::command]
+pub fn save_divergence(divergence: Divergence) -> Result<(), String> {
+    workspace::save_divergence(divergence)
 }
 
 #[tauri::command]
