@@ -15,6 +15,8 @@ pub struct SessionMeta {
     pub summary: Option<String>,
     pub summary_up_to_id: Option<String>,
     pub project_id: Option<String>,
+    /// "agent" | "chat" — which track this conversation belongs to.
+    pub track: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -36,7 +38,7 @@ pub fn list_sessions() -> Result<Vec<SessionMeta>, String> {
         let mut stmt = c
             .prepare(
                 "SELECT id, title, connection_id, model, summary, summary_up_to_id, \
-                 project_id, created_at, updated_at FROM sessions ORDER BY updated_at DESC",
+                 project_id, track, created_at, updated_at FROM sessions ORDER BY updated_at DESC",
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
@@ -49,8 +51,9 @@ pub fn list_sessions() -> Result<Vec<SessionMeta>, String> {
                     summary: r.get(4)?,
                     summary_up_to_id: r.get(5)?,
                     project_id: r.get(6)?,
-                    created_at: r.get(7)?,
-                    updated_at: r.get(8)?,
+                    track: r.get(7)?,
+                    created_at: r.get(8)?,
+                    updated_at: r.get(9)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -87,12 +90,13 @@ pub fn save_session(meta: SessionMeta) -> Result<(), String> {
     with_conn(|c| {
         c.execute(
             "INSERT INTO sessions \
-               (id, title, connection_id, model, summary, summary_up_to_id, project_id, created_at, updated_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) \
+               (id, title, connection_id, model, summary, summary_up_to_id, project_id, track, created_at, updated_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10) \
              ON CONFLICT(id) DO UPDATE SET \
                title=excluded.title, connection_id=excluded.connection_id, \
                model=excluded.model, summary=excluded.summary, \
-               summary_up_to_id=excluded.summary_up_to_id, project_id=excluded.project_id, updated_at=excluded.updated_at",
+               summary_up_to_id=excluded.summary_up_to_id, project_id=excluded.project_id, \
+               track=excluded.track, updated_at=excluded.updated_at",
             params![
                 meta.id,
                 meta.title,
@@ -101,6 +105,7 @@ pub fn save_session(meta: SessionMeta) -> Result<(), String> {
                 meta.summary,
                 meta.summary_up_to_id,
                 meta.project_id,
+                meta.track,
                 meta.created_at,
                 meta.updated_at,
             ],

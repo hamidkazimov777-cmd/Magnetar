@@ -1,6 +1,7 @@
 export type ProviderKind = "openai_compat" | "gigachat" | "anthropic" | "custom";
 
-/** A configured provider endpoint. The API key lives in the Keychain, keyed by
+/** A configured provider endpoint. The API key lives in `secrets.json` (app
+ *  data dir, 0600) — not in the Keychain since Entry 44 — keyed by
  *  `id` — it is never stored here. */
 export interface Connection {
   id: string;
@@ -79,6 +80,15 @@ export interface Session {
   summary?: string;
   /** Id of the last message covered by `summary`. */
   summaryUpToId?: string;
+  /** Which track this conversation belongs to.
+   *
+   *  "agent" has tools and changes the project; "chat" is for talking a task
+   *  through — no tools, no edits. They are separate conversations on purpose:
+   *  in one transcript the discussion and the tool steps mix together, and an
+   *  hour later nobody can find where something was agreed. Each track carries
+   *  its own model, so switching tracks switches models with nothing to
+   *  remember. */
+  track?: "agent" | "chat";
   projectId?: string;
   createdAt: number;
   updatedAt: number;

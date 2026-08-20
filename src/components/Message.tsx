@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
-import { Check, Copy, FileText, Pencil, X } from "lucide-react";
+import { Bot, Check, Copy, FileText, Pencil, X } from "lucide-react";
 import { cn } from "../lib/cn";
 import { useStore } from "../lib/store";
 import { useT } from "../lib/i18n";
@@ -52,6 +52,7 @@ export function Message({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
   const trace = useStore((s) => s.agentTrace[message.id]);
+  const inChatTrack = useStore((s) => !s.agentMode);
 
   const copyAll = async () => {
     try {
@@ -194,6 +195,24 @@ export function Message({
               {copied ? <Check size={12} /> : <Copy size={12} />}
               {copied ? t("copied") : t("copy")}
             </button>
+            {/* Only in the discussion track: the whole point of talking a task
+                through here is handing the result to the agent. It lands in the
+                composer rather than being sent — a prompt is almost always
+                worth one edit before it runs. */}
+            {inChatTrack && (
+              <button
+                onClick={() => {
+                  const st = useStore.getState();
+                  st.switchTrack("agent");
+                  st.requestPrompt(message.content);
+                }}
+                className="flex items-center gap-1 text-[length:var(--fs-xs)] text-[var(--color-ai)] hover:opacity-80"
+                title={t("sendToAgentHint")}
+              >
+                <Bot size={12} />
+                {t("sendToAgent")}
+              </button>
+            )}
             {message.model && (
               <span className="truncate text-[length:var(--fs-xs)] text-[var(--color-text-mute)]">
                 {message.model}

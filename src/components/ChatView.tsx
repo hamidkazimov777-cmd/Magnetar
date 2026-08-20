@@ -6,7 +6,7 @@ import {
   TriangleAlert,
   Plus,
   PanelRightClose,
-  FolderGit2,
+  MessagesSquare,
   Eye,
   RotateCcw,
   X,
@@ -48,7 +48,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
   const adaptive = useStore((s) => s.adaptive);
   const setAdaptive = useStore((s) => s.setAdaptive);
   const agentMode = useStore((s) => s.agentMode);
-  const setAgentMode = useStore((s) => s.setAgentMode);
+  const switchTrack = useStore((s) => s.switchTrack);
   const activeConnectionId = useStore((s) => s.activeConnectionId);
   const activeModel = useStore((s) => s.activeModel);
   const sessions = useStore((s) => s.sessions);
@@ -130,7 +130,13 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     // Files the user attached with @ ride along in the system prompt, so the
     // canon keeps the readable message while the model sees the content.
     const mentions = await buildMentionContext(text);
-    setLastContext({ system: system + mentions, model, at: Date.now() });
+    // The discussion track gets the project's memory too — facts and decisions,
+    // selected for what was just asked. Without it the model on this side knows
+    // nothing about the project, and you end up re-explaining the stack by hand
+    // the way you would to a browser tab. It gets no tools: this track talks
+    // things through, it does not change files.
+    const memory = buildProjectMemory(current, text);
+    setLastContext({ system: system + memory + mentions, model, at: Date.now() });
 
     setStreaming(true);
     // Timing is measured here rather than in the provider: what matters to the
@@ -140,7 +146,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     let thinkingMs = 0;
 
     const stop = api.chatStream(connection, model, history, {
-      system: system + mentions,
+      system: system + memory + mentions,
       onDelta: (d) => {
         if (thinkingStart !== null) {
           thinkingMs += Date.now() - thinkingStart;
@@ -399,17 +405,31 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
       </header>
 
       <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--color-border)] px-2 py-1.5">
+        {/* Two tracks, not a switch on one transcript: discussion and tool
+            steps in the same thread bury each other, and an hour later nobody
+            can find where a thing was agreed. Each track keeps its own model. */}
         <Hint text={t("hintAgentToggle")} side="bottom">
-          <button
-            className="toggle-pill"
-            data-ai="true"
-            data-on={agentMode}
-            onClick={() => setAgentMode(!agentMode)}
-            title={t("agentHint")}
-          >
-            <Bot size={13} />
-            {t("agent")}
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              className="toggle-pill"
+              data-on={!agentMode}
+              onClick={() => switchTrack("chat")}
+              title={t("trackChatHint")}
+            >
+              <MessagesSquare size={13} />
+              {t("trackChat")}
+            </button>
+            <button
+              className="toggle-pill"
+              data-ai="true"
+              data-on={agentMode}
+              onClick={() => switchTrack("agent")}
+              title={t("agentHint")}
+            >
+              <Bot size={13} />
+              {t("agent")}
+            </button>
+          </div>
         </Hint>
         <Hint text={t("hintAdaptive")} side="bottom">
           <button
@@ -426,24 +446,9 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
       </div>
 
       {workspaceRoot && !agentMode && (
-        <div className="alert anim-in m-2 flex-col items-stretch" data-tone="warning">
-          <div className="flex items-start gap-2">
-            <FolderGit2 size={14} className="mt-0.5 shrink-0" />
-            <div className="min-w-0 flex-1">
-              <div className="font-semibold">{t("agentOffTitle")}</div>
-              <p className="mt-1 text-[length:var(--fs-sm)] leading-relaxed opacity-90">
-                {t("agentOffText")}
-              </p>
-            </div>
-          </div>
-          <button
-            className="btn btn-sm btn-secondary mt-2 self-start"
-            onClick={() => setAgentMode(true)}
-          >
-            <Bot size={13} />
-            {t("agentOffEnable")}
-          </button>
-        </div>
+        <p className="px-3 py-2 text-[length:var(--fs-xs)] leading-relaxed text-[var(--color-text-mute)]">
+          {t("trackChatNote")}
+        </p>
       )}
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">

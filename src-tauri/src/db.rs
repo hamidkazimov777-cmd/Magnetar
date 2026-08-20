@@ -184,6 +184,10 @@ pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
         "ALTER TABLE sessions ADD COLUMN summary TEXT",
         "ALTER TABLE sessions ADD COLUMN summary_up_to_id TEXT",
         "ALTER TABLE sessions ADD COLUMN project_id TEXT",
+        // Which track a chat belongs to: "agent" (tools, edits the project) or
+        // "chat" (talk it through, no tools). A chat carries its own model, so
+        // switching tracks switches models without anyone remembering pairs.
+        "ALTER TABLE sessions ADD COLUMN track TEXT",
         "ALTER TABLE messages ADD COLUMN model TEXT",
         "ALTER TABLE messages ADD COLUMN attachments TEXT",
         "ALTER TABLE projects ADD COLUMN path TEXT",

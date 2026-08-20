@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
-import { MessageSquare, Plus, Search, Trash2, Pencil, Check, X } from "lucide-react";
+import { MessageSquare, Plus, Search, Trash2, Pencil, Check, X,
+  Bot,
+} from "lucide-react";
 import { useStore, NEW_CHAT_TITLE } from "../../lib/store";
 import { useT } from "../../lib/i18n";
 import { EmptyState } from "../ui/EmptyState";
@@ -163,7 +165,14 @@ export function ChatsPanel() {
                           onDoubleClick={() => startRename(s)}
                           title={titleOf(s)}
                         >
-                          <MessageSquare size={14} className="shrink-0 opacity-70" />
+                          {/* Which track a chat belongs to, at a glance: an
+                              agent run and a discussion read very differently
+                              and are easy to confuse in a list of titles. */}
+                          {(s.track ?? "agent") === "agent" ? (
+                            <Bot size={14} className="shrink-0 text-[var(--color-ai)] opacity-80" />
+                          ) : (
+                            <MessageSquare size={14} className="shrink-0 opacity-70" />
+                          )}
                           <span className="truncate">{titleOf(s)}</span>
                         </button>
                         <span className="absolute right-1 flex gap-0.5 opacity-0 transition-opacity group-hover/chat:opacity-100">

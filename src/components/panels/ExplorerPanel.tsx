@@ -33,10 +33,13 @@ export async function pickWorkspaceFolder(): Promise<string | undefined> {
   st.setWorkspaceRoot(selected);
   st.closeAllTabs();
   st.refreshExplorer();
-  // Opening a project means the user wants the model to work on it — without
-  // agent mode the model gets no tools and cannot see a single file.
-  st.setAgentMode(true);
+  // Order matters: the project has to be active before the track switch, or
+  // switching looks for this project's agent conversation while the previous
+  // project is still the current one, and adopts a stranger's chat.
   activateProjectForPath(selected);
+  // Opening a project means the user wants the model to work on it — without
+  // the agent track the model gets no tools and cannot see a single file.
+  useStore.getState().setAgentMode(true);
   void analyzeFolderIntoMemory(selected).catch(() => {});
   return selected;
 }
