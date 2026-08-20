@@ -10,6 +10,7 @@ import { api } from "./lib/api";
 import { installLinkInterceptor } from "./lib/links";
 import { ensureProjectFacts } from "./lib/facts";
 import { verifyProjectFacts } from "./lib/verify";
+import { ensureProjectDecisions } from "./lib/decisions";
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -38,6 +39,7 @@ export default function App() {
     if (!activeProjectId) return;
     void (async () => {
       await ensureProjectFacts(activeProjectId);
+      await ensureProjectDecisions(activeProjectId);
       // Cheap verification (file greps, no model, no build) runs on open, so
       // memory that has quietly gone out of date says so before it is used.
       const st = useStore.getState();

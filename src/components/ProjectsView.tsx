@@ -7,6 +7,7 @@ import { EmptyState } from "./ui/EmptyState";
 import { pickWorkspaceFolder } from "./panels/ExplorerPanel";
 import type { Project } from "../lib/types";
 import { FactsEditor } from "./FactsEditor";
+import { DecisionLog } from "./DecisionLog";
 
 /** The project brain editor: everything Magnetar remembers about a project and
  *  injects into the model's context instead of re-reading the codebase. */
@@ -137,13 +138,9 @@ export function ProjectsView() {
                   old textareas made a guess and a manifest read look the same. */}
               <FactsEditor projectId={active.id} />
 
-              <Area
-                label={t("projectDecisions")}
-                hint={t("projectDecisionsHint")}
-                value={form.decisions}
-                onChange={(v) => set({ decisions: v })}
-                rows={6}
-              />
+              {/* Decisions are events, not a paragraph: each one keeps its
+                  date, its reason, what lost, and the commit it was made at. */}
+              <DecisionLog projectId={active.id} />
             </div>
           </div>
         )}

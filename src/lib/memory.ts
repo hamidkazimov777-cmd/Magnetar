@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { projectDecisions, renderDecisions } from "./decisions";
 import { ensureProjectFacts, newFact, projectFacts, renderFacts } from "./facts";
 import { useStore } from "./store";
 import type { ChatMessage, Connection, FactKind, MemoryFact, Project, Session } from "./types";
@@ -403,7 +404,10 @@ export function buildProjectMemory(session: Session | undefined): string {
     if (p.codingStandards) parts.push(`Coding standards:\n${p.codingStandards}`);
     if (p.lastState) parts.push(`\n## Where the previous model stopped\n${p.lastState}`);
   }
-  if (p.decisions) parts.push(`Decisions:\n${p.decisions}`);
+  const decisions = projectDecisions(p.id);
+  if (decisions.length) parts.push(renderDecisions(decisions));
+  else if (!p.decisionsMigratedAt && p.decisions)
+    parts.push(`Decisions:\n${p.decisions}`);
   parts.push(
     `\nThis memory is background context about the project — it is NOT a substitute for the code.` +
       ` To change or explain anything concrete, always locate it in the real files first` +

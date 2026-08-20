@@ -122,6 +122,25 @@ pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
         );
         CREATE INDEX IF NOT EXISTS idx_facts_project ON memory_facts(project_id);
 
+        -- Decisions: an event log, not a text field. In six months nobody
+        -- needs to be told the architecture — they can read it — they need the
+        -- reason it was chosen and what was rejected. That is why `rationale`
+        -- and `alternatives` are separate columns and not prose: they are the
+        -- part the code cannot tell you.
+        CREATE TABLE IF NOT EXISTS decisions (
+            id           TEXT PRIMARY KEY,
+            project_id   TEXT NOT NULL,
+            title        TEXT NOT NULL,
+            rationale    TEXT,
+            alternatives TEXT,
+            files        TEXT,
+            commit_sha   TEXT,
+            origin       TEXT NOT NULL,
+            created_at   INTEGER NOT NULL,
+            deleted_at   INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_decisions_project ON decisions(project_id);
+
         -- Provider connections (durable — не в хрупком localStorage). Ключи
         -- по-прежнему в Keychain по connection id; здесь только метаданные.
         CREATE TABLE IF NOT EXISTS connections (
@@ -152,6 +171,7 @@ pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
         // Set once a project's legacy text fields have been split into facts,
         // so the one-time migration never runs twice.
         "ALTER TABLE projects ADD COLUMN facts_migrated_at INTEGER",
+        "ALTER TABLE projects ADD COLUMN decisions_migrated_at INTEGER",
     ] {
         let _ = conn.execute(stmt, []);
     }

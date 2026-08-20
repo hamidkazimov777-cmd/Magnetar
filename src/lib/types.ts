@@ -102,6 +102,8 @@ export interface Project {
   /** When the prose fields above were split into facts. Undefined = not yet.
    *  The fields stay in the DB as a safety net, but stop reaching the model. */
   factsMigratedAt?: number;
+  /** Same, for the old `decisions` text field becoming a decision log. */
+  decisionsMigratedAt?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -147,6 +149,27 @@ export type VerifySpec =
   | { kind: "grep"; pattern: string; file: string }
   /** The fact holds while a project check (Problems panel) passes. */
   | { kind: "check"; checkId: string };
+
+/** A decision, recorded when it was made.
+ *
+ *  This is the part the code cannot tell you later. In six months the
+ *  architecture is readable from the files; why it was chosen, and what was
+ *  rejected on the way, exists only if someone wrote it down at the time. */
+export interface Decision {
+  id: string;
+  projectId: string;
+  title: string;
+  /** Why this, in one or two sentences. */
+  rationale?: string;
+  /** What was considered and turned down, and why. */
+  alternatives?: string;
+  /** JSON array of paths the decision touches. */
+  files?: string;
+  /** The commit the project stood at when this was decided. */
+  commitSha?: string;
+  origin: "user" | "agent" | "legacy";
+  createdAt: number;
+}
 
 export interface MemoryFact {
   id: string;

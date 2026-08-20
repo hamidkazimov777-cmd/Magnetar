@@ -196,6 +196,12 @@ interface State {
   saveFacts: (facts: import("./types").MemoryFact[]) => void;
   deleteFact: (projectId: string, id: string) => void;
 
+  /** The decision log, keyed by project id. Newest first. */
+  decisions: Record<string, import("./types").Decision[]>;
+  loadDecisions: (projectId: string) => Promise<void>;
+  saveDecision: (d: import("./types").Decision) => void;
+  deleteDecision: (projectId: string, id: string) => void;
+
   /** Audit trail of every background write to project memory. */
   memoryLog: import("./types").MemoryEvent[];
   logMemory: (
@@ -538,6 +544,42 @@ export const useStore = create<State>()(
           facts: {
             ...s.facts,
             [projectId]: (s.facts[projectId] ?? []).filter((x) => x.id !== id),
+          },
+        }));
+      },
+
+      decisions: {},
+
+      loadDecisions: async (projectId) => {
+        try {
+          const rows = await db.listDecisions(projectId);
+          set((s) => ({ decisions: { ...s.decisions, [projectId]: rows } }));
+        } catch {
+          /* memory must not be able to take the panel down */
+        }
+      },
+
+      saveDecision: (d) => {
+        void db.saveDecision(d).catch(() => {});
+        set((s) => {
+          const list = s.decisions[d.projectId] ?? [];
+          const at = list.findIndex((x) => x.id === d.id);
+          return {
+            decisions: {
+              ...s.decisions,
+              [d.projectId]:
+                at < 0 ? [d, ...list] : list.map((x) => (x.id === d.id ? d : x)),
+            },
+          };
+        });
+      },
+
+      deleteDecision: (projectId, id) => {
+        void db.deleteDecision(id).catch(() => {});
+        set((s) => ({
+          decisions: {
+            ...s.decisions,
+            [projectId]: (s.decisions[projectId] ?? []).filter((x) => x.id !== id),
           },
         }));
       },

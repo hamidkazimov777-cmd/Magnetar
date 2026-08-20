@@ -2,7 +2,7 @@
 
 use crate::canon::{self, MessageRow, SessionMeta};
 use crate::workspace::{
-    self, ConnectionRow, KnowledgeEdge, KnowledgeNode, MemoryFact, Project, Task,
+    self, ConnectionRow, Decision, KnowledgeEdge, KnowledgeNode, MemoryFact, Project, Task,
     TimelineEvent,
 };
 use crate::keychain;
@@ -109,6 +109,21 @@ pub fn save_facts(facts: Vec<MemoryFact>) -> Result<(), String> {
 #[tauri::command]
 pub fn delete_fact(id: String) -> Result<(), String> {
     workspace::delete_fact(&id)
+}
+
+#[tauri::command]
+pub fn list_decisions(project_id: String) -> Result<Vec<Decision>, String> {
+    workspace::list_decisions(&project_id)
+}
+
+#[tauri::command]
+pub fn save_decision(decision: Decision) -> Result<(), String> {
+    workspace::save_decision(decision)
+}
+
+#[tauri::command]
+pub fn delete_decision(id: String) -> Result<(), String> {
+    workspace::delete_decision(&id)
 }
 
 #[tauri::command]

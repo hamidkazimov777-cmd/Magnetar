@@ -84,6 +84,8 @@ pub struct Project {
     /// When this project's legacy prose fields were split into `memory_facts`.
     /// `None` means the one-time migration has not run yet.
     pub facts_migrated_at: Option<i64>,
+    /// Same, for the old `decisions` text field becoming a decision log.
+    pub decisions_migrated_at: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -94,7 +96,7 @@ pub fn list_projects() -> Result<Vec<Project>, String> {
             .prepare(
                 "SELECT id, name, description, tech_stack, architecture_notes, coding_standards, \
                  decisions, active_goals, roadmap, risks, path, last_state, facts_migrated_at, \
-                 created_at, updated_at \
+                 decisions_migrated_at, created_at, updated_at \
                  FROM projects \
                  WHERE deleted_at IS NULL \
                  ORDER BY updated_at DESC",
@@ -117,8 +119,9 @@ pub fn list_projects() -> Result<Vec<Project>, String> {
                     path: r.get(10)?,
                     last_state: r.get(11)?,
                     facts_migrated_at: r.get(12)?,
-                    created_at: r.get(13)?,
-                    updated_at: r.get(14)?,
+                    decisions_migrated_at: r.get(13)?,
+                    created_at: r.get(14)?,
+                    updated_at: r.get(15)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -131,18 +134,19 @@ pub fn save_project(p: Project) -> Result<(), String> {
     with_conn(|c| {
         c.execute(
             "INSERT INTO projects \
-               (id, name, description, tech_stack, architecture_notes, coding_standards, decisions, active_goals, roadmap, risks, path, last_state, facts_migrated_at, created_at, updated_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15) \
+               (id, name, description, tech_stack, architecture_notes, coding_standards, decisions, active_goals, roadmap, risks, path, last_state, facts_migrated_at, decisions_migrated_at, created_at, updated_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16) \
              ON CONFLICT(id) DO UPDATE SET \
                name=excluded.name, description=excluded.description, tech_stack=excluded.tech_stack, \
                architecture_notes=excluded.architecture_notes, coding_standards=excluded.coding_standards, \
                decisions=excluded.decisions, active_goals=excluded.active_goals, roadmap=excluded.roadmap, \
                risks=excluded.risks, path=excluded.path, last_state=excluded.last_state, \
-               facts_migrated_at=excluded.facts_migrated_at, updated_at=excluded.updated_at",
+               facts_migrated_at=excluded.facts_migrated_at, \
+               decisions_migrated_at=excluded.decisions_migrated_at, updated_at=excluded.updated_at",
             params![
                 p.id, p.name, p.description, p.tech_stack, p.architecture_notes, p.coding_standards,
                 p.decisions, p.active_goals, p.roadmap, p.risks, p.path, p.last_state,
-                p.facts_migrated_at, p.created_at, p.updated_at
+                p.facts_migrated_at, p.decisions_migrated_at, p.created_at, p.updated_at
             ],
         )
         .map_err(|e| e.to_string())?;
@@ -267,6 +271,95 @@ pub fn delete_fact(id: &str) -> Result<(), String> {
             .as_millis() as i64;
         c.execute(
             "UPDATE memory_facts SET deleted_at = ?2 WHERE id = ?1",
+            params![id, now],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+}
+
+// --- Decisions ---
+//
+// The differentiator. Half a year later the architecture is readable in the
+// code; the reason it was chosen, and what was rejected on the way, exists
+// nowhere unless it was written down at the moment of choosing.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Decision {
+    pub id: String,
+    pub project_id: String,
+    pub title: String,
+    pub rationale: Option<String>,
+    /// What was considered and rejected, and why.
+    pub alternatives: Option<String>,
+    /// JSON array of paths the decision touches.
+    pub files: Option<String>,
+    /// The commit the project stood at when this was decided.
+    pub commit_sha: Option<String>,
+    /// user | agent | legacy
+    pub origin: String,
+    pub created_at: i64,
+}
+
+pub fn list_decisions(project_id: &str) -> Result<Vec<Decision>, String> {
+    with_conn(|c| {
+        let mut stmt = c
+            .prepare(
+                "SELECT id, project_id, title, rationale, alternatives, files, commit_sha, \
+                 origin, created_at \
+                 FROM decisions \
+                 WHERE project_id = ?1 AND deleted_at IS NULL \
+                 ORDER BY created_at DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![project_id], |r| {
+                Ok(Decision {
+                    id: r.get(0)?,
+                    project_id: r.get(1)?,
+                    title: r.get(2)?,
+                    rationale: r.get(3)?,
+                    alternatives: r.get(4)?,
+                    files: r.get(5)?,
+                    commit_sha: r.get(6)?,
+                    origin: r.get(7)?,
+                    created_at: r.get(8)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    })
+}
+
+pub fn save_decision(d: Decision) -> Result<(), String> {
+    with_conn(|c| {
+        c.execute(
+            "INSERT INTO decisions \
+               (id, project_id, title, rationale, alternatives, files, commit_sha, origin, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) \
+             ON CONFLICT(id) DO UPDATE SET \
+               title=excluded.title, rationale=excluded.rationale, \
+               alternatives=excluded.alternatives, files=excluded.files, \
+               commit_sha=excluded.commit_sha, deleted_at=NULL",
+            params![
+                d.id, d.project_id, d.title, d.rationale, d.alternatives, d.files, d.commit_sha,
+                d.origin, d.created_at
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+}
+
+pub fn delete_decision(id: &str) -> Result<(), String> {
+    with_conn(|c| {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        c.execute(
+            "UPDATE decisions SET deleted_at = ?2 WHERE id = ?1",
             params![id, now],
         )
         .map_err(|e| e.to_string())?;
