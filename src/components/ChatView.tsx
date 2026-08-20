@@ -210,7 +210,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     try {
       const sess = useStore.getState().sessions.find((s) => s.id === sessionId);
       const projectMemory =
-        buildProjectMemory(sess) + slashInstruction + (await buildMentionContext(text));
+        buildProjectMemory(sess, text) + slashInstruction + (await buildMentionContext(text));
       setLastContext({ system: AGENT_SYSTEM + projectMemory, model, at: Date.now() });
       await runAgent(
         connection,

@@ -1,6 +1,7 @@
 import { api } from "./api";
 import { projectDecisions, renderDecisions } from "./decisions";
 import { ensureProjectFacts, newFact, projectFacts, renderFacts } from "./facts";
+import { pickMemory } from "./relevance";
 import { useStore } from "./store";
 import type { ChatMessage, Connection, FactKind, MemoryFact, Project, Session } from "./types";
 
@@ -372,7 +373,12 @@ export async function flushHandoffToMemory(
 
 /** Build the project-memory preamble injected into the AGENT system prompt so
  *  the agent starts from memory (brain + last handoff), not a cold read. */
-export function buildProjectMemory(session: Session | undefined): string {
+export function buildProjectMemory(
+  session: Session | undefined,
+  /** What the user just asked. Memory is selected against it, the same way code
+   *  is: dumping every fact wastes tokens and buries the two lines that matter. */
+  query = "",
+): string {
   const st = useStore.getState();
   const parts: string[] = [];
 
@@ -393,7 +399,8 @@ export function buildProjectMemory(session: Session | undefined): string {
   if (p.path) parts.push(`Path: ${p.path}`);
   if (p.description) parts.push(`Description: ${p.description}`);
 
-  const facts = projectFacts(p.id);
+  const picked = pickMemory(projectFacts(p.id), projectDecisions(p.id), query);
+  const facts = picked.facts;
   if (facts.length) parts.push(renderFacts(facts));
   else if (!p.factsMigratedAt) {
     // Not migrated yet (the project has not been opened since facts landed).
@@ -404,12 +411,12 @@ export function buildProjectMemory(session: Session | undefined): string {
     if (p.codingStandards) parts.push(`Coding standards:\n${p.codingStandards}`);
     if (p.lastState) parts.push(`\n## Where the previous model stopped\n${p.lastState}`);
   }
-  const decisions = projectDecisions(p.id);
-  if (decisions.length) parts.push(renderDecisions(decisions));
+  if (picked.decisions.length) parts.push(renderDecisions(picked.decisions));
   else if (!p.decisionsMigratedAt && p.decisions)
     parts.push(`Decisions:\n${p.decisions}`);
   parts.push(
-    `\nThis memory is background context about the project — it is NOT a substitute for the code.` +
+    `\nOnly the memory relevant to this request is shown — the project may hold more.` +
+      `\nThis memory is background context about the project — it is NOT a substitute for the code.` +
       ` To change or explain anything concrete, always locate it in the real files first` +
       ` (search_code, then read_file). Never answer from memory alone about code you have not read,` +
       ` and never claim a file or symbol exists without finding it.` +
