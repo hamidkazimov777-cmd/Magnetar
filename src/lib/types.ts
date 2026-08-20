@@ -99,6 +99,67 @@ export interface Project {
   path?: string;
   /** Rolling "where we stopped" thesis — flushed to memory on model switch. */
   lastState?: string;
+  /** When the prose fields above were split into facts. Undefined = not yet.
+   *  The fields stay in the DB as a safety net, but stop reaching the model. */
+  factsMigratedAt?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/* --------------------------------------------------------------------------
+   MEMORY FACTS
+
+   A fact is what project memory is made of. It is deliberately not a line of
+   prose: a coder reading memory has to be able to tell "SQLite — read out of
+   the dependencies, confirmed today" from "hexagonal architecture — the user
+   said so once, never checked". A false fact is worse than a missing one,
+   because it gets trusted.
+   -------------------------------------------------------------------------- */
+
+/** Only the sections that actually change what a model generates. */
+export type FactKind = "stack" | "architecture" | "constraint" | "state";
+
+export type FactOrigin =
+  /** Read out of the project itself (package.json, Cargo.toml, a file). */
+  | "extracted"
+  /** The user said so. */
+  | "user"
+  /** A model concluded it from what it saw. */
+  | "inferred"
+  /** Came from the old free-text memory fields, before facts existed. */
+  | "legacy";
+
+export type FactStatus =
+  /** Nobody has confirmed it — this is the honest default. */
+  | "unverified"
+  /** A machine confirmed it at `checkedAt`. */
+  | "verified"
+  /** It was verified once, but the project has changed since. */
+  | "stale"
+  /** A machine looked and found the opposite. */
+  | "refuted";
+
+/** How a machine can confirm a fact. Anything that reduces to a check should
+ *  be executed, not believed: "we use SQLite" is a grep over the dependency
+ *  manifests, not an opinion. */
+export type VerifySpec =
+  /** Look for `pattern` (a regex) inside `file`, relative to the project root. */
+  | { kind: "grep"; pattern: string; file: string }
+  /** The fact holds while a project check (Problems panel) passes. */
+  | { kind: "check"; checkId: string };
+
+export interface MemoryFact {
+  id: string;
+  projectId: string;
+  kind: FactKind;
+  text: string;
+  origin: FactOrigin;
+  /** Which file, which conversation, which model — shown next to the fact. */
+  originDetail?: string;
+  /** Serialised `VerifySpec`; the DB stores JSON, not a shape. */
+  verify?: string;
+  status: FactStatus;
+  checkedAt?: number;
   createdAt: number;
   updatedAt: number;
 }

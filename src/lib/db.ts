@@ -54,6 +54,11 @@ export const db = {
   saveProject: (project: import("./types").Project) => invoke<void>("save_project", { project }),
   deleteProject: (id: string) => invoke<void>("delete_project", { id }),
 
+  listFacts: (projectId: string) =>
+    invoke<import("./types").MemoryFact[]>("list_facts", { projectId }),
+  saveFacts: (facts: import("./types").MemoryFact[]) => invoke<void>("save_facts", { facts }),
+  deleteFact: (id: string) => invoke<void>("delete_fact", { id }),
+
   listTasks: (projectId: string) => invoke<import("./types").Task[]>("list_tasks", { projectId }),
   saveTask: (task: import("./types").Task) => invoke<void>("save_task", { task }),
   deleteTask: (id: string) => invoke<void>("delete_task", { id }),

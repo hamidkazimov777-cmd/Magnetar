@@ -186,6 +186,16 @@ interface State {
   deleteProject: (id: string) => void;
   renameProject: (id: string, name: string) => void;
 
+  /** Project memory as facts, keyed by project id. Loaded per project rather
+   *  than all at once: only the open project's memory is ever consulted. */
+  facts: Record<string, import("./types").MemoryFact[]>;
+  loadFacts: (projectId: string) => Promise<void>;
+  /** Insert or update a batch. One call, one write — callers routinely produce
+   *  a dozen facts at a time (an audit, a migration), and a save per fact made
+   *  the panel flicker through a dozen intermediate states. */
+  saveFacts: (facts: import("./types").MemoryFact[]) => void;
+  deleteFact: (projectId: string, id: string) => void;
+
   /** Audit trail of every background write to project memory. */
   memoryLog: import("./types").MemoryEvent[];
   logMemory: (
@@ -494,6 +504,42 @@ export const useStore = create<State>()(
         } catch {
           set({ hydrated: true });
         }
+      },
+
+      facts: {},
+
+      loadFacts: async (projectId) => {
+        try {
+          const rows = await db.listFacts(projectId);
+          set((s) => ({ facts: { ...s.facts, [projectId]: rows } }));
+        } catch {
+          /* an unreadable memory table must not take the panel down */
+        }
+      },
+
+      saveFacts: (rows) => {
+        if (!rows.length) return;
+        void db.saveFacts(rows).catch(() => {});
+        set((s) => {
+          const next = { ...s.facts };
+          for (const f of rows) {
+            const list = next[f.projectId] ?? [];
+            const at = list.findIndex((x) => x.id === f.id);
+            next[f.projectId] =
+              at < 0 ? [...list, f] : list.map((x) => (x.id === f.id ? f : x));
+          }
+          return { facts: next };
+        });
+      },
+
+      deleteFact: (projectId, id) => {
+        void db.deleteFact(id).catch(() => {});
+        set((s) => ({
+          facts: {
+            ...s.facts,
+            [projectId]: (s.facts[projectId] ?? []).filter((x) => x.id !== id),
+          },
+        }));
       },
 
       loadProjects: async () => {

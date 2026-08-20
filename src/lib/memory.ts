@@ -1,6 +1,7 @@
 import { api } from "./api";
+import { ensureProjectFacts, newFact, projectFacts, renderFacts } from "./facts";
 import { useStore } from "./store";
-import type { ChatMessage, Connection, Project, Session } from "./types";
+import type { ChatMessage, Connection, FactKind, MemoryFact, Project, Session } from "./types";
 
 const uid = () =>
   (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)) as string;
@@ -24,6 +25,16 @@ function asText(v: unknown): string | undefined {
       .map(([k, val]) => `- ${k}: ${asText(val) ?? ""}`)
       .join("\n");
   return String(v);
+}
+
+/** A stack claim like "SQLite via rusqlite (bundled)" is confirmed by finding
+ *  its most distinctive word in the manifest it came from. The longest token is
+ *  a crude but honest pick: it favours "rusqlite" over "via", and when it
+ *  guesses wrong the fact simply stays unverified rather than being invented. */
+function grepPatternFor(text: string): string {
+  const tokens = text.match(/[A-Za-z][A-Za-z0-9_.-]{2,}/g) ?? [];
+  const best = tokens.sort((a, b) => b.length - a.length)[0] ?? text.trim();
+  return best.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function stripJson(s: string): string {
@@ -95,6 +106,8 @@ export function activateProjectForPath(root: string): boolean {
   const existing = st.projects.find((p) => p.path === root);
   if (!existing) return false;
   st.setActiveProject(existing.id);
+  // Memory has to be in the store before the first prompt is built, not after.
+  void ensureProjectFacts(existing.id);
   const sid = st.activeSessionId;
   const session = st.sessions.find((x) => x.id === sid);
   // Adopt the current chat only when it is not already someone else's work.
@@ -133,6 +146,7 @@ export async function analyzeFolderIntoMemory(
   }
 
   let signals = "";
+  const sentFiles: string[] = [];
   try {
     const top = await api.toolListDir(root);
     signals +=
@@ -145,7 +159,10 @@ export async function analyzeFolderIntoMemory(
   for (const f of KEY_FILES) {
     try {
       const content = await api.editorReadFile(`${root}/${f}`);
-      if (content) signals += `\n## ${f}\n${content.slice(0, 4000)}\n`;
+      if (content) {
+        signals += `\n## ${f}\n${content.slice(0, 4000)}\n`;
+        sentFiles.push(f);
+      }
     } catch {
       /* file absent — fine */
     }
@@ -155,9 +172,13 @@ export async function analyzeFolderIntoMemory(
     id: "an",
     role: "user",
     content:
-      `Analyze the project signals below and produce concise LONG-TERM project memory as a raw JSON object (no markdown), with keys: ` +
-      `"name", "description", "techStack", "architectureNotes", "codingStandards". ` +
-      `Base it ONLY on the signals. Keep every field terse and thesis-like (short bullet lines).\n\n${signals}`,
+      `Analyze the project signals below and produce LONG-TERM project memory as a raw JSON object (no markdown):\n` +
+      `{"name": "...", "description": "one sentence", "facts": [{"kind": "...", "text": "...", "source": "..."}]}\n` +
+      `"kind" is one of: stack (languages, frameworks, storage), architecture (how it is put together), ` +
+      `constraint (rules the code must obey), state (what is being worked on now).\n` +
+      `"source" is the exact filename below the claim came from, or "inferred" when you concluded it yourself. ` +
+      `Never write a filename you were not shown — a fact that lies about its source is worse than no fact.\n` +
+      `One claim per fact, a single line each, no bullets. Base everything ONLY on the signals.\n\n${signals}`,
     createdAt: 0,
   };
 
@@ -167,7 +188,7 @@ export async function analyzeFolderIntoMemory(
       connection,
       model,
       [instruction],
-      "You extract terse, information-dense project memory. Return raw JSON only.",
+      "You extract terse, checkable project facts. Return raw JSON only.",
     );
     parsed = JSON.parse(stripJson(res));
   } catch (e) {
@@ -197,15 +218,19 @@ export async function analyzeFolderIntoMemory(
     id: existing?.id ?? uid(),
     name,
     description: asText(parsed.description) ?? existing?.description,
-    techStack: asText(parsed.techStack) ?? existing?.techStack,
-    architectureNotes: asText(parsed.architectureNotes) ?? existing?.architectureNotes,
-    codingStandards: asText(parsed.codingStandards) ?? existing?.codingStandards,
+    // The prose fields are no longer written to: memory lives in facts now.
+    // They stay on the row so a project migrated from the old shape keeps its
+    // safety net, and `factsMigratedAt` stops the migration re-running.
+    techStack: existing?.techStack,
+    architectureNotes: existing?.architectureNotes,
+    codingStandards: existing?.codingStandards,
     decisions: existing?.decisions,
     activeGoals: existing?.activeGoals,
     roadmap: existing?.roadmap,
     risks: existing?.risks,
     lastState: existing?.lastState,
     path: root,
+    factsMigratedAt: existing?.factsMigratedAt ?? now,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
@@ -214,6 +239,37 @@ export async function analyzeFolderIntoMemory(
   else st.addProject(project);
   st.setActiveProject(project.id);
 
+  // Facts, each carrying where it came from. A claim whose "source" names a
+  // file we never showed the model is downgraded to "inferred" rather than
+  // dropped: the claim may still be right, but its provenance is not.
+  await ensureProjectFacts(project.id);
+  const shown = new Set(sentFiles);
+  const known: FactKind[] = ["stack", "architecture", "constraint", "state"];
+  const rows: MemoryFact[] = [];
+  for (const raw of Array.isArray(parsed.facts) ? parsed.facts : []) {
+    const f = raw as Record<string, unknown>;
+    const text = asText(f.text);
+    if (!text?.trim()) continue;
+    const kind = known.includes(f.kind as FactKind) ? (f.kind as FactKind) : "architecture";
+    const source = asText(f.source)?.trim();
+    const extracted = !!source && shown.has(source);
+    rows.push(
+      newFact(
+        project.id,
+        kind,
+        text.slice(0, 400),
+        extracted ? "extracted" : "inferred",
+        extracted ? source : model,
+        // A stack claim tied to a manifest is checkable by grep — the verifier
+        // runs it later, nothing here believes it yet.
+        extracted && kind === "stack"
+          ? { kind: "grep", pattern: grepPatternFor(text), file: source! }
+          : undefined,
+      ),
+    );
+  }
+  if (rows.length) st.saveFacts(rows);
+
   // Attach the current chat to this project so it works from memory.
   const sid = st.activeSessionId;
   if (sid) st.attachSessionToProject(sid, project.id);
@@ -221,13 +277,16 @@ export async function analyzeFolderIntoMemory(
   st.logMemory({
     kind: "audit",
     status: "ok",
-    detail: project.name,
+    detail: `${project.name} · ${rows.length}`,
     projectId: project.id,
     model,
   });
 
   return project;
 }
+
+/** Provenance marker for the auto-written "where we stopped" fact. */
+const HANDOFF_SOURCE = "handoff";
 
 /** On model switch: flush the just-done work into project memory as a terse
  *  "current state / next step" thesis, so the next model continues from memory
@@ -278,9 +337,21 @@ export async function flushHandoffToMemory(
     }
     const p = useStore.getState().projects.find((x) => x.id === session.projectId);
     if (p) {
-      useStore
-        .getState()
-        .updateProject({ ...p, lastState: note.trim(), updatedAt: Date.now() });
+      // "Where we stopped" is a fact like any other: a model wrote it, nobody
+      // checked it, and it should say so. There is one per project — a handoff
+      // replaces the previous one instead of piling up stale states.
+      await ensureProjectFacts(p.id);
+      const prev = projectFacts(p.id).find((f) => f.originDetail === HANDOFF_SOURCE);
+      const fact = newFact(
+        p.id,
+        "state",
+        note.trim().slice(0, 2000),
+        "inferred",
+        HANDOFF_SOURCE,
+      );
+      useStore.getState().saveFacts([
+        prev ? { ...prev, text: fact.text, updatedAt: Date.now(), status: "unverified" } : fact,
+      ]);
       useStore.getState().logMemory({
         kind: "handoff",
         status: "ok",
@@ -320,12 +391,19 @@ export function buildProjectMemory(session: Session | undefined): string {
   parts.push(`\n## Project memory: ${p.name}`);
   if (p.path) parts.push(`Path: ${p.path}`);
   if (p.description) parts.push(`Description: ${p.description}`);
-  if (p.techStack) parts.push(`Tech stack:\n${p.techStack}`);
-  if (p.architectureNotes) parts.push(`Architecture:\n${p.architectureNotes}`);
-  if (p.codingStandards) parts.push(`Coding standards:\n${p.codingStandards}`);
+
+  const facts = projectFacts(p.id);
+  if (facts.length) parts.push(renderFacts(facts));
+  else if (!p.factsMigratedAt) {
+    // Not migrated yet (the project has not been opened since facts landed).
+    // Falling back to the prose keeps memory working; it just cannot say where
+    // any of it came from.
+    if (p.techStack) parts.push(`Tech stack:\n${p.techStack}`);
+    if (p.architectureNotes) parts.push(`Architecture:\n${p.architectureNotes}`);
+    if (p.codingStandards) parts.push(`Coding standards:\n${p.codingStandards}`);
+    if (p.lastState) parts.push(`\n## Where the previous model stopped\n${p.lastState}`);
+  }
   if (p.decisions) parts.push(`Decisions:\n${p.decisions}`);
-  if (p.lastState)
-    parts.push(`\n## Where the previous model stopped (continue from here)\n${p.lastState}`);
   parts.push(
     `\nThis memory is background context about the project — it is NOT a substitute for the code.` +
       ` To change or explain anything concrete, always locate it in the real files first` +

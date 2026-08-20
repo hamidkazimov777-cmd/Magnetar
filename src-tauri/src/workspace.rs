@@ -81,6 +81,9 @@ pub struct Project {
     pub risks: Option<String>,
     pub path: Option<String>,
     pub last_state: Option<String>,
+    /// When this project's legacy prose fields were split into `memory_facts`.
+    /// `None` means the one-time migration has not run yet.
+    pub facts_migrated_at: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -90,7 +93,8 @@ pub fn list_projects() -> Result<Vec<Project>, String> {
         let mut stmt = c
             .prepare(
                 "SELECT id, name, description, tech_stack, architecture_notes, coding_standards, \
-                 decisions, active_goals, roadmap, risks, path, last_state, created_at, updated_at \
+                 decisions, active_goals, roadmap, risks, path, last_state, facts_migrated_at, \
+                 created_at, updated_at \
                  FROM projects \
                  WHERE deleted_at IS NULL \
                  ORDER BY updated_at DESC",
@@ -112,8 +116,9 @@ pub fn list_projects() -> Result<Vec<Project>, String> {
                     risks: r.get(9)?,
                     path: r.get(10)?,
                     last_state: r.get(11)?,
-                    created_at: r.get(12)?,
-                    updated_at: r.get(13)?,
+                    facts_migrated_at: r.get(12)?,
+                    created_at: r.get(13)?,
+                    updated_at: r.get(14)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -126,16 +131,18 @@ pub fn save_project(p: Project) -> Result<(), String> {
     with_conn(|c| {
         c.execute(
             "INSERT INTO projects \
-               (id, name, description, tech_stack, architecture_notes, coding_standards, decisions, active_goals, roadmap, risks, path, last_state, created_at, updated_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14) \
+               (id, name, description, tech_stack, architecture_notes, coding_standards, decisions, active_goals, roadmap, risks, path, last_state, facts_migrated_at, created_at, updated_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15) \
              ON CONFLICT(id) DO UPDATE SET \
                name=excluded.name, description=excluded.description, tech_stack=excluded.tech_stack, \
                architecture_notes=excluded.architecture_notes, coding_standards=excluded.coding_standards, \
                decisions=excluded.decisions, active_goals=excluded.active_goals, roadmap=excluded.roadmap, \
-               risks=excluded.risks, path=excluded.path, last_state=excluded.last_state, updated_at=excluded.updated_at",
+               risks=excluded.risks, path=excluded.path, last_state=excluded.last_state, \
+               facts_migrated_at=excluded.facts_migrated_at, updated_at=excluded.updated_at",
             params![
                 p.id, p.name, p.description, p.tech_stack, p.architecture_notes, p.coding_standards,
-                p.decisions, p.active_goals, p.roadmap, p.risks, p.path, p.last_state, p.created_at, p.updated_at
+                p.decisions, p.active_goals, p.roadmap, p.risks, p.path, p.last_state,
+                p.facts_migrated_at, p.created_at, p.updated_at
             ],
         )
         .map_err(|e| e.to_string())?;
@@ -148,6 +155,121 @@ pub fn delete_project(id: &str) -> Result<(), String> {
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
         c.execute("UPDATE projects SET deleted_at = ?2 WHERE id = ?1", params![id, now])
             .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+}
+
+// --- Memory facts ---
+//
+// The unit of project memory. Prose in a text column could not answer the two
+// questions that decide whether a coder should trust it: where did this come
+// from, and is it still true? A fact answers both.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryFact {
+    pub id: String,
+    pub project_id: String,
+    /// stack | architecture | constraint | state — the sections already agreed.
+    pub kind: String,
+    pub text: String,
+    /// extracted (read out of the project) | user (said so) | inferred (a model
+    /// concluded it) | legacy (came from the old prose fields).
+    pub origin: String,
+    /// Which file, which conversation, which model — shown next to the fact.
+    pub origin_detail: Option<String>,
+    /// JSON spec a machine can run to confirm the fact, when one exists.
+    pub verify: Option<String>,
+    /// unverified | verified | stale | refuted
+    pub status: String,
+    pub checked_at: Option<i64>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+pub fn list_facts(project_id: &str) -> Result<Vec<MemoryFact>, String> {
+    with_conn(|c| {
+        let mut stmt = c
+            .prepare(
+                "SELECT id, project_id, kind, text, origin, origin_detail, verify, status, \
+                 checked_at, created_at, updated_at \
+                 FROM memory_facts \
+                 WHERE project_id = ?1 AND deleted_at IS NULL \
+                 ORDER BY kind ASC, created_at ASC",
+            )
+            .map_err(|e| e.to_string())?;
+
+        let rows = stmt
+            .query_map(params![project_id], |r| {
+                Ok(MemoryFact {
+                    id: r.get(0)?,
+                    project_id: r.get(1)?,
+                    kind: r.get(2)?,
+                    text: r.get(3)?,
+                    origin: r.get(4)?,
+                    origin_detail: r.get(5)?,
+                    verify: r.get(6)?,
+                    status: r.get(7)?,
+                    checked_at: r.get(8)?,
+                    created_at: r.get(9)?,
+                    updated_at: r.get(10)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    })
+}
+
+pub fn save_facts(facts: Vec<MemoryFact>) -> Result<(), String> {
+    with_conn(|c| {
+        // One transaction: a half-written batch would leave memory in a state
+        // nobody wrote and nobody can explain.
+        c.execute_batch("BEGIN").map_err(|e| e.to_string())?;
+        let res = (|| -> Result<(), String> {
+            for f in &facts {
+                c.execute(
+                    "INSERT INTO memory_facts \
+                       (id, project_id, kind, text, origin, origin_detail, verify, status, \
+                        checked_at, created_at, updated_at) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11) \
+                     ON CONFLICT(id) DO UPDATE SET \
+                       kind=excluded.kind, text=excluded.text, origin=excluded.origin, \
+                       origin_detail=excluded.origin_detail, verify=excluded.verify, \
+                       status=excluded.status, checked_at=excluded.checked_at, \
+                       updated_at=excluded.updated_at, deleted_at=NULL",
+                    params![
+                        f.id, f.project_id, f.kind, f.text, f.origin, f.origin_detail, f.verify,
+                        f.status, f.checked_at, f.created_at, f.updated_at
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+            Ok(())
+        })();
+        match res {
+            Ok(()) => {
+                c.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+                Ok(())
+            }
+            Err(e) => {
+                let _ = c.execute_batch("ROLLBACK");
+                Err(e)
+            }
+        }
+    })
+}
+
+pub fn delete_fact(id: &str) -> Result<(), String> {
+    with_conn(|c| {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        c.execute(
+            "UPDATE memory_facts SET deleted_at = ?2 WHERE id = ?1",
+            params![id, now],
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     })
 }

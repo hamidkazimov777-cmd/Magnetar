@@ -26,7 +26,8 @@ import { EmptyState } from "../ui/EmptyState";
 import { MemoryLog } from "./MemoryLog";
 import { pickWorkspaceFolder } from "./ExplorerPanel";
 import { Hint } from "../ui/Hint";
-import type { Project } from "../../lib/types";
+import type { FactKind, MemoryFact, Project } from "../../lib/types";
+import { FACT_KINDS, newFact } from "../../lib/facts";
 
 /** The table of contents for project memory.
  *
@@ -121,20 +122,13 @@ export function ProjectPanel() {
 
               {/* The memory itself, so it is visible without navigating */}
               <div className="section-label">{t("memoryKnown")}</div>
-              <div className="space-y-3 px-2 pt-1">
-                <Fact label={t("projectStack")} value={active.techStack} />
-                <Fact label={t("projectDescription")} value={active.description} />
-                <Fact
-                  label={t("projectDecisions")}
-                  value={active.decisions}
-                  emptyHint={t("memAutoAfterChat")}
-                />
-                <Fact
-                  label={t("projectLastState")}
-                  value={active.lastState}
-                  emptyHint={t("memAutoOnSwitch")}
-                />
-              </div>
+              <p className="section-hint">{t("factsHint")}</p>
+              {active.description && (
+                <p className="px-2 pb-1 text-[length:var(--fs-sm)] leading-[var(--lh-base)] text-[var(--color-text-dim)]">
+                  {active.description}
+                </p>
+              )}
+              <FactList projectId={active.id} />
 
               <SaveStateButton />
               <IndexStatus />
@@ -353,34 +347,115 @@ function IndexStatus() {
   );
 }
 
-function Fact({
-  label,
-  value,
-  emptyHint,
-}: {
-  label: string;
-  value?: string;
-  emptyHint?: string;
-}) {
-  // Defensive: older projects may hold a non-string here, written before the
-  // model output was flattened. Rendering must not be able to crash the panel.
-  const text = typeof value === "string" ? value : value == null ? "" : String(value);
-  if (!text.trim() && !emptyHint) return null;
+/** Project memory, fact by fact.
+ *
+ *  The provenance line under each fact is the point of the whole panel: a
+ *  coder — human or model — has to be able to tell what was read out of the
+ *  project from what somebody once claimed. Facts nobody checked say so. */
+function FactList({ projectId }: { projectId: string }) {
+  const t = useT();
+  const facts = useStore((s) => s.facts[projectId]);
+  const saveFacts = useStore((s) => s.saveFacts);
+  const deleteFact = useStore((s) => s.deleteFact);
+  const [draft, setDraft] = useState("");
+
+  const KIND_LABEL: Record<FactKind, string> = {
+    stack: t("factKindStack"),
+    architecture: t("factKindArchitecture"),
+    constraint: t("factKindConstraint"),
+    state: t("factKindState"),
+  };
+
+  const add = () => {
+    if (!draft.trim()) return;
+    // Typed by the user, so that is exactly what it claims to be.
+    saveFacts([newFact(projectId, "architecture", draft, "user")]);
+    setDraft("");
+  };
+
   return (
-    <div>
-      <div className="text-[length:var(--fs-2xs)] font-semibold uppercase tracking-[0.07em] text-[var(--color-text-mute)]">
-        {label}
+    <div className="px-2 pt-1">
+      {!facts?.length && <p className="section-hint pb-1">{t("factsEmpty")}</p>}
+
+      {FACT_KINDS.map((kind) => {
+        const group = (facts ?? []).filter((f) => f.kind === kind);
+        if (!group.length) return null;
+        return (
+          <div key={kind} className="pb-2">
+            <div className="text-[length:var(--fs-2xs)] font-semibold uppercase tracking-[0.07em] text-[var(--color-text-mute)]">
+              {KIND_LABEL[kind]}
+            </div>
+            {group.map((f) => (
+              <FactRow key={f.id} fact={f} onDelete={() => deleteFact(projectId, f.id)} />
+            ))}
+          </div>
+        );
+      })}
+
+      <div className="flex items-center gap-1 pt-1">
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") add();
+          }}
+          placeholder={t("factAddPlaceholder")}
+          className="input h-6 min-w-0 flex-1 text-[length:var(--fs-xs)]"
+        />
+        <button className="icon-btn h-6 w-6" title={t("factAdd")} onClick={add}>
+          <Plus size={13} />
+        </button>
       </div>
-      {text.trim() ? (
-        <p className="mt-1 line-clamp-4 text-[length:var(--fs-sm)] leading-[var(--lh-base)] text-[var(--color-text-dim)]">
-          {text}
+    </div>
+  );
+}
+
+function FactRow({ fact, onDelete }: { fact: MemoryFact; onDelete: () => void }) {
+  const t = useT();
+  const origin =
+    fact.origin === "extracted"
+      ? `${t("factOriginExtracted")}: ${fact.originDetail ?? "?"}`
+      : fact.origin === "user"
+        ? t("factOriginUser")
+        : fact.origin === "inferred"
+          ? t("factOriginInferred")
+          : t("factOriginLegacy");
+
+  const status =
+    fact.status === "verified"
+      ? `${t("factStatusVerified")}${fact.checkedAt ? ` · ${new Date(fact.checkedAt).toLocaleDateString()}` : ""}`
+      : fact.status === "stale"
+        ? t("factStatusStale")
+        : fact.status === "refuted"
+          ? t("factStatusRefuted")
+          : t("factStatusUnverified");
+
+  // Colour carries the same distinction as the words, for a glance rather than
+  // a read: confirmed is quiet, refuted and stale are not.
+  const statusTone =
+    fact.status === "verified"
+      ? "text-[var(--color-success)]"
+      : fact.status === "refuted" || fact.status === "stale"
+        ? "text-[var(--color-danger)]"
+        : "text-[var(--color-text-mute)]";
+
+  return (
+    <div className="group/fr flex items-start gap-1 py-0.5">
+      <div className="min-w-0 flex-1">
+        <p className="text-[length:var(--fs-sm)] leading-[var(--lh-base)] text-[var(--color-text-dim)]">
+          {fact.text}
         </p>
-      ) : (
-        // An empty field should say how it gets filled, not just sit blank.
-        <p className="mt-1 text-[length:var(--fs-xs)] italic leading-snug text-[var(--color-text-mute)]">
-          {emptyHint}
+        <p className="text-[length:var(--fs-2xs)] text-[var(--color-text-mute)]">
+          {origin} · <span className={statusTone}>{status}</span>
         </p>
-      )}
+      </div>
+      <button
+        className="icon-btn h-5 w-5 opacity-0 group-hover/fr:opacity-100"
+        title={t("factDelete")}
+        onClick={onDelete}
+      >
+        <Trash2 size={11} />
+      </button>
     </div>
   );
 }

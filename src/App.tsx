@@ -8,6 +8,7 @@ import { Splash } from "./components/Splash";
 import { useStore } from "./lib/store";
 import { api } from "./lib/api";
 import { installLinkInterceptor } from "./lib/links";
+import { ensureProjectFacts } from "./lib/facts";
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -16,6 +17,7 @@ export default function App() {
   const [showSplash, setShowSplash] = useState(true);
 
   const connections = useStore((s) => s.connections);
+  const activeProjectId = useStore((s) => s.activeProjectId);
   const hydrated = useStore((s) => s.hydrated);
   const onboarded = useStore((s) => s.onboarded);
   const setOnboarded = useStore((s) => s.setOnboarded);
@@ -28,6 +30,12 @@ export default function App() {
       if (st.sessions.length === 0 || !st.activeSessionId) st.newSession();
     })();
   }, []);
+
+  // The open project's memory has to be loaded (and migrated off the old prose
+  // fields) before anything builds a prompt from it.
+  useEffect(() => {
+    if (activeProjectId) void ensureProjectFacts(activeProjectId);
+  }, [activeProjectId]);
 
   // Warm the model catalog across all connections so the adaptive router can
   // reason about what is available (best-effort, offline-safe).

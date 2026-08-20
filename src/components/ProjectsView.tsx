@@ -6,6 +6,7 @@ import { cn } from "../lib/cn";
 import { EmptyState } from "./ui/EmptyState";
 import { pickWorkspaceFolder } from "./panels/ExplorerPanel";
 import type { Project } from "../lib/types";
+import { FactsEditor } from "./FactsEditor";
 
 /** The project brain editor: everything Magnetar remembers about a project and
  *  injects into the model's context instead of re-reading the codebase. */
@@ -132,42 +133,16 @@ export function ProjectsView() {
                 onChange={(v) => set({ description: v })}
                 rows={4}
               />
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                <Area
-                  label={t("projectStack")}
-                  hint={t("projectStackHint")}
-                  value={form.techStack}
-                  onChange={(v) => set({ techStack: v })}
-                  rows={5}
-                />
-                <Area
-                  label={t("projectStandards")}
-                  hint={t("projectStandardsHint")}
-                  value={form.codingStandards}
-                  onChange={(v) => set({ codingStandards: v })}
-                  rows={5}
-                />
-              </div>
-              <Area
-                label={t("projectArchitecture")}
-                hint={t("projectArchitectureHint")}
-                value={form.architectureNotes}
-                onChange={(v) => set({ architectureNotes: v })}
-                rows={6}
-              />
+              {/* Memory itself: facts with their provenance, not prose. The
+                  old textareas made a guess and a manifest read look the same. */}
+              <FactsEditor projectId={active.id} />
+
               <Area
                 label={t("projectDecisions")}
                 hint={t("projectDecisionsHint")}
                 value={form.decisions}
                 onChange={(v) => set({ decisions: v })}
                 rows={6}
-              />
-              <Area
-                label={t("projectLastState")}
-                hint={t("projectLastStateHint")}
-                value={form.lastState}
-                onChange={(v) => set({ lastState: v })}
-                rows={4}
               />
             </div>
           </div>

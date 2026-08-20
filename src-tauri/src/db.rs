@@ -99,6 +99,29 @@ pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
         );
         CREATE INDEX IF NOT EXISTS idx_tevents_project ON timeline_events(project_id);
 
+        -- Memory facts: the unit of project memory after Entry 50. A fact is
+        -- no longer a line of prose in a text column — it carries where it came
+        -- from, whether a machine confirmed it, and when. A false fact is worse
+        -- than a missing one precisely because it gets trusted.
+        --   origin  : extracted | user | inferred | legacy
+        --   status  : unverified | verified | stale | refuted
+        --   verify  : JSON spec the checker knows how to run (grep / check), or NULL
+        CREATE TABLE IF NOT EXISTS memory_facts (
+            id            TEXT PRIMARY KEY,
+            project_id    TEXT NOT NULL,
+            kind          TEXT NOT NULL,
+            text          TEXT NOT NULL,
+            origin        TEXT NOT NULL,
+            origin_detail TEXT,
+            verify        TEXT,
+            status        TEXT NOT NULL,
+            checked_at    INTEGER,
+            created_at    INTEGER NOT NULL,
+            updated_at    INTEGER NOT NULL,
+            deleted_at    INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_facts_project ON memory_facts(project_id);
+
         -- Provider connections (durable — не в хрупком localStorage). Ключи
         -- по-прежнему в Keychain по connection id; здесь только метаданные.
         CREATE TABLE IF NOT EXISTS connections (
@@ -126,6 +149,9 @@ pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
         "ALTER TABLE messages ADD COLUMN attachments TEXT",
         "ALTER TABLE projects ADD COLUMN path TEXT",
         "ALTER TABLE projects ADD COLUMN last_state TEXT",
+        // Set once a project's legacy text fields have been split into facts,
+        // so the one-time migration never runs twice.
+        "ALTER TABLE projects ADD COLUMN facts_migrated_at INTEGER",
     ] {
         let _ = conn.execute(stmt, []);
     }
