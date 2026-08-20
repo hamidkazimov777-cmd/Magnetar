@@ -16,12 +16,14 @@ import {
   Database,
   Loader2,
   RefreshCw,
+  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 import { useStore, type CenterView } from "../../lib/store";
 import { useT } from "../../lib/i18n";
 import { api } from "../../lib/api";
 import { flushHandoffToMemory } from "../../lib/memory";
+import { verifyProjectFacts } from "../../lib/verify";
 import { EmptyState } from "../ui/EmptyState";
 import { MemoryLog } from "./MemoryLog";
 import { pickWorkspaceFolder } from "./ExplorerPanel";
@@ -131,6 +133,7 @@ export function ProjectPanel() {
               <FactList projectId={active.id} />
 
               <SaveStateButton />
+              <VerifyFactsButton projectId={active.id} />
               <IndexStatus />
               <MemoryLog />
             </>
@@ -290,6 +293,42 @@ function SaveStateButton() {
             <Save size={13} />
           )}
           {done ? t("memSaveStateDone") : t("memSaveState")}
+        </button>
+      </Hint>
+    </div>
+  );
+}
+
+/** Confirming memory against the project — including the checks that cost
+ *  real time, which is why this one is a button and not something that happens
+ *  behind the user's back. */
+function VerifyFactsButton({ projectId }: { projectId: string }) {
+  const t = useT();
+  const root = useStore((s) => s.workspaceRoot);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  if (!root) return null;
+  return (
+    <div className="mt-1.5 px-1">
+      <Hint text={t("factsVerifyHint")}>
+        <button
+          className="btn btn-secondary btn-sm w-full"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            const r = await verifyProjectFacts(root, projectId, { includeChecks: true });
+            setBusy(false);
+            setResult(`${r.verified} · ${r.refuted} · ${r.stale}`);
+            setTimeout(() => setResult(null), 4000);
+          }}
+        >
+          {busy ? (
+            <Loader2 size={13} className="animate-spin" />
+          ) : (
+            <ShieldCheck size={13} />
+          )}
+          {result ?? t("factsVerify")}
         </button>
       </Hint>
     </div>

@@ -78,6 +78,8 @@ const ru: Dict = {
   factStatusVerified: "проверено",
   factStatusStale: "протухло",
   factStatusRefuted: "опровергнуто",
+  factsVerify: "Проверить факты",
+  factsVerifyHint: "Проверяет то, что можно проверить машиной: зависимости, файлы, проверки проекта. Показывает: подтверждено · опровергнуто · протухло",
   memoryEmptyHint: "Память пока пуста. Откройте папку — Magnetar соберёт факты о проекте.",
 
   // --- Problems panel ------------------------------------------------------
@@ -620,6 +622,8 @@ const en: Dict = {
   factStatusVerified: "verified",
   factStatusStale: "stale",
   factStatusRefuted: "refuted",
+  factsVerify: "Verify facts",
+  factsVerifyHint: "Runs what a machine can check: dependencies, files, project checks. Shows verified · refuted · stale",
   memoryEmptyHint: "Memory is still empty. Open a folder and Magnetar will collect the project's facts.",
 
   modelToolsReset: "Reset tool mode — it will be detected again on the next agent run",
@@ -1132,6 +1136,8 @@ const es: Dict = {
   factStatusVerified: "comprobado",
   factStatusStale: "caducado",
   factStatusRefuted: "refutado",
+  factsVerify: "Comprobar hechos",
+  factsVerifyHint: "Ejecuta lo que una máquina puede comprobar: dependencias, archivos, comprobaciones del proyecto. Muestra: comprobado · refutado · caducado",
   memoryEmptyHint:
     "La memoria está vacía. Abre una carpeta y Magnetar reunirá los datos del proyecto.",
 

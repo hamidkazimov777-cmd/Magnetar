@@ -9,6 +9,7 @@ import { useStore } from "./lib/store";
 import { api } from "./lib/api";
 import { installLinkInterceptor } from "./lib/links";
 import { ensureProjectFacts } from "./lib/facts";
+import { verifyProjectFacts } from "./lib/verify";
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -34,7 +35,15 @@ export default function App() {
   // The open project's memory has to be loaded (and migrated off the old prose
   // fields) before anything builds a prompt from it.
   useEffect(() => {
-    if (activeProjectId) void ensureProjectFacts(activeProjectId);
+    if (!activeProjectId) return;
+    void (async () => {
+      await ensureProjectFacts(activeProjectId);
+      // Cheap verification (file greps, no model, no build) runs on open, so
+      // memory that has quietly gone out of date says so before it is used.
+      const st = useStore.getState();
+      const root = st.projects.find((p) => p.id === activeProjectId)?.path ?? st.workspaceRoot;
+      if (root) await verifyProjectFacts(root, activeProjectId);
+    })();
   }, [activeProjectId]);
 
   // Warm the model catalog across all connections so the adaptive router can
