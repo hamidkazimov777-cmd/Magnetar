@@ -32,6 +32,21 @@ xattr -cr "$APP" 2>/dev/null || true
 echo
 codesign -dv "$APP" 2>&1 | grep -E "Identifier|Authority|Signature" || true
 
+# Keep the installed copy in step with the build.
+#
+# Two copies of the app is how you end up testing yesterday's code: the bundle
+# under target/ is what you just built, but Launchpad, Spotlight and the Dock
+# all open /Applications. An unsigned three-day-old copy sat there for a while,
+# and nothing on screen said which one was running.
+#
+# Only an existing installation is refreshed — this never installs the app
+# behind the user's back.
+INSTALLED="/Applications/$(basename "$APP")"
+if [ -d "$INSTALLED" ]; then
+  rm -rf "$INSTALLED" && cp -R "$APP" /Applications/
+  echo "↻ Updated $INSTALLED"
+fi
+
 if [ "$STABLE" = "1" ]; then
   echo
   echo "✅ Signed. On the next Keychain prompt choose \"Always Allow\" —"
