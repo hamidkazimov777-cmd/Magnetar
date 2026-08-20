@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowUp, Square, Paperclip, X, FileText } from "lucide-react";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open } from "@tauri-apps/plugin-dialog";
 import { readFile } from "@tauri-apps/plugin-fs";
 import { useT } from "../lib/i18n";
@@ -24,6 +25,9 @@ function getMimeType(path: string): string {
   if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
   if (ext === "webp") return "image/webp";
   if (ext === "gif") return "image/gif";
+  if (ext === "bmp") return "image/bmp";
+  if (ext === "heic") return "image/heic";
+  if (ext === "svg") return "image/svg+xml";
   if (ext === "pdf") return "application/pdf";
   return "application/octet-stream";
 }
@@ -67,6 +71,41 @@ export function Composer({
     }
     void projectFiles().then(setFiles);
   }, [workspaceRoot]);
+
+  // Drag and drop goes through the webview, not the DOM.
+  //
+  // Tauri intercepts file drops at the window level, so the React onDrop below
+  // never fires for a file dragged in from Finder — which is why attaching
+  // anything meant reaching for the paperclip. This listener receives the real
+  // paths, which is better anyway: an image arrives as a file we can read
+  // rather than a browser blob.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    void getCurrentWebview()
+      .onDragDropEvent((event) => {
+        if (event.payload.type === "over") setDragging(true);
+        else if (event.payload.type === "drop") {
+          setDragging(false);
+          const paths = event.payload.paths ?? [];
+          if (paths.length) {
+            // The drop is window-wide, so make sure the panel it lands in is
+            // actually on screen — otherwise the file attaches invisibly.
+            useStore.getState().toggleAgentPanel(true);
+            void ingestPaths(paths);
+          }
+        } else setDragging(false);
+      })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlisten = fn;
+      });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Another surface (e.g. "Run audit") can hand us a prompt to pre-fill.
   useEffect(() => {
@@ -187,7 +226,7 @@ export function Composer({
           path: file,
           extractedText,
         });
-      } else {
+      } else if (mime.startsWith("image/")) {
         const contents = await readFile(file);
         next.push({
           id: crypto.randomUUID(),
@@ -195,6 +234,24 @@ export function Composer({
           mimeType: mime,
           name,
           data: arrayBufferToBase64(contents),
+        });
+      } else {
+        // Anything else is treated as text: dropping a log or a source file
+        // should hand the model its contents, not a base64 blob labelled as a
+        // picture, which is what the old branch did to every non-image.
+        let extractedText = "";
+        try {
+          extractedText = (await api.editorReadFile(file)).slice(0, 200_000);
+        } catch {
+          /* binary or unreadable — it still attaches by name and path */
+        }
+        next.push({
+          id: crypto.randomUUID(),
+          type: "file",
+          mimeType: mime,
+          name,
+          path: file,
+          extractedText,
         });
       }
     }

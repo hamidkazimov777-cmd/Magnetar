@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Bot,
   FileCode2,
@@ -12,6 +13,7 @@ import {
 import { useStore, DEFAULT_PREFS } from "../lib/store";
 import { useT, LANGS } from "../lib/i18n";
 import { cn } from "../lib/cn";
+import { api } from "../lib/api";
 
 /** Real settings: how the agent behaves and how the editor looks. Connections
  *  and API keys stay in their own dialog (they are security-sensitive). */
@@ -23,22 +25,7 @@ export function SettingsView() {
   const setLang = useStore((s) => s.setLang);
   const theme = useStore((s) => s.theme);
   const setTheme = useStore((s) => s.setTheme);
-  const connections = useStore((s) => s.connections);
-  const models = useStore((s) => s.models);
-  const modelStatus = useStore((s) => s.modelStatus);
-
-  // Every model we know about, flattened, so the background task can be pinned
-  // to a specific one instead of relying on the name-based auto-pick.
-  const allModels = connections.flatMap((c) =>
-    (models[c.id] ?? []).map((m) => ({
-      connectionId: c.id,
-      connectionName: c.name,
-      model: m.id,
-      denied: modelStatus[`${c.id}::${m.id}`] === "denied",
-    })),
-  );
   const pinned = prefs.memoryModel;
-  const pinnedValue = pinned ? `${pinned.connectionId}::${pinned.model}` : "";
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
@@ -94,35 +81,10 @@ export function SettingsView() {
             <p className="mt-0.5 text-[length:var(--fs-xs)] leading-relaxed text-[var(--color-text-mute)]">
               {t("prefMemoryModelHint")}
             </p>
-            <select
-              className="input mt-2"
-              value={pinnedValue}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (!v) {
-                  setPrefs({ memoryModel: undefined });
-                  return;
-                }
-                const [connectionId, ...rest] = v.split("::");
-                setPrefs({ memoryModel: { connectionId, model: rest.join("::") } });
-              }}
-            >
-              <option value="">{t("prefMemoryModelAuto")}</option>
-              {allModels.map((m) => (
-                <option
-                  key={`${m.connectionId}::${m.model}`}
-                  value={`${m.connectionId}::${m.model}`}
-                >
-                  {m.connectionName} · {m.model}
-                  {m.denied ? ` — ${t("modelDenied")}` : ""}
-                </option>
-              ))}
-            </select>
-            {allModels.length === 0 && (
-              <p className="mt-1.5 text-[length:var(--fs-xs)] text-[var(--color-warning)]">
-                {t("prefMemoryModelEmpty")}
-              </p>
-            )}
+            <BackgroundModelPicker
+              pinned={pinned}
+              onChange={(v) => setPrefs({ memoryModel: v })}
+            />
           </div>
         </Section>
 
@@ -309,6 +271,143 @@ function Slider({
         onChange={(e) => onChange(Number(e.target.value))}
         className="mt-2 w-full accent-[var(--color-accent)]"
       />
+    </div>
+  );
+}
+
+
+/** Choosing the background model in two steps: the provider, then one of its
+ *  models.
+ *
+ *  The flat list this replaces could only offer models whose catalogue happened
+ *  to load at startup, so a provider whose /models call failed (TokenRouter did)
+ *  simply had no models to pick — with nothing on screen explaining why. Now the
+ *  catalogue is fetched when you pick the provider, there is a retry, and if the
+ *  provider will not list its models you can still type the id by hand. */
+function BackgroundModelPicker({
+  pinned,
+  onChange,
+}: {
+  pinned?: { connectionId: string; model: string };
+  onChange: (v: { connectionId: string; model: string } | undefined) => void;
+}) {
+  const t = useT();
+  const connections = useStore((s) => s.connections);
+  const models = useStore((s) => s.models);
+  const modelStatus = useStore((s) => s.modelStatus);
+  const setModels = useStore((s) => s.setModels);
+
+  const [connId, setConnId] = useState(pinned?.connectionId ?? "");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [manual, setManual] = useState("");
+
+  const list = connId ? (models[connId] ?? []) : [];
+
+  const load = async (id: string) => {
+    const conn = connections.find((c) => c.id === id);
+    if (!conn) return;
+    setLoading(true);
+    setError(null);
+    try {
+      setModels(conn.id, await api.listModels(conn));
+    } catch (e) {
+      // Say why it is empty. A silent failure here is what made the list look
+      // like the provider simply had no models.
+      setError(String(e).slice(0, 160));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mt-2 space-y-2">
+      <select
+        className="input"
+        value={connId}
+        onChange={(e) => {
+          const id = e.target.value;
+          setConnId(id);
+          setError(null);
+          if (!id) {
+            onChange(undefined);
+            return;
+          }
+          if (!models[id]?.length) void load(id);
+        }}
+      >
+        <option value="">{t("prefMemoryModelAuto")}</option>
+        {connections.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+          </option>
+        ))}
+      </select>
+
+      {connId && (
+        <div className="flex items-center gap-2">
+          <select
+            className="input min-w-0 flex-1"
+            value={pinned?.connectionId === connId ? pinned.model : ""}
+            disabled={loading || list.length === 0}
+            onChange={(e) =>
+              e.target.value
+                ? onChange({ connectionId: connId, model: e.target.value })
+                : onChange(undefined)
+            }
+          >
+            <option value="">
+              {loading ? t("loading") : list.length ? t("prefMemoryModelPick") : "—"}
+            </option>
+            {list.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.id}
+                {modelStatus[`${connId}::${m.id}`] === "denied" ? ` — ${t("modelDenied")}` : ""}
+              </option>
+            ))}
+          </select>
+          <button
+            className="btn btn-secondary btn-sm shrink-0"
+            disabled={loading}
+            onClick={() => void load(connId)}
+          >
+            {t("refresh")}
+          </button>
+        </div>
+      )}
+
+      {connId && !loading && list.length === 0 && (
+        <div className="space-y-1.5">
+          <p className="text-[length:var(--fs-xs)] leading-relaxed text-[var(--color-warning)]">
+            {error ?? t("prefMemoryModelNoList")}
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              className="input min-w-0 flex-1"
+              placeholder={t("prefMemoryModelManual")}
+              value={manual}
+              onChange={(e) => setManual(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && manual.trim())
+                  onChange({ connectionId: connId, model: manual.trim() });
+              }}
+            />
+            <button
+              className="btn btn-secondary btn-sm shrink-0"
+              disabled={!manual.trim()}
+              onClick={() => onChange({ connectionId: connId, model: manual.trim() })}
+            >
+              {t("save")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {pinned && (
+        <p className="text-[length:var(--fs-xs)] text-[var(--color-text-mute)]">
+          {connections.find((c) => c.id === pinned.connectionId)?.name ?? "?"} · {pinned.model}
+        </p>
+      )}
     </div>
   );
 }

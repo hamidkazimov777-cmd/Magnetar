@@ -18,6 +18,7 @@ import {
   RefreshCw,
   ShieldCheck,
   GitCompare,
+  Download,
   type LucideIcon,
 } from "lucide-react";
 import { useStore, type CenterView } from "../../lib/store";
@@ -25,6 +26,7 @@ import { useT } from "../../lib/i18n";
 import { api } from "../../lib/api";
 import { flushHandoffToMemory } from "../../lib/memory";
 import { verifyProjectFacts } from "../../lib/verify";
+import { exportMemorySnapshot } from "../../lib/exportMemory";
 import { EmptyState } from "../ui/EmptyState";
 import { MemoryLog } from "./MemoryLog";
 import { pickWorkspaceFolder } from "./ExplorerPanel";
@@ -137,6 +139,7 @@ export function ProjectPanel() {
 
               <SaveStateButton />
               <VerifyFactsButton projectId={active.id} />
+              <ExportMemoryButton />
               <IndexStatus />
               <MemoryLog />
             </>
@@ -296,6 +299,45 @@ function SaveStateButton() {
             <Save size={13} />
           )}
           {done ? t("memSaveStateDone") : t("memSaveState")}
+        </button>
+      </Hint>
+    </div>
+  );
+}
+
+/** Everything Magnetar remembers, written to one file.
+ *
+ *  Added because diagnosing memory from screenshots is guesswork: the panel
+ *  shows what fits, not the provenance, the verify spec, or why a check failed. */
+function ExportMemoryButton() {
+  const t = useT();
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+
+  return (
+    <div className="mt-1.5 px-1">
+      <Hint text={t("memExportHint")}>
+        <button
+          className="btn btn-secondary btn-sm w-full"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              const path = await exportMemorySnapshot();
+              if (path) {
+                setDone(path.split("/").pop() ?? path);
+                setTimeout(() => setDone(null), 4000);
+              }
+            } catch (e) {
+              setDone(String(e).slice(0, 60));
+              setTimeout(() => setDone(null), 5000);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {busy ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+          <span className="truncate">{done ?? t("memExport")}</span>
         </button>
       </Hint>
     </div>
