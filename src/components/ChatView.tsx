@@ -113,10 +113,33 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     setLastContext({ system: system + mentions, model, at: Date.now() });
 
     setStreaming(true);
+    // Timing is measured here rather than in the provider: what matters to the
+    // user is the wait, and where inside it the thinking happened.
+    const startedAt = Date.now();
+    let thinkingStart: number | null = null;
+    let thinkingMs = 0;
+
     const stop = api.chatStream(connection, model, history, {
       system: system + mentions,
-      onDelta: (d) => appendToMessage(sessionId!, assistantId, d),
+      onDelta: (d) => {
+        if (thinkingStart !== null) {
+          thinkingMs += Date.now() - thinkingStart;
+          thinkingStart = null;
+        }
+        appendToMessage(sessionId!, assistantId, d);
+      },
+      onReasoning: (d) => {
+        if (thinkingStart === null) thinkingStart = Date.now();
+        useStore.getState().appendReasoning(sessionId!, assistantId, d);
+      },
+      onUsage: (u) =>
+        useStore.getState().setMessageMeta(sessionId!, assistantId, { usage: u }),
       onDone: () => {
+        if (thinkingStart !== null) thinkingMs += Date.now() - thinkingStart;
+        useStore.getState().setMessageMeta(sessionId!, assistantId, {
+          durationMs: Date.now() - startedAt,
+          thinkingMs: thinkingMs || undefined,
+        });
         setStreaming(false);
         stopRef.current = null;
         useStore.getState().persistMessage(sessionId!, assistantId);

@@ -7,6 +7,7 @@ import { cn } from "../lib/cn";
 import { useStore } from "../lib/store";
 import { useT } from "../lib/i18n";
 import { AgentTrace } from "./AgentTrace";
+import { ReasoningBlock, TurnStats } from "./ReasoningBlock";
 import type { ChatMessage } from "../lib/types";
 
 /** A code block with a copy button, used inside the markdown renderer. */
@@ -53,7 +54,7 @@ export function Message({ message }: { message: ChatMessage }) {
     }
   };
 
-  const isPending = !message.content && !trace?.length;
+  const isPending = !message.content && !trace?.length && !message.reasoning;
 
   return (
     <div className={cn("group flex w-full", isUser ? "justify-end" : "justify-start")}>
@@ -91,6 +92,10 @@ export function Message({ message }: { message: ChatMessage }) {
             </div>
           )}
 
+          {/* Thinking first, then the run's steps, then the answer — the order
+              things actually happened in. */}
+          {!isUser && <ReasoningBlock message={message} streaming={isPending || !message.content} />}
+
           {!isUser && trace && trace.length > 0 && <AgentTrace events={trace} />}
 
           {message.content ? (
@@ -122,6 +127,7 @@ export function Message({ message }: { message: ChatMessage }) {
                 {message.model}
               </span>
             )}
+            <TurnStats message={message} />
           </div>
         )}
       </div>

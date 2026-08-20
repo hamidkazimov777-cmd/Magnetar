@@ -344,17 +344,6 @@ export async function runTeamAgent(
   h.onText(review);
 }
 
-/** True when the latest user message is about the project rather than small
- *  talk — those are the turns where a missing tool call is a real failure. */
-function wantsTools(history: ChatMessage[]): boolean {
-  const last = [...history].reverse().find((m) => m.role === "user")?.content ?? "";
-  if (last.trim().length === 0) return false;
-  // Anything longer than a greeting, or mentioning code/files/the project.
-  const chatty = /^(привет|прив|здоров|хай|как дела|спасибо|ок|окей|пока|hi|hello|hey|thanks|thank you|yo|sup)\b/i;
-  if (chatty.test(last.trim()) && last.trim().length < 40) return false;
-  return true;
-}
-
 /** Native OpenAI tool-use loop. */
 async function runAgentNative(
   connection: Connection,
@@ -375,17 +364,27 @@ async function runAgentNative(
 
     const called = (step.tool_calls?.length ?? 0) > 0;
 
-    // First turn decides how this model is driven from now on.
+    // A model can "call" a tool by typing it out instead of using the
+    // protocol — Claude reaches for its native XML, other instruction-tuned
+    // models copy the same shape. That is a text-protocol model, and printing
+    // the markup at the user is the worst possible answer.
+    const typedCall = called ? null : parseTextToolCall(step.content ?? "");
+
+    // First turn decides how this model is driven from now on. Only two things
+    // are conclusive: it called a tool properly (native), or it wrote a call as
+    // text (react). Prose alone proves nothing — the question may simply not
+    // have needed a tool — and marking on that was what stuck good models in
+    // ReAct forever, since the mark persists across restarts.
     if (i === 0) {
       if (called) {
         useStore.getState().setModelTools(connection.id, model, "native");
-      } else if (wantsTools(history)) {
-        // The request clearly needs the project, yet the model produced prose
-        // and no tool call: it does not really do function-calling. Redo the
-        // whole turn in ReAct instead of leaving the user with an excuse.
+      } else if (typedCall) {
         useStore.getState().setModelTools(connection.id, model, "react");
         return runAgentReAct(connection, model, history, h, system);
       }
+    } else if (typedCall) {
+      // Mid-run regression: finish this run in ReAct rather than stalling.
+      return runAgentReAct(connection, model, history, h, system);
     }
 
     if (step.content) h.onText(step.content);
@@ -468,6 +467,59 @@ interface ReActParse {
   final?: string;
 }
 
+/** Extract a tool call that a model wrote as TEXT instead of calling properly.
+ *
+ *  Three shapes show up in the wild and all of them used to fall through:
+ *
+ *    1. Anthropic's native XML, which Claude emits from habit whenever it is
+ *       driven by a text protocol — and which nvidia/nemotron and other
+ *       instruction-tuned models copy:
+ *         <function_calls><invoke name="run_bash">
+ *           <parameter name="command">ls</parameter>
+ *         </invoke></function_calls>
+ *    2. The ReAct scaffolding we actually asked for: `Action:` / `Action Input:`
+ *    3. A bare call: `list_dir {"path": "."}`
+ *
+ *  Unparsed, the model's call was printed into the chat as prose, nothing ran,
+ *  and the model then apologised and printed it again — the loop the user saw. */
+export function parseTextToolCall(
+  text: string,
+): { action: string; input: ToolArgs } | null {
+  const known = AGENT_TOOLS.map((x) => x.name);
+
+  // 1. XML function-call blocks.
+  const invoke = text.match(
+    /<invoke\s+name=["']([a-zA-Z_]+)["']\s*>([\s\S]*?)<\/invoke>/i,
+  );
+  if (invoke && known.includes(invoke[1])) {
+    const input: ToolArgs = {};
+    const paramRe = /<parameter\s+name=["']([a-zA-Z_]+)["']\s*>([\s\S]*?)<\/parameter>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = paramRe.exec(invoke[2]))) {
+      const raw = m[2].trim();
+      // Parameters arrive as text; recover numbers, booleans and JSON so tools
+      // that expect real types (read_file offset/limit) still work.
+      let value: unknown = raw;
+      if (/^-?\d+$/.test(raw)) value = Number(raw);
+      else if (raw === "true" || raw === "false") value = raw === "true";
+      else if (/^[[{]/.test(raw)) {
+        try {
+          value = JSON.parse(raw);
+        } catch {
+          /* keep the string */
+        }
+      }
+      input[m[1]] = value as ToolArgs[string];
+    }
+    return { action: invoke[1], input };
+  }
+
+  // 2 and 3 are handled by the ReAct parser, which already knows both.
+  const p = parseReAct(text);
+  if (p.action && known.includes(p.action)) return { action: p.action, input: p.input };
+  return null;
+}
+
 function parseReAct(text: string): ReActParse {
   const finalM = text.match(/Final Answer:\s*([\s\S]*)$/i);
   if (finalM) return { final: finalM[1].trim(), input: {} };
@@ -526,7 +578,15 @@ async function runAgentReAct(
     const text = await api.complete(connection, model, messages, REACT_SYSTEM + extraSystem);
     const p = parseReAct(text);
 
-    if (p.final != null) {
+    // A model that wrote its call as XML is still trying to use a tool; run it
+    // rather than printing the markup at the user.
+    const xml = p.action ? null : parseTextToolCall(text);
+    if (xml) {
+      p.action = xml.action;
+      p.input = xml.input;
+    }
+
+    if (p.final != null && !p.action) {
       h.onText((i > 0 ? "\n\n" : "") + p.final);
       return;
     }

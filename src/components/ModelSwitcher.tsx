@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, Loader2, Search, RefreshCw, Ban, Wrench, MessageSquareCode } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  Loader2,
+  Search,
+  RefreshCw,
+  Ban,
+  Wrench,
+  MessageSquareCode,
+  RotateCcw,
+} from "lucide-react";
 import { api } from "../lib/api";
 import { useStore } from "../lib/store";
 import { flushHandoffToMemory } from "../lib/memory";
@@ -18,6 +28,7 @@ export function ModelSwitcher() {
   const cacheModels = useStore((s) => s.setModels);
   const modelStatus = useStore((s) => s.modelStatus);
   const modelTools = useStore((s) => s.modelTools);
+  const clearModelTools = useStore((s) => s.clearModelTools);
 
   const [open, setOpen] = useState(false);
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -212,6 +223,22 @@ export function ModelSwitcher() {
                       className="shrink-0 text-[var(--color-success)]"
                       aria-label={t("modelToolsNative")}
                     />
+                  )}
+                  {/* A wrong "react" mark makes a capable model print tool
+                      calls as text forever; this clears it. */}
+                  {toolMode(m.id) && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      title={t("modelToolsReset")}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (activeConnectionId) clearModelTools(activeConnectionId, m.id);
+                      }}
+                      className="icon-btn h-5 w-5 shrink-0"
+                    >
+                      <RotateCcw size={11} />
+                    </span>
                   )}
                   {toolMode(m.id) === "react" && (
                     <MessageSquareCode

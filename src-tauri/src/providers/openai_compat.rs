@@ -182,6 +182,9 @@ impl Provider for OpenAiCompat {
             "model": params.model,
             "messages": messages,
             "stream": true,
+            // Ask for the token counts. Gateways that do not know this field
+            // ignore it; the ones that do send a final usage-only chunk.
+            "stream_options": { "include_usage": true },
         });
         if let Some(t) = params.temperature {
             body["temperature"] = json!(t);
@@ -238,11 +241,41 @@ impl Provider for OpenAiCompat {
 
                 match serde_json::from_str::<Value>(data) {
                     Ok(v) => {
+                        // Usage arrives on its own final chunk, with an empty
+                        // choices array, so read it before touching choices.
+                        if let Some(u) = v.get("usage") {
+                            let _ = channel.send(StreamEvent::Usage {
+                                input_tokens: u
+                                    .get("prompt_tokens")
+                                    .and_then(|x| x.as_u64())
+                                    .map(|x| x as u32),
+                                output_tokens: u
+                                    .get("completion_tokens")
+                                    .and_then(|x| x.as_u64())
+                                    .map(|x| x as u32),
+                            });
+                        }
+
                         let choice = v.get("choices").and_then(|c| c.get(0));
-                        if let Some(content) = choice
-                            .and_then(|c| c.get("delta"))
-                            .and_then(|d| d.get("content"))
-                            .and_then(|c| c.as_str())
+                        let delta = choice.and_then(|c| c.get("delta"));
+
+                        // Reasoning models put their thinking in a separate
+                        // field. OpenRouter calls it `reasoning`, DeepSeek and
+                        // several others `reasoning_content`; both appear as
+                        // deltas alongside the answer.
+                        if let Some(thought) = delta
+                            .and_then(|d| d.get("reasoning").or_else(|| d.get("reasoning_content")))
+                            .and_then(|r| r.as_str())
+                        {
+                            if !thought.is_empty() {
+                                let _ = channel.send(StreamEvent::Reasoning {
+                                    content: thought.to_string(),
+                                });
+                            }
+                        }
+
+                        if let Some(content) =
+                            delta.and_then(|d| d.get("content")).and_then(|c| c.as_str())
                         {
                             if !content.is_empty() {
                                 let _ = channel.send(StreamEvent::Delta {

@@ -44,6 +44,18 @@ export interface ChatMessage {
   /** Which model produced this message (for cross-model handoff continuity). */
   model?: string;
   attachments?: Attachment[];
+  /** The model's own thinking, when it exposes it (Anthropic extended
+   *  thinking, DeepSeek/OpenRouter reasoning fields). Kept apart from
+   *  `content` on purpose: it is shown collapsed and is never fed back into
+   *  the model or into project memory. */
+  reasoning?: string;
+  /** What the turn cost and how long it took. Undefined when the provider
+   *  does not report usage. */
+  usage?: { inputTokens?: number; outputTokens?: number };
+  /** Wall-clock milliseconds from request to final token. */
+  durationMs?: number;
+  /** How much of that was spent producing the reasoning block. */
+  thinkingMs?: number;
 }
 
 export interface Session {
@@ -148,6 +160,8 @@ export interface TimelineEvent {
 /** Stream events mirrored from the Rust `StreamEvent` enum. */
 export type StreamEvent =
   | { type: "delta"; content: string }
+  | { type: "reasoning"; content: string }
+  | { type: "usage"; inputTokens?: number | null; outputTokens?: number | null }
   | { type: "done"; finish_reason?: string | null }
   | { type: "error"; message: string };
 

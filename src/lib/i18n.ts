@@ -64,6 +64,13 @@ const ru: Dict = {
   memoryEmptyHint: "Память пока пуста. Откройте папку — Magnetar соберёт факты о проекте.",
 
   // --- Problems panel ------------------------------------------------------
+  modelToolsReset: "Сбросить режим инструментов — определится заново при следующем запуске агента",
+  reasoningTitle: "Рассуждение",
+  reasoningThinking: "Думает…",
+  reasoningTookSec: "Думал {n} с",
+  statsSeconds: "{n} с",
+  statsTokens: "{n} токенов",
+  statsThought: "думал {n} с",
   subsOpenExternal: "Открыть в системном браузере",
   subsExternalOnly: "в браузере",
   subsBridgeHint:
@@ -568,6 +575,13 @@ const en: Dict = {
   memoryKnown: "What is remembered",
   memoryEmptyHint: "Memory is still empty. Open a folder and Magnetar will collect the project's facts.",
 
+  modelToolsReset: "Reset tool mode — it will be detected again on the next agent run",
+  reasoningTitle: "Reasoning",
+  reasoningThinking: "Thinking…",
+  reasoningTookSec: "Thought for {n}s",
+  statsSeconds: "{n}s",
+  statsTokens: "{n} tokens",
+  statsThought: "thought for {n}s",
   subsOpenExternal: "Open in the system browser",
   subsExternalOnly: "in browser",
   subsBridgeHint:
@@ -1044,6 +1058,13 @@ const es: Dict = {
   memoryEmptyHint:
     "La memoria está vacía. Abre una carpeta y Magnetar reunirá los datos del proyecto.",
 
+  modelToolsReset: "Restablecer el modo de herramientas: se detectará de nuevo",
+  reasoningTitle: "Razonamiento",
+  reasoningThinking: "Pensando…",
+  reasoningTookSec: "Pensó {n} s",
+  statsSeconds: "{n} s",
+  statsTokens: "{n} tokens",
+  statsThought: "pensó {n} s",
   subsOpenExternal: "Abrir en el navegador del sistema",
   subsExternalOnly: "en el navegador",
   subsBridgeHint:

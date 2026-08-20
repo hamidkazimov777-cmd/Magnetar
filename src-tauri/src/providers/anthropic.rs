@@ -27,6 +27,27 @@ const API_VERSION: &str = "2023-06-01";
 /// chat replies and agent steps.
 const MAX_TOKENS: u32 = 8192;
 
+/// How much room the model gets to think before answering. Big enough to be
+/// useful on real engineering questions, small enough not to dominate the bill.
+const THINKING_BUDGET: u32 = 4096;
+
+/// Extended thinking exists on Claude 3.7 and the 4.x line. Asking an older
+/// model for it is a 400, so this gates on the family in the model id rather
+/// than sending it blindly and hoping.
+fn supports_thinking(model: &str) -> bool {
+    let m = model.to_ascii_lowercase();
+    if !m.contains("claude") {
+        return false;
+    }
+    m.contains("3-7")
+        || m.contains("3.7")
+        || m.contains("-4")
+        || m.contains("opus-4")
+        || m.contains("sonnet-4")
+        || m.contains("haiku-4")
+        || m.contains("-5")
+}
+
 pub struct Anthropic {
     conn: Connection,
     api_key: String,
@@ -266,7 +287,13 @@ impl Provider for Anthropic {
         if let Some(s) = system {
             body["system"] = json!(s);
         }
-        if let Some(t) = params.temperature {
+        if supports_thinking(&params.model) {
+            // Extended thinking: the model reasons in its own block before it
+            // answers, and we can show that live. Temperature must not be set
+            // alongside it — the API rejects the combination.
+            body["thinking"] = json!({ "type": "enabled", "budget_tokens": THINKING_BUDGET });
+            body["max_tokens"] = json!(MAX_TOKENS.max(THINKING_BUDGET + 4096));
+        } else if let Some(t) = params.temperature {
             body["temperature"] = json!(t);
         }
 
@@ -285,7 +312,9 @@ impl Provider for Anthropic {
             return Err(err);
         }
 
-        // Anthropic SSE: `content_block_delta` carries `delta.text_delta`.
+        // Anthropic SSE: `content_block_delta` carries `delta.text_delta`,
+        // and — with thinking enabled — `delta.thinking` for the reasoning
+        // block. Token counts arrive on `message_start` and `message_delta`.
         let mut stream = resp.bytes_stream();
         let mut buf = String::new();
 
@@ -314,13 +343,34 @@ impl Provider for Anthropic {
                 };
                 match v.get("type").and_then(|t| t.as_str()) {
                     Some("content_block_delta") => {
-                        if let Some(text) = v
-                            .get("delta")
-                            .and_then(|d| d.get("text"))
-                            .and_then(|t| t.as_str())
+                        let delta = v.get("delta");
+                        if let Some(text) = delta.and_then(|d| d.get("text")).and_then(|t| t.as_str())
                         {
                             let _ = channel.send(StreamEvent::Delta {
                                 content: text.to_string(),
+                            });
+                        } else if let Some(thought) = delta
+                            .and_then(|d| d.get("thinking"))
+                            .and_then(|t| t.as_str())
+                        {
+                            let _ = channel.send(StreamEvent::Reasoning {
+                                content: thought.to_string(),
+                            });
+                        }
+                    }
+                    Some("message_start") => {
+                        if let Some(u) = v.get("message").and_then(|m| m.get("usage")) {
+                            let _ = channel.send(StreamEvent::Usage {
+                                input_tokens: u.get("input_tokens").and_then(|x| x.as_u64()).map(|x| x as u32),
+                                output_tokens: None,
+                            });
+                        }
+                    }
+                    Some("message_delta") => {
+                        if let Some(u) = v.get("usage") {
+                            let _ = channel.send(StreamEvent::Usage {
+                                input_tokens: None,
+                                output_tokens: u.get("output_tokens").and_then(|x| x.as_u64()).map(|x| x as u32),
                             });
                         }
                     }

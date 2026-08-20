@@ -133,10 +133,21 @@ pub struct AgentStep {
 }
 
 /// Streaming events pushed to the frontend over a Tauri IPC channel.
+///
+/// `Reasoning` is separate from `Delta` on purpose: a model's thinking is not
+/// part of its answer, and mixing the two would put chain-of-thought straight
+/// into the transcript that later gets summarised and fed back as memory.
+/// `Usage` arrives once, near the end, and carries what the turn actually cost.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum StreamEvent {
     Delta { content: String },
+    Reasoning { content: String },
+    #[serde(rename_all = "camelCase")]
+    Usage {
+        input_tokens: Option<u32>,
+        output_tokens: Option<u32>,
+    },
     Done { finish_reason: Option<String> },
     Error { message: String },
 }

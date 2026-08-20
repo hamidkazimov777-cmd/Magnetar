@@ -227,6 +227,14 @@ interface State {
   addMessage: (sessionId: string, m: Omit<ChatMessage, "id" | "createdAt">) => string;
   appendToMessage: (sessionId: string, messageId: string, delta: string) => void;
   setMessageContent: (sessionId: string, messageId: string, content: string) => void;
+  /** Append a chunk of the model's thinking, shown collapsed above the answer. */
+  appendReasoning: (sessionId: string, messageId: string, delta: string) => void;
+  /** Attach cost and timing to a finished message. */
+  setMessageMeta: (
+    sessionId: string,
+    messageId: string,
+    meta: Partial<Pick<ChatMessage, "usage" | "durationMs" | "thinkingMs">>,
+  ) => void;
   /** Persist a message's current in-memory content to the DB (e.g. after a stream ends). */
   persistMessage: (sessionId: string, messageId: string) => void;
 
@@ -247,6 +255,9 @@ interface State {
    *  first agent turn: providers happily accept `tools` and then ignore them. */
   modelTools: Record<string, "native" | "react">;
   setModelTools: (connectionId: string, model: string, mode: "native" | "react") => void;
+  /** Forget how a model was driven, so the next run re-detects it. Needed
+   *  because a wrong "react" mark otherwise persists forever. */
+  clearModelTools: (connectionId: string, model: string) => void;
 
   /** Why the last project-memory analysis failed (shown in the Explorer). */
   memoryError?: string;
@@ -689,6 +700,38 @@ export const useStore = create<State>()(
           ),
         })),
 
+      appendReasoning: (sessionId, messageId, delta) =>
+        set((s) => ({
+          sessions: s.sessions.map((sess) =>
+            sess.id !== sessionId
+              ? sess
+              : {
+                  ...sess,
+                  messages: sess.messages.map((msg) =>
+                    msg.id === messageId
+                      ? { ...msg, reasoning: (msg.reasoning ?? "") + delta }
+                      : msg,
+                  ),
+                },
+          ),
+        })),
+
+      setMessageMeta: (sessionId, messageId, meta) =>
+        set((s) => ({
+          sessions: s.sessions.map((sess) =>
+            sess.id !== sessionId
+              ? sess
+              : {
+                  ...sess,
+                  messages: sess.messages.map((msg) =>
+                    msg.id === messageId
+                      ? { ...msg, ...meta, usage: { ...msg.usage, ...meta.usage } }
+                      : msg,
+                  ),
+                },
+          ),
+        })),
+
       setMessageContent: (sessionId, messageId, content) => {
         set((s) => ({
           sessions: s.sessions.map((sess) =>
@@ -728,6 +771,12 @@ export const useStore = create<State>()(
         set((s) => ({
           modelTools: { ...s.modelTools, [`${connectionId}::${model}`]: mode },
         })),
+      clearModelTools: (connectionId, model) =>
+        set((s) => {
+          const next = { ...s.modelTools };
+          delete next[`${connectionId}::${model}`];
+          return { modelTools: next };
+        }),
       setModelStatus: (connectionId, model, status) =>
         set((s) => ({
           modelStatus: { ...s.modelStatus, [`${connectionId}::${model}`]: status },

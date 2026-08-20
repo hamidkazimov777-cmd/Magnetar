@@ -83,6 +83,8 @@ export const api = {
       system?: string;
       temperature?: number;
       onDelta: (text: string) => void;
+      onReasoning?: (text: string) => void;
+      onUsage?: (u: { inputTokens?: number; outputTokens?: number }) => void;
       onDone: () => void;
       onError: (message: string) => void;
     },
@@ -94,6 +96,12 @@ export const api = {
     channel.onmessage = (ev) => {
       if (stopped) return;
       if (ev.type === "delta") opts.onDelta(ev.content);
+      else if (ev.type === "reasoning") opts.onReasoning?.(ev.content);
+      else if (ev.type === "usage")
+        opts.onUsage?.({
+          inputTokens: ev.inputTokens ?? undefined,
+          outputTokens: ev.outputTokens ?? undefined,
+        });
       else if (ev.type === "done") opts.onDone();
       else if (ev.type === "error") opts.onError(ev.message);
     };
