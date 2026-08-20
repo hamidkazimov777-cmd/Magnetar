@@ -8,6 +8,9 @@ use super::{
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tauri::ipc::Channel;
 
 pub struct OpenAiCompat {
@@ -95,7 +98,59 @@ fn format_message(m: &crate::providers::ChatMessage) -> Value {
     }
 }
 
+/// True when a provider refused the request because of `temperature`.
+///
+/// Reasoning models reject any temperature but their own: Kimi K3 answers
+/// "invalid temperature: only 1 is allowed for this model", OpenAI's o-series
+/// says something similar. We send temperature 0 for background work (JSON
+/// extraction wants determinism), so rather than maintaining a list of which
+/// models are picky — a list that is wrong the week it is written — we notice
+/// the refusal and retry once without the field.
+fn is_temperature_refusal(status: reqwest::StatusCode, body: &str) -> bool {
+    status.as_u16() == 400 && body.to_ascii_lowercase().contains("temperature")
+}
+
 impl OpenAiCompat {
+    /// POST a chat request, retrying once without `temperature` if that is what
+    /// the provider objected to. Returns the response and the body it used.
+    async fn post_chat(
+        &self,
+        mut body: Value,
+    ) -> Result<(reqwest::Response, Value), ProviderError> {
+        let url = self.conn.endpoint("chat/completions");
+        let resp = self
+            .http
+            .post(&url)
+            .bearer_auth(&self.api_key)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| ProviderError::Network(e.to_string()))?;
+
+        if resp.status().is_success() || body.get("temperature").is_none() {
+            return Ok((resp, body));
+        }
+
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        if !is_temperature_refusal(status, &text) {
+            return Err(ProviderError::Api(format!("{status}: {text}")));
+        }
+
+        if let Some(obj) = body.as_object_mut() {
+            obj.remove("temperature");
+        }
+        let retry = self
+            .http
+            .post(&url)
+            .bearer_auth(&self.api_key)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| ProviderError::Network(e.to_string()))?;
+        Ok((retry, body))
+    }
+
     pub fn new(conn: Connection, api_key: String) -> Self {
         Self {
             conn,
@@ -190,14 +245,7 @@ impl Provider for OpenAiCompat {
             body["temperature"] = json!(t);
         }
 
-        let resp = self
-            .http
-            .post(self.conn.endpoint("chat/completions"))
-            .bearer_auth(&self.api_key)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| ProviderError::Network(e.to_string()))?;
+        let (resp, _) = self.post_chat(body).await?;
 
         if !resp.status().is_success() {
             let code = resp.status();
@@ -331,14 +379,7 @@ impl Provider for OpenAiCompat {
             body["temperature"] = json!(t);
         }
 
-        let resp = self
-            .http
-            .post(self.conn.endpoint("chat/completions"))
-            .bearer_auth(&self.api_key)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| ProviderError::Network(e.to_string()))?;
+        let (resp, _) = self.post_chat(body).await?;
 
         if !resp.status().is_success() {
             let code = resp.status();
@@ -453,5 +494,150 @@ impl Provider for OpenAiCompat {
             .unwrap_or_default();
 
         Ok(AgentStep { content, tool_calls })
+    }
+
+    async fn agent_step_stream(
+        &self,
+        model: String,
+        mut messages: Vec<Value>,
+        tools: Vec<ToolDef>,
+        channel: &Channel<StreamEvent>,
+        cancel: Arc<AtomicBool>,
+    ) -> Result<AgentStep, ProviderError> {
+        if self.api_key.is_empty() {
+            return Err(ProviderError::MissingKey);
+        }
+        maybe_cache_system(
+            &mut messages,
+            supports_prompt_cache(&self.conn.base_url, &model),
+        );
+
+        let tools_json: Vec<Value> = tools
+            .iter()
+            .map(|t| {
+                json!({
+                    "type": "function",
+                    "function": {
+                        "name": t.name,
+                        "description": t.description,
+                        "parameters": t.parameters,
+                    }
+                })
+            })
+            .collect();
+
+        let mut body = json!({
+            "model": model,
+            "messages": messages,
+            "stream": true,
+            "stream_options": { "include_usage": true },
+        });
+        if !tools_json.is_empty() {
+            body["tools"] = json!(tools_json);
+            body["tool_choice"] = json!("auto");
+        }
+
+        let (resp, _) = self.post_chat(body).await?;
+        if !resp.status().is_success() {
+            let code = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Api(format!("{code}: {text}")));
+        }
+
+        // Tool calls arrive in fragments keyed by index: the id and name come
+        // first, then the arguments JSON accumulates character by character
+        // across many chunks. Assemble by index, not by arrival order.
+        let mut text = String::new();
+        let mut partial: BTreeMap<u64, (String, String, String)> = BTreeMap::new();
+        let mut stream = resp.bytes_stream();
+        let mut buf = String::new();
+
+        while let Some(chunk) = stream.next().await {
+            if cancel.load(Ordering::Relaxed) {
+                break;
+            }
+            let bytes = chunk.map_err(|e| ProviderError::Network(e.to_string()))?;
+            buf.push_str(&String::from_utf8_lossy(&bytes));
+
+            while let Some(idx) = buf.find('\n') {
+                let line = buf[..idx].trim().to_string();
+                buf.drain(..=idx);
+                let Some(data) = line.strip_prefix("data:") else { continue };
+                let data = data.trim();
+                if data.is_empty() || data == "[DONE]" {
+                    continue;
+                }
+                let Ok(v) = serde_json::from_str::<Value>(data) else { continue };
+
+                if let Some(u) = v.get("usage") {
+                    let _ = channel.send(StreamEvent::Usage {
+                        input_tokens: u.get("prompt_tokens").and_then(|x| x.as_u64()).map(|x| x as u32),
+                        output_tokens: u.get("completion_tokens").and_then(|x| x.as_u64()).map(|x| x as u32),
+                    });
+                }
+
+                let Some(delta) = v
+                    .get("choices")
+                    .and_then(|c| c.get(0))
+                    .and_then(|c| c.get("delta"))
+                else {
+                    continue;
+                };
+
+                if let Some(thought) = delta
+                    .get("reasoning")
+                    .or_else(|| delta.get("reasoning_content"))
+                    .and_then(|r| r.as_str())
+                {
+                    if !thought.is_empty() {
+                        let _ = channel.send(StreamEvent::Reasoning { content: thought.to_string() });
+                    }
+                }
+
+                if let Some(content) = delta.get("content").and_then(|c| c.as_str()) {
+                    if !content.is_empty() {
+                        text.push_str(content);
+                        let _ = channel.send(StreamEvent::Delta { content: content.to_string() });
+                    }
+                }
+
+                if let Some(calls) = delta.get("tool_calls").and_then(|t| t.as_array()) {
+                    for tc in calls {
+                        let index = tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0);
+                        let slot = partial.entry(index).or_default();
+                        if let Some(id) = tc.get("id").and_then(|x| x.as_str()) {
+                            if !id.is_empty() {
+                                slot.0 = id.to_string();
+                            }
+                        }
+                        if let Some(f) = tc.get("function") {
+                            if let Some(n) = f.get("name").and_then(|x| x.as_str()) {
+                                if !n.is_empty() {
+                                    slot.1 = n.to_string();
+                                }
+                            }
+                            if let Some(a) = f.get("arguments").and_then(|x| x.as_str()) {
+                                slot.2.push_str(a);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let tool_calls: Vec<ToolCall> = partial
+            .into_values()
+            .filter(|(_, name, _)| !name.is_empty())
+            .map(|(id, name, arguments)| ToolCall {
+                id: if id.is_empty() { format!("call_{name}") } else { id },
+                name,
+                arguments: if arguments.trim().is_empty() { "{}".into() } else { arguments },
+            })
+            .collect();
+
+        Ok(AgentStep {
+            content: (!text.is_empty()).then_some(text),
+            tool_calls,
+        })
     }
 }

@@ -194,6 +194,41 @@ pub async fn agent_step(
         .map_err(|e| e.to_string())
 }
 
+/// Streaming agent step. Same as `agent_step`, but text and reasoning reach the
+/// UI as they are produced, and the run can be cancelled mid-turn.
+#[tauri::command]
+pub async fn agent_step_stream(
+    connection: Connection,
+    model: String,
+    messages: Vec<serde_json::Value>,
+    tools: Vec<ToolDef>,
+    request_id: String,
+    on_event: Channel<StreamEvent>,
+) -> Result<AgentStep, String> {
+    let key = resolve_key(&connection)?;
+    let provider = build_provider(&connection, key).map_err(|e| e.to_string())?;
+
+    let cancel = Arc::new(AtomicBool::new(false));
+    if let Ok(mut m) = CANCELS.lock() {
+        m.insert(request_id.clone(), cancel.clone());
+    }
+
+    let result = provider
+        .agent_step_stream(model, messages, tools, &on_event, cancel)
+        .await;
+
+    if let Ok(mut m) = CANCELS.lock() {
+        m.remove(&request_id);
+    }
+
+    result.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_messages_from(session_id: String, message_id: String) -> Result<(), String> {
+    canon::delete_messages_from(&session_id, &message_id)
+}
+
 // ---- Agent tools -----------------------------------------------------------
 
 #[tauri::command]

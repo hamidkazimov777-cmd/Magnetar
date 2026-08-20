@@ -531,4 +531,176 @@ impl Provider for Anthropic {
             tool_calls,
         })
     }
+
+    async fn agent_step_stream(
+        &self,
+        model: String,
+        messages: Vec<Value>,
+        tools: Vec<ToolDef>,
+        channel: &Channel<StreamEvent>,
+        cancel: Arc<AtomicBool>,
+    ) -> Result<AgentStep, ProviderError> {
+        if self.api_key.is_empty() {
+            return Err(ProviderError::MissingKey);
+        }
+        let (system, msgs) = Self::convert_agent_messages(messages);
+
+        let tools_json: Vec<Value> = tools
+            .iter()
+            .map(|t| {
+                json!({
+                    "name": t.name,
+                    "description": t.description,
+                    "input_schema": t.parameters,
+                })
+            })
+            .collect();
+
+        let thinking = supports_thinking(&model);
+        let mut body = json!({
+            "model": model,
+            "messages": msgs,
+            // Agent turns are where the model needs room: it has to reason
+            // about the project AND emit tool calls. The old 8k cap truncated
+            // long turns, which is part of why the agent looked dim.
+            "max_tokens": if thinking { MAX_TOKENS.max(THINKING_BUDGET + 8192) } else { MAX_TOKENS * 2 },
+            "stream": true,
+        });
+        if let Some(s) = system {
+            // Cache the system block: it carries the agent prompt plus the whole
+            // project memory and is byte-identical on every step of a run.
+            // Without this Claude re-reads and re-bills all of it each step,
+            // which is both the slowest and the most expensive part of a run.
+            body["system"] = json!([{
+                "type": "text",
+                "text": s,
+                "cache_control": { "type": "ephemeral" }
+            }]);
+        }
+        if !tools_json.is_empty() {
+            body["tools"] = json!(tools_json);
+        }
+        if thinking {
+            body["thinking"] = json!({ "type": "enabled", "budget_tokens": THINKING_BUDGET });
+        }
+
+        let resp = self
+            .request("messages")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| ProviderError::Network(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            return Err(Self::api_error(resp).await);
+        }
+
+        // Anthropic streams each content block separately: text arrives as
+        // text_delta, a tool call opens with content_block_start (id + name)
+        // and then its arguments accumulate as input_json_delta fragments.
+        let mut text = String::new();
+        let mut calls: Vec<ToolCall> = Vec::new();
+        let mut open: Option<(String, String, String)> = None;
+
+        let mut stream = resp.bytes_stream();
+        let mut buf = String::new();
+
+        while let Some(chunk) = stream.next().await {
+            if cancel.load(Ordering::Relaxed) {
+                break;
+            }
+            let bytes = chunk.map_err(|e| ProviderError::Network(e.to_string()))?;
+            buf.push_str(&String::from_utf8_lossy(&bytes));
+
+            while let Some(idx) = buf.find('\n') {
+                let line = buf[..idx].trim().to_string();
+                buf.drain(..=idx);
+                let Some(payload) = line.strip_prefix("data:") else { continue };
+                let payload = payload.trim();
+                if payload.is_empty() {
+                    continue;
+                }
+                let Ok(v) = serde_json::from_str::<Value>(payload) else { continue };
+
+                match v.get("type").and_then(|t| t.as_str()) {
+                    Some("content_block_start") => {
+                        let block = v.get("content_block");
+                        if block.and_then(|b| b.get("type")).and_then(|t| t.as_str())
+                            == Some("tool_use")
+                        {
+                            open = Some((
+                                block
+                                    .and_then(|b| b.get("id"))
+                                    .and_then(|x| x.as_str())
+                                    .unwrap_or_default()
+                                    .to_string(),
+                                block
+                                    .and_then(|b| b.get("name"))
+                                    .and_then(|x| x.as_str())
+                                    .unwrap_or_default()
+                                    .to_string(),
+                                String::new(),
+                            ));
+                        }
+                    }
+                    Some("content_block_delta") => {
+                        let delta = v.get("delta");
+                        if let Some(t) = delta.and_then(|d| d.get("text")).and_then(|x| x.as_str()) {
+                            text.push_str(t);
+                            let _ = channel.send(StreamEvent::Delta { content: t.to_string() });
+                        } else if let Some(th) =
+                            delta.and_then(|d| d.get("thinking")).and_then(|x| x.as_str())
+                        {
+                            let _ = channel.send(StreamEvent::Reasoning { content: th.to_string() });
+                        } else if let Some(frag) = delta
+                            .and_then(|d| d.get("partial_json"))
+                            .and_then(|x| x.as_str())
+                        {
+                            if let Some(slot) = open.as_mut() {
+                                slot.2.push_str(frag);
+                            }
+                        }
+                    }
+                    Some("content_block_stop") => {
+                        if let Some((id, name, args)) = open.take() {
+                            if !name.is_empty() {
+                                calls.push(ToolCall {
+                                    id,
+                                    name,
+                                    arguments: if args.trim().is_empty() { "{}".into() } else { args },
+                                });
+                            }
+                        }
+                    }
+                    Some("message_start") => {
+                        if let Some(u) = v.get("message").and_then(|m| m.get("usage")) {
+                            let _ = channel.send(StreamEvent::Usage {
+                                input_tokens: u.get("input_tokens").and_then(|x| x.as_u64()).map(|x| x as u32),
+                                output_tokens: None,
+                            });
+                        }
+                    }
+                    Some("message_delta") => {
+                        if let Some(u) = v.get("usage") {
+                            let _ = channel.send(StreamEvent::Usage {
+                                input_tokens: None,
+                                output_tokens: u.get("output_tokens").and_then(|x| x.as_u64()).map(|x| x as u32),
+                            });
+                        }
+                    }
+                    Some("message_stop") => break,
+                    Some("error") => {
+                        let msg = v.get("error").map(|e| e.to_string()).unwrap_or_default();
+                        return Err(ProviderError::Api(msg));
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        Ok(AgentStep {
+            content: (!text.is_empty()).then_some(text),
+            tool_calls: calls,
+        })
+    }
 }

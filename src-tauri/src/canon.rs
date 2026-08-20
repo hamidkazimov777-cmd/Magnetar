@@ -137,6 +137,32 @@ pub fn upsert_message(msg: MessageRow) -> Result<(), String> {
     })
 }
 
+/// Delete a message and everything after it in the same session.
+///
+/// This is what "edit a message" means for a transcript: the turns that
+/// followed were answers to the old wording, so keeping them would leave the
+/// model reading a conversation that never happened. Ordering is by created_at
+/// with id as the tiebreaker, matching how messages are loaded back.
+pub fn delete_messages_from(session_id: &str, message_id: &str) -> Result<(), String> {
+    with_conn(|c| {
+        let created_at: i64 = c
+            .query_row(
+                "SELECT created_at FROM messages WHERE id = ?1 AND session_id = ?2",
+                params![message_id, session_id],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+
+        c.execute(
+            "DELETE FROM messages WHERE session_id = ?1 \
+             AND (created_at > ?2 OR (created_at = ?2 AND id >= ?3))",
+            params![session_id, created_at, message_id],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+}
+
 pub fn delete_session(id: &str) -> Result<(), String> {
     with_conn(|c| {
         c.execute("DELETE FROM messages WHERE session_id = ?1", params![id])

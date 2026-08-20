@@ -176,6 +176,24 @@ pub trait Provider: Send + Sync {
     ) -> Result<AgentStep, ProviderError> {
         Err(ProviderError::NotImplemented)
     }
+
+    /// Streaming agent step: same contract, but text and reasoning are pushed
+    /// to `channel` as they arrive instead of after the whole turn.
+    ///
+    /// This is what makes a long agent run feel alive. Non-streaming steps mean
+    /// the user stares at nothing until the model has finished thinking, and a
+    /// ten-step run is ten silent pauses. Adapters that cannot stream fall back
+    /// to `agent_step`, which stays correct — just quiet.
+    async fn agent_step_stream(
+        &self,
+        model: String,
+        messages: Vec<serde_json::Value>,
+        tools: Vec<ToolDef>,
+        _channel: &Channel<StreamEvent>,
+        _cancel: Arc<AtomicBool>,
+    ) -> Result<AgentStep, ProviderError> {
+        self.agent_step(model, messages, tools).await
+    }
 }
 
 /// Build the right adapter for a connection. `api_key` already resolved from

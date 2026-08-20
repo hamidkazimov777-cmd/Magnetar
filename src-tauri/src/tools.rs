@@ -223,7 +223,7 @@ fn walk_grep(dir: &Path, needle: &str, hits: &mut Vec<GrepHit>) {
     }
 }
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use once_cell::sync::Lazy;
 
@@ -255,21 +255,46 @@ pub fn run_bash(
 
     // Drain pipes on threads so a chatty command can't deadlock on a full buffer
     // while we wait.
+    //
+    // The buffers are shared rather than returned from the threads, because we
+    // must be able to give up on them. A backgrounded child inherits these
+    // pipes and keeps them open after bash itself exits — `nohup python bot.py &`
+    // is the everyday case — so `read_to_string` never returns and joining
+    // would hang the whole agent loop long after the command "finished". That
+    // is exactly what the user saw: a command sitting at 220 seconds that Stop
+    // could not touch, because there was nothing left to kill.
+    let out_buf = Arc::new(Mutex::new(String::new()));
+    let err_buf = Arc::new(Mutex::new(String::new()));
     let mut so = child.stdout.take();
     let mut se = child.stderr.take();
+    // Append as it arrives rather than at EOF: when a detached child holds the
+    // pipe open we abandon these threads, and whatever they had already read
+    // must still be there. `read_to_string` would have handed us nothing.
+    fn pump<R: Read + Send + 'static>(mut src: R, sink: Arc<Mutex<String>>) {
+        let mut chunk = [0u8; 8192];
+        loop {
+            match src.read(&mut chunk) {
+                Ok(0) | Err(_) => return,
+                Ok(n) => {
+                    if let Ok(mut b) = sink.lock() {
+                        b.push_str(&String::from_utf8_lossy(&chunk[..n]));
+                    }
+                }
+            }
+        }
+    }
+
+    let ob = out_buf.clone();
     let th_o = std::thread::spawn(move || {
-        let mut s = String::new();
-        if let Some(p) = so.as_mut() {
-            let _ = p.read_to_string(&mut s);
+        if let Some(p) = so.take() {
+            pump(p, ob);
         }
-        s
     });
+    let eb = err_buf.clone();
     let th_e = std::thread::spawn(move || {
-        let mut s = String::new();
-        if let Some(p) = se.as_mut() {
-            let _ = p.read_to_string(&mut s);
+        if let Some(p) = se.take() {
+            pump(p, eb);
         }
-        s
     });
 
     let (code, timed_out) = match child
@@ -290,12 +315,29 @@ pub fn run_bash(
         m.remove(&pid);
     }
 
-    let stdout_raw = th_o.join().unwrap_or_default();
-    let mut stderr_raw = th_e.join().unwrap_or_default();
+    // Give the readers a moment to flush what the command actually printed,
+    // then move on whether or not the pipes closed. Detached children may hold
+    // them open forever; their output is not worth blocking the agent for.
+    let deadline = std::time::Instant::now() + Duration::from_millis(1500);
+    while (!th_o.is_finished() || !th_e.is_finished()) && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    let detached = !th_o.is_finished() || !th_e.is_finished();
+
+    let stdout_raw = out_buf.lock().map(|b| b.clone()).unwrap_or_default();
+    let mut stderr_raw = err_buf.lock().map(|b| b.clone()).unwrap_or_default();
+
     if timed_out {
         stderr_raw.push_str(&format!("\n[killed: exceeded {timeout}s timeout]"));
     } else if code == -1 && stdout_raw.is_empty() && stderr_raw.is_empty() {
         stderr_raw.push_str("\n[killed by user]");
+    }
+    if detached {
+        stderr_raw.push_str(
+            "\n[note: a background process is still holding this command's output pipe, \
+             so its output may be incomplete. Redirect it — e.g. `cmd > /tmp/x.log 2>&1 < /dev/null &` \
+             — to detach cleanly.]",
+        );
     }
 
     let (stdout, t1) = clip(&stdout_raw, MAX_BASH_BYTES);
@@ -347,4 +389,43 @@ pub fn kill_bash(pid: Option<u32>) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The regression that made Stop look broken: a command that detaches a
+    /// child while leaving stdout attached. bash exits immediately, but the
+    /// pipe stays open, so draining it used to block until the 600s timeout —
+    /// with no process left to kill.
+    #[test]
+    fn background_child_holding_stdout_does_not_hang() {
+        let started = std::time::Instant::now();
+        let r = run_bash("sleep 30 & echo started", None, Some(600))
+            .expect("run_bash should return");
+        let elapsed = started.elapsed();
+
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "returned after {elapsed:?} — the detached child's pipe is blocking again"
+        );
+        assert!(
+            r.stdout.contains("started"),
+            "output collected before giving up: {:?}",
+            r.stdout
+        );
+
+        // Clean up the child we deliberately leaked.
+        let _ = run_bash("pkill -f 'sleep 30' || true", None, Some(10));
+    }
+
+    /// A normal command must still return its full output, not a truncated
+    /// snapshot taken at the deadline.
+    #[test]
+    fn ordinary_command_returns_complete_output() {
+        let r = run_bash("printf 'a\\nb\\nc\\n'", None, Some(30)).expect("run_bash");
+        assert_eq!(r.stdout.trim(), "a\nb\nc");
+        assert_eq!(r.code, 0);
+    }
 }
