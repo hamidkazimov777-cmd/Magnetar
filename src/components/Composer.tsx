@@ -347,7 +347,13 @@ export function Composer({
             value={text}
             rows={1}
             disabled={disabled}
-            placeholder={disabled ? t("addConnFirst") : t("messagePlaceholder")}
+            placeholder={
+              disabled
+                ? t("addConnFirst")
+                : streaming
+                  ? t("interjectPlaceholder")
+                  : t("messagePlaceholder")
+            }
             onChange={(e) => {
               setText(e.target.value);
               updateAutocomplete(e.target.value, e.target.selectionStart ?? 0);
@@ -390,7 +396,7 @@ export function Composer({
             onPaste={handlePaste}
             className="max-h-[200px] flex-1 resize-none bg-transparent py-1.5 text-[length:var(--fs-md)] leading-6 text-[var(--color-text)] outline-none placeholder:text-[var(--color-text-mute)] disabled:opacity-60"
           />
-          {streaming ? (
+          {streaming && !text.trim() ? (
             <button
               onClick={onStop}
               className="grid h-8 w-8 shrink-0 place-items-center rounded-[var(--r-md)] bg-[var(--color-surface-3)] text-[var(--color-text)] transition hover:opacity-80"

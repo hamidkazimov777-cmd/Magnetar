@@ -235,8 +235,38 @@ interface State {
     messageId: string,
     meta: Partial<Pick<ChatMessage, "usage" | "durationMs" | "thinkingMs">>,
   ) => void;
+  /** Rewrite a user turn and drop everything that came after it.
+   *
+   *  Editing a question means the answers to the old wording are no longer
+   *  part of the conversation — keeping them would have the model reading a
+   *  discussion that never took place. Returns the messages that remain, so
+   *  the caller can resend the turn.
+   */
+  editMessage: (sessionId: string, messageId: string, content: string) => ChatMessage[];
+
   /** Persist a message's current in-memory content to the DB (e.g. after a stream ends). */
   persistMessage: (sessionId: string, messageId: string) => void;
+
+  /** The shell command (or other tool) running right now, if any. The composer
+   *  uses it to offer "interrupt and deliver my message": while a command is
+   *  running the agent loop is blocked awaiting it, so a queued message would
+   *  not be read until it finishes — which is useless when it has hung. */
+  runningTool?: { name: string; startedAt: number };
+  setRunningTool: (t: { name: string; startedAt: number } | undefined) => void;
+
+  /** True while an agent run is in flight. This lives in the store, not in
+   *  React state: several entry points can start a run (composer, command
+   *  palette, pendingPrompt), and a local flag let them race — the user ended
+   *  up with several runs going at once, each answering nobody. */
+  agentRunning: boolean;
+  setAgentRunning: (v: boolean) => void;
+
+  /** What the user typed while an agent run was in flight. The run folds these
+   *  in before its next model call, so a long run can be steered or questioned
+   *  instead of ignoring the user until it finishes. */
+  agentInterjections: string[];
+  pushAgentInterjection: (text: string) => void;
+  clearAgentInterjections: () => void;
 
   // --- Agent run trace (transient: process, not canon — never persisted) ----
   agentTrace: Record<string, import("./agent").AgentToolEvent[]>;
@@ -700,6 +730,48 @@ export const useStore = create<State>()(
           ),
         })),
 
+      editMessage: (sessionId, messageId, content) => {
+        const sess = get().sessions.find((x) => x.id === sessionId);
+        if (!sess) return [];
+        const idx = sess.messages.findIndex((m) => m.id === messageId);
+        if (idx < 0) return sess.messages;
+
+        const kept = sess.messages.slice(0, idx);
+        const edited: ChatMessage = {
+          ...sess.messages[idx],
+          content,
+          // Reasoning and cost belonged to the old exchange.
+          reasoning: undefined,
+          usage: undefined,
+          durationMs: undefined,
+          thinkingMs: undefined,
+        };
+        const messages = [...kept, edited];
+
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === sessionId ? { ...x, messages, updatedAt: now() } : x,
+          ),
+        }));
+
+        // Mirror the truncation into the canon, then rewrite the edited row.
+        void db
+          .deleteMessagesFrom(sessionId, messageId)
+          .then(() =>
+            db.upsertMessage({
+              id: edited.id,
+              sessionId,
+              role: edited.role,
+              content: edited.content,
+              model: edited.model ?? null,
+              createdAt: edited.createdAt,
+            }),
+          )
+          .catch(() => {});
+
+        return messages;
+      },
+
       appendReasoning: (sessionId, messageId, delta) =>
         set((s) => ({
           sessions: s.sessions.map((sess) =>
@@ -747,6 +819,17 @@ export const useStore = create<State>()(
         }));
         get().persistMessage(sessionId, messageId);
       },
+
+      runningTool: undefined,
+      setRunningTool: (runningTool) => set({ runningTool }),
+
+      agentRunning: false,
+      setAgentRunning: (v) => set({ agentRunning: v }),
+
+      agentInterjections: [],
+      pushAgentInterjection: (text) =>
+        set((s) => ({ agentInterjections: [...s.agentInterjections, text] })),
+      clearAgentInterjections: () => set({ agentInterjections: [] }),
 
       agentTrace: {},
       pushAgentEvent: (messageId, e) =>

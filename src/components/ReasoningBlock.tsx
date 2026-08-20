@@ -38,14 +38,25 @@ export function ReasoningBlock({
     <div className="mb-2">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 text-[length:var(--fs-xs)] text-[var(--color-text-mute)] transition-colors hover:text-[var(--color-text-dim)]"
+        className={cn(
+          "flex items-center gap-1.5 rounded-[var(--r-sm)] px-1.5 py-1 text-[length:var(--fs-xs)] transition-colors",
+          "text-[var(--color-text-mute)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text-dim)]",
+        )}
       >
         <ChevronRight
           size={12}
           className={cn("shrink-0 transition-transform", open && "rotate-90")}
         />
-        <Sparkles size={11} className="shrink-0 text-[var(--color-ai)]" />
-        <span>
+        {/* Violet marks AI state everywhere in this product; thinking is the
+            purest case of it. Pulses only while the thought is still forming. */}
+        <Sparkles
+          size={11}
+          className={cn(
+            "shrink-0 text-[var(--color-ai)]",
+            thinking && "animate-pulse",
+          )}
+        />
+        <span className="font-medium">
           {thinking
             ? t("reasoningThinking")
             : seconds > 0
@@ -57,7 +68,9 @@ export function ReasoningBlock({
       {open && (
         <div
           ref={bodyRef}
-          className="mt-1.5 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-[var(--r-md)] border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-[length:var(--fs-xs)] leading-[var(--lh-base)] text-[var(--color-text-dim)]"
+          // A rule down the left side and italic, dimmer type: unmistakably a
+          // side channel, never mistaken for the answer itself.
+          className="mt-1 max-h-72 overflow-auto whitespace-pre-wrap break-words border-l-2 border-[color-mix(in_srgb,var(--color-ai)_35%,transparent)] py-0.5 pl-3 pr-1 text-[length:var(--fs-xs)] italic leading-[var(--lh-relaxed)] text-[var(--color-text-mute)]"
         >
           {message.reasoning}
         </div>

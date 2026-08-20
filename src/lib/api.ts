@@ -131,6 +131,49 @@ export const api = {
     };
   },
 
+  /** Streaming agent step. Text and reasoning arrive through the callbacks as
+   *  the model produces them; the resolved value still carries the tool calls
+   *  for the loop to execute. Returns a stop() alongside, so a long turn can be
+   *  cancelled without waiting for it to finish. */
+  agentStepStream(
+    connection: Connection,
+    model: string,
+    messages: unknown[],
+    tools: ToolDef[],
+    opts: {
+      onDelta?: (text: string) => void;
+      onReasoning?: (text: string) => void;
+      onUsage?: (u: { inputTokens?: number; outputTokens?: number }) => void;
+    } = {},
+  ): { promise: Promise<AgentStep>; stop: () => void } {
+    const requestId =
+      crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
+    const channel = new Channel<StreamEvent>();
+    channel.onmessage = (ev) => {
+      if (ev.type === "delta") opts.onDelta?.(ev.content);
+      else if (ev.type === "reasoning") opts.onReasoning?.(ev.content);
+      else if (ev.type === "usage")
+        opts.onUsage?.({
+          inputTokens: ev.inputTokens ?? undefined,
+          outputTokens: ev.outputTokens ?? undefined,
+        });
+    };
+
+    const promise = invoke<AgentStep>("agent_step_stream", {
+      connection: toRustConn(connection),
+      model,
+      messages,
+      tools,
+      requestId,
+      onEvent: channel,
+    });
+
+    return {
+      promise,
+      stop: () => void invoke("cancel_stream", { requestId }).catch(() => {}),
+    };
+  },
+
   // ---- Agent (tool-use) ----
   agentStep: (
     connection: Connection,

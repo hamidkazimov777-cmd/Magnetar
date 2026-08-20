@@ -1,5 +1,6 @@
 import { api, type ToolDef } from "./api";
 import { useStore } from "./store";
+import { alwaysConfirm, checkLoop, newLoopWatch } from "./guards";
 import { tr } from "./i18n";
 import type { ChatMessage, Connection } from "./types";
 
@@ -106,7 +107,11 @@ export const AGENT_TOOLS: ToolDef[] = [
 export const DESTRUCTIVE = new Set(["write_file", "edit_file", "run_bash"]);
 
 /** True when this call must stop and ask the user before running. */
-export function needsConfirm(name: string): boolean {
+export function needsConfirm(name: string, args: ToolArgs = {}): boolean {
+  // Some calls are destructive in a way no preference should wave through:
+  // overwriting a .env, `rm -rf`, `pkill`. Auto-apply is meant for routine
+  // edits, not for losing a credential the user cannot regenerate.
+  if (alwaysConfirm(name, args)) return true;
   if (!DESTRUCTIVE.has(name)) return false;
   const st = useStore.getState();
   // Once the user trusts commands for this run, stop interrupting the build.
@@ -128,8 +133,9 @@ How to work:
 - Prefer surgical edit_file over rewriting whole files. Read a file before editing it.
 - Verify your work: after meaningful changes run the project's own build, typecheck or tests when they exist, and fix what fails before reporting success.
 - If a command fails, read the error and fix the cause instead of repeating the same command.
-- Long-running servers (npm run dev, vite, watchers) never exit, so do NOT run them in the foreground — they would just hit the timeout. Start them detached, e.g. \`npm run dev > /tmp/dev.log 2>&1 &\`, wait a moment, check the log for the URL, then give the user that URL.
-- Keep prose short. The user sees every tool call, so do not narrate what the trace already shows.
+- Long-running processes (servers, bots, watchers) never exit, so never run them in the foreground. Detach them completely — redirect ALL three streams: \`npm run dev > /tmp/dev.log 2>&1 < /dev/null &\`. Leaving stdout attached keeps the pipe open after the shell exits and the call appears to hang for minutes. Then wait a moment, read the log, and report what it says.
+- Speak while you work. Before a group of tool calls, say in one short line what you are about to do ("checking the logs", "fixing the config"); after they run, say in one line what you found. The user watches this live — a dozen silent calls in a row reads as a hang, not as focus. Do not re-describe the trace in detail, and do not pad.
+- If the user writes to you mid-run, answer them on your very next turn before continuing.
 
 When the task is complete, end with:
 ## Handoff Note
@@ -137,12 +143,23 @@ When the task is complete, end with:
 - **Decisions:** key technical choices
 - **Next Steps:** what remains, if anything`;
 
+/** Pull anything the user typed while the agent was working. Draining it here
+ *  (rather than starting a second run) is what lets a long run be steered:
+ *  the message becomes an ordinary user turn before the next model call. */
+function takeInterjections(): string[] {
+  const st = useStore.getState();
+  const queued = st.agentInterjections;
+  if (queued.length === 0) return [];
+  st.clearAgentInterjections();
+  return queued;
+}
+
 /** Fallback when prefs are unavailable; the real budget lives in Prefs. */
 const MAX_ITERS = 40;
 
 const stepBudget = () => useStore.getState().prefs?.agentMaxSteps ?? MAX_ITERS;
 
-type ToolArgs = Record<string, unknown>;
+export type ToolArgs = Record<string, unknown>;
 
 /** Resolve a path the model gave us against the open project.
  *  Models routinely pass "/", ".", or a repo-relative path meaning "the project
@@ -245,7 +262,11 @@ export interface AgentToolEvent {
   id: string;
   name: string;
   args: ToolArgs;
-  status: "running" | "done" | "error" | "declined";
+  status: "running" | "done" | "error" | "declined" | "killed";
+  /** When the call started, so the UI can show a live timer on a long command. */
+  startedAt?: number;
+  /** How long it ran, once finished. */
+  durationMs?: number;
   /** Short preview of the tool output (already truncated for display). */
   result?: string;
   /** ReAct providers expose the model's reasoning for the step. */
@@ -261,6 +282,14 @@ export interface AgentHandlers {
   onTool?: (e: AgentToolEvent) => void;
   /** Announce a named phase of a multi-role run (Architect/Developer/Reviewer). */
   onPhase?: (label: string, running: boolean) => void;
+  /** Stream the model's thinking, when it exposes any. */
+  onReasoning?: (text: string) => void;
+  /** Token counts for the turn, as the provider reports them. */
+  onUsage?: (u: { inputTokens?: number; outputTokens?: number }) => void;
+  /** Hand the caller a way to abort the in-flight request, not just the loop.
+   *  Without this, Stop only takes effect between steps — the current turn
+   *  keeps generating (and billing) to the end. */
+  setStop?: (stop: () => void) => void;
   /** Returns true when the user pressed Stop — the loop halts between steps. */
   cancelled?: () => boolean;
 }
@@ -358,9 +387,32 @@ async function runAgentNative(
   ];
 
   const budget = stepBudget();
+  const watch = newLoopWatch();
+  let lastFailed = false;
+
   for (let i = 0; i < budget; i++) {
     if (h.cancelled?.()) return;
-    const step = await api.agentStep(connection, model, messages, AGENT_TOOLS);
+
+    // Anything the user typed while the run was going gets folded in here,
+    // before the next request — so they can steer or ask a question mid-run
+    // instead of watching the agent ignore them.
+    for (const said of takeInterjections())
+      messages.push({ role: "user", content: said });
+
+    // Streaming: the model's words and thinking appear as they are produced.
+    // The same call still returns the tool calls for the loop to execute — the
+    // difference is only that the user is no longer staring at nothing.
+    let streamed = "";
+    const run = api.agentStepStream(connection, model, messages, AGENT_TOOLS, {
+      onDelta: (d) => {
+        streamed += d;
+        h.onText(d);
+      },
+      onReasoning: (d) => h.onReasoning?.(d),
+      onUsage: (u) => h.onUsage?.(u),
+    });
+    h.setStop?.(run.stop);
+    const step = await run.promise;
 
     const called = (step.tool_calls?.length ?? 0) > 0;
 
@@ -387,7 +439,8 @@ async function runAgentNative(
       return runAgentReAct(connection, model, history, h, system);
     }
 
-    if (step.content) h.onText(step.content);
+    // Already streamed above; printing it again would duplicate the answer.
+    if (step.content && !streamed) h.onText(step.content);
 
     if (!called) return; // final answer
 
@@ -402,6 +455,48 @@ async function runAgentNative(
       })),
     });
 
+    // Read-only calls in the same turn are independent, so run them together.
+    // Five sequential file reads is five round trips of dead time for no
+    // reason; anything that writes or executes still goes one at a time, in
+    // order, because those can depend on each other.
+    const READ_ONLY = new Set(["read_file", "list_dir", "grep", "search_code"]);
+    const parsed = step.tool_calls.map((tc) => {
+      let args: ToolArgs = {};
+      try {
+        args = JSON.parse(tc.arguments || "{}");
+      } catch {
+        /* leave empty */
+      }
+      return { tc, args };
+    });
+
+    if (
+      parsed.length > 1 &&
+      parsed.every(({ tc }) => READ_ONLY.has(tc.name)) &&
+      !parsed.some(({ tc, args }) => needsConfirm(tc.name, args))
+    ) {
+      const results = await Promise.all(
+        parsed.map(async ({ tc, args }) => {
+          const startedAt = Date.now();
+          h.onTool?.({ id: tc.id, name: tc.name, args, status: "running", startedAt });
+          const result = await executeTool(tc.name, args);
+          h.onTool?.({
+            id: tc.id,
+            name: tc.name,
+            args,
+            status: result.startsWith("error:") ? "error" : "done",
+            startedAt,
+            durationMs: Date.now() - startedAt,
+            result: preview(result),
+          });
+          return { tc, result };
+        }),
+      );
+      for (const { tc, result } of results)
+        messages.push({ role: "tool", tool_call_id: tc.id, content: result });
+      continue;
+    }
+
     for (const tc of step.tool_calls) {
       let args: ToolArgs = {};
       try {
@@ -410,20 +505,39 @@ async function runAgentNative(
         /* leave empty */
       }
 
+      // Stop a run that is going in circles before it burns the user's credit.
+      const stuck = checkLoop(watch, tc.name, args, lastFailed);
+      if (stuck) {
+        messages.push({ role: "tool", tool_call_id: tc.id, content: stuck });
+        h.onTool?.({ id: tc.id, name: tc.name, args, status: "declined", result: stuck });
+        h.onText(`\n\n_${tr("agentLoopStopped")}_`);
+        return;
+      }
+
       let result: string;
-      const approved = needsConfirm(tc.name) ? await h.confirm(tc.name, args) : true;
+      const approved = needsConfirm(tc.name, args) ? await h.confirm(tc.name, args) : true;
 
       if (!approved) {
         result = "User declined this action.";
         h.onTool?.({ id: tc.id, name: tc.name, args, status: "declined" });
       } else {
-        h.onTool?.({ id: tc.id, name: tc.name, args, status: "running" });
+        const startedAt = Date.now();
+        h.onTool?.({ id: tc.id, name: tc.name, args, status: "running", startedAt });
         result = await executeTool(tc.name, args);
+        lastFailed = result.startsWith("error:");
+        // A command the user killed is not a failure to retry — say so plainly
+        // so the model investigates instead of running it again.
+        const killed = /\[killed/i.test(result);
+        if (killed)
+          result +=
+            "\n\n[The user stopped this command manually — it was hanging or taking too long. Do not simply re-run it: work out why it hung, or ask the user.]";
         h.onTool?.({
           id: tc.id,
           name: tc.name,
           args,
-          status: result.startsWith("error:") ? "error" : "done",
+          status: killed ? "killed" : lastFailed ? "error" : "done",
+          startedAt,
+          durationMs: Date.now() - startedAt,
           result: preview(result),
         });
       }
@@ -573,8 +687,14 @@ async function runAgentReAct(
   });
 
   const budget = stepBudget();
+  const watch = newLoopWatch();
+  let lastFailed = false;
+
   for (let i = 0; i < budget; i++) {
     if (h.cancelled?.()) return;
+
+    for (const said of takeInterjections()) messages.push(mk("user", said));
+
     const text = await api.complete(connection, model, messages, REACT_SYSTEM + extraSystem);
     const p = parseReAct(text);
 
@@ -597,8 +717,16 @@ async function runAgentReAct(
     }
 
     const callId = `react-${i}`;
+
+    const stuck = checkLoop(watch, p.action, p.input, lastFailed);
+    if (stuck) {
+      h.onTool?.({ id: callId, name: p.action, args: p.input, status: "declined", result: stuck });
+      h.onText(`\n\n_${tr("agentLoopStopped")}_`);
+      return;
+    }
+
     let result: string;
-    const approved = needsConfirm(p.action) ? await h.confirm(p.action, p.input) : true;
+    const approved = needsConfirm(p.action, p.input) ? await h.confirm(p.action, p.input) : true;
 
     if (!approved) {
       result = "User declined this action.";
@@ -610,19 +738,28 @@ async function runAgentReAct(
         thought: p.thought,
       });
     } else {
+      const startedAt = Date.now();
       h.onTool?.({
         id: callId,
         name: p.action,
         args: p.input,
         status: "running",
+        startedAt,
         thought: p.thought,
       });
       result = await executeTool(p.action, p.input);
+      lastFailed = result.startsWith("error:");
+      const killed = /\[killed/i.test(result);
+      if (killed)
+        result +=
+          "\n\n[The user stopped this command manually — it was hanging or taking too long. Do not simply re-run it: work out why it hung, or ask the user.]";
       h.onTool?.({
         id: callId,
         name: p.action,
         args: p.input,
-        status: result.startsWith("error:") ? "error" : "done",
+        status: killed ? "killed" : lastFailed ? "error" : "done",
+        startedAt,
+        durationMs: Date.now() - startedAt,
         result: preview(result),
         thought: p.thought,
       });

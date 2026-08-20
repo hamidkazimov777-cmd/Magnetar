@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
-import { Check, Copy, FileText } from "lucide-react";
+import { Check, Copy, FileText, Pencil, X } from "lucide-react";
 import { cn } from "../lib/cn";
 import { useStore } from "../lib/store";
 import { useT } from "../lib/i18n";
@@ -38,10 +38,19 @@ function Pre({ children }: { children?: React.ReactNode }) {
   );
 }
 
-export function Message({ message }: { message: ChatMessage }) {
+export function Message({
+  message,
+  onEdit,
+}: {
+  message: ChatMessage;
+  /** Resend this turn with new wording; everything after it is discarded. */
+  onEdit?: (messageId: string, text: string) => void;
+}) {
   const t = useT();
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(message.content);
   const trace = useStore((s) => s.agentTrace[message.id]);
 
   const copyAll = async () => {
@@ -55,6 +64,54 @@ export function Message({ message }: { message: ChatMessage }) {
   };
 
   const isPending = !message.content && !trace?.length && !message.reasoning;
+
+  if (editing)
+    return (
+      <div className="flex w-full justify-end">
+        <div className="w-full max-w-[92%]">
+          <textarea
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                if (draft.trim()) onEdit?.(message.id, draft.trim());
+                setEditing(false);
+              }
+              if (e.key === "Escape") {
+                setDraft(message.content);
+                setEditing(false);
+              }
+            }}
+            rows={Math.min(10, draft.split("\n").length + 1)}
+            className="input text-[length:var(--fs-md)]"
+          />
+          <div className="mt-1.5 flex justify-end gap-2">
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                setDraft(message.content);
+                setEditing(false);
+              }}
+            >
+              <X size={13} />
+              {t("cancel")}
+            </button>
+            <button
+              className="btn btn-primary btn-sm"
+              disabled={!draft.trim() || draft.trim() === message.content}
+              onClick={() => {
+                onEdit?.(message.id, draft.trim());
+                setEditing(false);
+              }}
+            >
+              {t("editResend")}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
 
   return (
     <div className={cn("group flex w-full", isUser ? "justify-end" : "justify-start")}>
@@ -112,6 +169,21 @@ export function Message({ message }: { message: ChatMessage }) {
             </span>
           ) : null}
         </div>
+
+        {isUser && onEdit && (
+          <div className="mt-1 flex justify-end opacity-0 transition group-hover:opacity-100">
+            <button
+              onClick={() => {
+                setDraft(message.content);
+                setEditing(true);
+              }}
+              className="flex items-center gap-1 text-[length:var(--fs-xs)] text-[var(--color-text-mute)] hover:text-[var(--color-text)]"
+            >
+              <Pencil size={11} />
+              {t("edit")}
+            </button>
+          </div>
+        )}
 
         {!isUser && message.content && (
           <div className="mt-1 flex items-center gap-2.5 opacity-0 transition group-hover:opacity-100">

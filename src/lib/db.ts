@@ -45,6 +45,9 @@ export const db = {
   upsertMessage: (message: MessageRow) =>
     invoke<void>("upsert_message", { message }),
   deleteSession: (id: string) => invoke<void>("delete_session", { id }),
+  /** Drop a message and everything after it — used when a turn is edited. */
+  deleteMessagesFrom: (sessionId: string, messageId: string) =>
+    invoke<void>("delete_messages_from", { sessionId, messageId }),
 
   // Workspace
   listProjects: () => invoke<import("./types").Project[]>("list_projects"),

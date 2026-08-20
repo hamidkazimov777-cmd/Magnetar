@@ -43,8 +43,10 @@ export function ToolPreview({
     return (
       <div className="space-y-2">
         {args.cwd ? <PathLabel path={String(args.cwd)} /> : null}
-        <pre className="overflow-auto rounded-[var(--r-md)] border border-[var(--color-border)] bg-[var(--color-bg)] p-3 text-[length:var(--fs-xs)]">
-          <span className="mr-1 select-none text-[var(--color-accent-strong)]">$</span>
+        {/* Wrap instead of scrolling sideways: a long one-liner used to stretch
+            the dialog past the window, pushing the buttons off screen. */}
+        <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-[var(--r-md)] border border-[var(--color-border)] bg-[var(--color-bg)] p-3 text-[length:var(--fs-xs)] leading-relaxed">
+          <span className="mr-1 select-none text-[var(--color-text-mute)]">$</span>
           {String(args.command ?? "")}
         </pre>
       </div>

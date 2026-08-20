@@ -10,6 +10,8 @@ import {
   Eye,
   RotateCcw,
   X,
+  Loader2,
+  Square,
 } from "lucide-react";
 import { api } from "../lib/api";
 import { useStore } from "../lib/store";
@@ -31,6 +33,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 
 /** The agent panel: model picker, mode switches, the transcript, and the
  *  composer. It is the one place where work is requested and reported. */
+/** Options for a send that is not a fresh user turn. */
+interface SendOpts {
+  /** The user message is already in the transcript (an edited turn). */
+  skipUserMessage?: boolean;
+}
+
 export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
   const t = useT();
   const connections = useStore((s) => s.connections);
@@ -92,6 +100,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     attachments: Attachment[],
     connId: string,
     model: string,
+    opts: SendOpts = {},
   ) => {
     const connection = useStore.getState().connections.find((c) => c.id === connId);
     if (!connection) return;
@@ -99,7 +108,10 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     let sessionId = useStore.getState().activeSessionId;
     if (!sessionId) sessionId = newSession();
 
-    addMessage(sessionId, { role: "user", content: text, attachments });
+    // An edited turn is already in the transcript — adding it again would show
+    // the question twice.
+    if (!opts.skipUserMessage)
+      addMessage(sessionId, { role: "user", content: text, attachments });
     const assistantId = addMessage(sessionId, { role: "assistant", content: "", model });
 
     const current = useStore.getState().sessions.find((s) => s.id === sessionId)!;
@@ -166,6 +178,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     attachments: Attachment[],
     connId: string,
     model: string,
+    opts: SendOpts = {},
   ) => {
     const connection = useStore.getState().connections.find((c) => c.id === connId);
     if (!connection) return;
@@ -184,7 +197,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
         ? `\n\n## Task\n${expandSlash(text)}`
         : "";
 
-    addMessage(sessionId, { role: "user", content, attachments });
+    if (!opts.skipUserMessage) addMessage(sessionId, { role: "user", content, attachments });
     const assistantId = addMessage(sessionId, { role: "assistant", content: "", model });
     const history = (
       useStore.getState().sessions.find((s) => s.id === sessionId)?.messages ?? []
@@ -192,6 +205,8 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
 
     agentCancelRef.current = false;
     setStreaming(true);
+    useStore.getState().setAgentRunning(true);
+    const agentStartedAt = Date.now();
     try {
       const sess = useStore.getState().sessions.find((s) => s.id === sessionId);
       const projectMemory =
@@ -205,7 +220,23 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
           confirm: (name, args) =>
             new Promise<boolean>((resolve) => setConfirm({ name, args, resolve })),
           onText: (d) => appendToMessage(sessionId!, assistantId, d),
+          onReasoning: (d) =>
+            useStore.getState().appendReasoning(sessionId!, assistantId, d),
+          onUsage: (u) =>
+            useStore.getState().setMessageMeta(sessionId!, assistantId, { usage: u }),
+          // Stop must abort the request in flight, not just the loop between
+          // steps — otherwise the model keeps generating after the click.
+          setStop: (abort) => {
+            stopRef.current = abort;
+          },
           onTool: (e) => {
+            useStore
+              .getState()
+              .setRunningTool(
+                e.status === "running"
+                  ? { name: e.name, startedAt: e.startedAt ?? Date.now() }
+                  : undefined,
+              );
             pushAgentEvent(assistantId, e);
             // File-changing tools invalidate the tree the user is looking at.
             if (
@@ -223,13 +254,43 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
       noteModelFailure(connId, model, String(e), setModelStatus);
       setLastError({ message: String(e), sessionId: sessionId! });
     } finally {
+      useStore.getState().setMessageMeta(sessionId!, assistantId, {
+        durationMs: Date.now() - agentStartedAt,
+      });
       setStreaming(false);
+      useStore.getState().setAgentRunning(false);
+      useStore.getState().setRunningTool(undefined);
+      // Anything typed in the last moments of the run would otherwise sit in
+      // the queue until the next run picked it up out of nowhere.
+      useStore.getState().clearAgentInterjections();
       useStore.getState().persistMessage(sessionId!, assistantId);
     }
   };
 
-  const send = async (text: string, attachments: Attachment[] = []) => {
+  const send = async (
+    text: string,
+    attachments: Attachment[] = [],
+    opts: SendOpts = {},
+  ) => {
     if (!conn || !activeModel) return;
+
+    // Typed while a run is in flight: hand it to the running loop instead of
+    // starting a competing request. Read the flag from the store — the local
+    // React state was stale often enough that runs piled up on top of each
+    // other, which is exactly what the user saw.
+    const busy = useStore.getState().agentRunning || streaming;
+    if (busy) {
+      const body = text.trim();
+      if (!body) return;
+      addMessage(activeSessionId!, { role: "user", content: body });
+      useStore.getState().persistMessage(
+        activeSessionId!,
+        useStore.getState().sessions.find((x) => x.id === activeSessionId)!.messages.slice(-1)[0].id,
+      );
+      useStore.getState().pushAgentInterjection(body);
+      return;
+    }
+
     setUpgrade(undefined);
     setNote(null);
     setLastError(undefined);
@@ -252,8 +313,20 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     }
 
     const isAgentTurn = agentMode || text.startsWith("/team ") || text.startsWith("/cto");
-    if (isAgentTurn) await runAgentPath(text, attachments, connId, model);
-    else await runSend(text, attachments, connId, model);
+    if (isAgentTurn) await runAgentPath(text, attachments, connId, model, opts);
+    else await runSend(text, attachments, connId, model, opts);
+  };
+
+  /** ChatGPT-style edit: rewrite the turn, drop everything that followed, and
+   *  ask again. The old answers were replies to wording that no longer exists,
+   *  so leaving them in would corrupt the conversation the model reads. */
+  const editAndResend = (messageId: string, text: string) => {
+    if (!activeSessionId) return;
+    if (useStore.getState().agentRunning || streaming) stop();
+    const kept = useStore.getState().editMessage(activeSessionId, messageId, text);
+    // The edited turn is already in the transcript; resend it as the prompt.
+    const edited = kept[kept.length - 1];
+    void send(text, edited?.attachments ?? [], { skipUserMessage: true });
   };
 
   const stop = () => {
@@ -261,6 +334,8 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     stopRef.current?.();
     stopRef.current = null;
     setStreaming(false);
+    useStore.getState().setAgentRunning(false);
+    useStore.getState().clearAgentInterjections();
     void api.toolKillBash().catch(() => {});
   };
 
@@ -373,7 +448,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
           ) : (
             <div className="space-y-4">
               {messages.map((m) => (
-                <Message key={m.id} message={m} />
+                <Message key={m.id} message={m} onEdit={editAndResend} />
               ))}
             </div>
           )}
@@ -437,6 +512,8 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
         </div>
       )}
 
+      <RunningToolBar />
+
       <Composer disabled={!ready} streaming={streaming} onSend={send} onStop={stop} />
 
       {contextOpen && lastContext && (
@@ -476,7 +553,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
             setConfirm(null);
           }}
         >
-          <DialogContent className="max-w-2xl gap-0 border-[var(--color-border)] bg-[var(--color-surface)] p-0 text-[var(--color-text)]">
+          <DialogContent className="w-[min(92vw,42rem)] max-w-[92vw] gap-0 overflow-hidden border-[var(--color-border)] bg-[var(--color-surface)] p-0 text-[var(--color-text)]">
             <DialogHeader className="flex flex-row items-center gap-2.5 border-b border-[var(--color-border)] px-5 py-3.5">
               <TriangleAlert size={17} className="shrink-0 text-[var(--color-warning)]" />
               <div className="min-w-0">
@@ -488,13 +565,13 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
                 </p>
               </div>
             </DialogHeader>
-            <div className="space-y-2 px-5 py-4">
-              <div className="font-mono text-[length:var(--fs-base)] font-medium text-[var(--color-accent-strong)]">
+            <div className="min-w-0 space-y-2 overflow-hidden px-5 py-4">
+              <div className="font-mono text-[length:var(--fs-base)] font-medium text-[var(--color-text)]">
                 {confirm.name}
               </div>
               <ToolPreview name={confirm.name} args={confirm.args} />
             </div>
-            <div className="flex items-center gap-2 border-t border-[var(--color-border)] px-5 py-3">
+            <div className="flex flex-wrap items-center gap-2 border-t border-[var(--color-border)] px-5 py-3">
               {confirm.name === "run_bash" && (
                 <button
                   className="btn btn-ghost mr-auto"
@@ -595,6 +672,55 @@ function EmptyChat({
         <p className={cn("mt-4 text-[length:var(--fs-xs)] text-[var(--color-text-mute)]")}>
           {t("stepStartText")}
         </p>
+      )}
+    </div>
+  );
+}
+
+/** Shown while a tool call is in flight, above the composer.
+ *
+ *  The agent loop awaits the running command, so a message typed now is queued
+ *  and only read once that command returns. When the command has hung, that is
+ *  never — and the user is left talking to a wall, which is exactly what
+ *  happened. This bar makes the state visible and gives the one action that
+ *  actually unblocks the conversation: kill the command. */
+function RunningToolBar() {
+  const t = useT();
+  const tool = useStore((s) => s.runningTool);
+  const queued = useStore((s) => s.agentInterjections.length);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!tool) return;
+    const iv = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(iv);
+  }, [tool]);
+
+  if (!tool) return null;
+  const secs = Math.max(0, Math.round((now - tool.startedAt) / 1000));
+
+  // Stay out of the way. A normal command finishes in a couple of seconds and
+  // its progress is already visible in the run trace; a permanent bar above the
+  // composer would just be noise. This appears only when something is actually
+  // wrong — the command is dragging, or the user has already written and is
+  // waiting to be heard.
+  if (secs < 20 && queued === 0) return null;
+
+  return (
+    <div className="mx-2 mb-1 flex items-center gap-2 rounded-[var(--r-md)] border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2.5 py-1.5 text-[length:var(--fs-xs)]">
+      <Loader2 size={12} className="shrink-0 animate-spin text-[var(--color-ai)]" />
+      <span className="min-w-0 flex-1 truncate text-[var(--color-text-dim)]">
+        {t("toolRunning", { name: tool.name, n: String(secs) })}
+        {queued > 0 && ` · ${t("toolQueued", { n: String(queued) })}`}
+      </span>
+      {tool.name === "run_bash" && (
+        <button
+          className="btn btn-danger btn-sm shrink-0"
+          onClick={() => void api.toolKillBash().catch(() => {})}
+        >
+          <Square size={11} />
+          {t("agentKillCommand")}
+        </button>
       )}
     </div>
   );
