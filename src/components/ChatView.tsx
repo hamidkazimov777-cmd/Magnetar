@@ -27,6 +27,7 @@ import { Hint } from "./ui/Hint";
 import { ToolPreview } from "./ToolPreview";
 import { AskDialog } from "./AskDialog";
 import { SubagentTracks } from "./SubagentTracks";
+import { SubagentPicker } from "./SubagentPicker";
 import { useT } from "../lib/i18n";
 import { Composer } from "./Composer";
 import { Message } from "./Message";
@@ -436,6 +437,9 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
             </button>
           </div>
         </Hint>
+        {/* The bench of helper models: a per-job decision, so it sits with the
+            track buttons rather than in Settings. */}
+        {agentMode && <SubagentPicker />}
         <Hint text={t("hintAdaptive")} side="bottom">
           <button
             className="toggle-pill"

@@ -450,13 +450,18 @@ export async function executeTool(name: string, args: ToolArgs): Promise<string>
             .map((r) => `- ${r.title}: ${r.reason}`)
             .join("\n")}`;
 
-        // Helpers run on their own model when one is configured: the lead is
-        // the expensive part, the helpers are the many.
-        const helper = st.prefs?.subagentModel;
-        const helperConn = helper && st.connections.find((c) => c.id === helper.connectionId);
+        // The bench: whatever models the user put on it, in order. Entries
+        // whose connection has since been deleted are dropped rather than
+        // failing the whole delegation. An empty bench falls back to the
+        // lead's own model — worse economics, but it always works.
+        const bench = (st.prefs?.subagentRoster ?? [])
+          .map((r) => ({
+            connection: st.connections.find((c) => c.id === r.connectionId),
+            model: r.model,
+          }))
+          .filter((x): x is { connection: Connection; model: string } => Boolean(x.connection));
         const reports = await runTeam(accepted, {
-          connection: helperConn || teamCtx.connection,
-          model: helperConn ? helper!.model : teamCtx.model,
+          bench: bench.length ? bench : [{ connection: teamCtx.connection, model: teamCtx.model }],
           parallel: st.prefs?.subagentParallel,
           cancelled: teamCtx.cancelled,
         });

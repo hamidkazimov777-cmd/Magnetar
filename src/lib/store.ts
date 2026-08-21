@@ -65,10 +65,11 @@ export interface Prefs {
    *  graph. Undefined = pick automatically. Explicit is safer — the automatic
    *  pick can land on a catalogue entry the token cannot actually call. */
   memoryModel?: { connectionId: string; model: string };
-  /** Model the helper agents run on. Undefined = the same model as the lead.
-   *  Splitting them is the point of delegation economics: the lead is the
-   *  expensive one, the helpers are the many. */
-  subagentModel?: { connectionId: string; model: string };
+  /** The bench of models helper agents run on. Tasks are handed out round
+   *  robin, so three models and three parallel helpers means each task runs on
+   *  a different one — mixing providers on purpose is allowed and useful.
+   *  Empty means the helpers use the lead's model. */
+  subagentRoster: { connectionId: string; model: string }[];
   /** How many helpers actually run at once. More than a handful is not
    *  followable on screen, and providers rate-limit anyway. */
   subagentParallel: number;
@@ -83,6 +84,7 @@ export const DEFAULT_PREFS: Prefs = {
   agentMaxSteps: 40,
   bashTimeoutSecs: 600,
   subagentParallel: 3,
+  subagentRoster: [],
   editorFontSize: 13,
   editorWordWrap: false,
   editorMinimap: true,

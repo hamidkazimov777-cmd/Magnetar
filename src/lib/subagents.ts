@@ -171,8 +171,10 @@ async function runOne(
 export async function runTeam(
   tasks: SubagentTask[],
   opts: {
-    connection: Connection;
-    model: string;
+    /** The bench: one entry per model helpers may run on, in order. Tasks are
+     *  dealt round robin, so a bench of three and three parallel helpers puts
+     *  every task on a different model. */
+    bench: { connection: Connection; model: string }[];
     parallel?: number;
     cancelled: () => boolean;
   },
@@ -201,7 +203,8 @@ export async function runTeam(
         };
         continue;
       }
-      reports[i] = await runOne(opts.connection, opts.model, tasks[i], uid(), {
+      const seat = opts.bench[i % opts.bench.length];
+      reports[i] = await runOne(seat.connection, seat.model, tasks[i], uid(), {
         cancelled: opts.cancelled,
         budget,
         spend,
