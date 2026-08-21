@@ -33,9 +33,6 @@ const ru: Dict = {
   clear: "Очистить",
   done: "Готово",
   loading: "Загрузка…",
-  back: "Назад",
-  next: "Далее",
-  skip: "Пропустить",
   language: "Язык",
 
   // --- Navigation ----------------------------------------------------------
@@ -44,7 +41,6 @@ const ru: Dict = {
   navSourceControl: "Система контроля версий",
   navSearch: "Поиск по проекту",
   navProject: "Память проекта",
-  navMore: "Ещё",
   groupCode: "Код",
   groupProject: "Проект",
   theme: "Тема",
@@ -116,10 +112,6 @@ const ru: Dict = {
   divergenceDismiss: "Отклонить",
   divergenceByAgent: "заметил агент",
   divergenceBySource: "провалилась проверка",
-  divergencesBadge: "расхождений",
-  memoryEmptyHint: "Память пока пуста. Откройте папку — Magnetar соберёт факты о проекте.",
-
-  // --- Problems panel ------------------------------------------------------
   modelToolsReset: "Сбросить режим инструментов — определится заново при следующем запуске агента",
   edit: "Изменить",
   editResend: "Отправить заново",
@@ -218,18 +210,11 @@ const ru: Dict = {
   memSaveStateHint:
     "Записать в память, что сделано и где остановились. То же самое происходит автоматически при смене модели.",
   memSaveStateDone: "Состояние записано",
-  memAutoOnSwitch: "Заполняется автоматически при смене модели",
-  memAutoAfterChat: "Заполняется автоматически по ходу работы в чате",
-
-  // --- Chat ↔ project binding ---------------------------------------------
   chatProjectNone: "Чат не привязан к проекту",
-  chatProjectNoneHint:
-    "Память не пополняется из этого чата. Привяжите его к проекту.",
   chatProjectAttach: "Привязать к «{name}»",
   chatProjectOther: "Чат привязан к другому проекту: {name}",
 
   // --- Code index ----------------------------------------------------------
-  indexTitle: "Индекс кода",
   indexBuilding: "Строится индекс…",
   indexReady: "Индекс готов · {files} файлов",
   indexStale: "Индекс устарел",
@@ -270,7 +255,6 @@ const ru: Dict = {
   statusAgentOff: "Агент выключен",
 
   // --- First launch / welcome ---------------------------------------------
-  welcomeTitle: "Добро пожаловать в Magnetar",
   welcomeSubtitle:
     "Локальная AI-среда разработки: откройте папку — агент увидит проект и сможет с ним работать. Любая модель по вашему ключу.",
   welcomeOpenFolder: "Открыть папку проекта",
@@ -279,25 +263,15 @@ const ru: Dict = {
   welcomeModelReady: "Модель подключена: {model}",
   welcomeModelReadyHint: "Можно менять в любой момент в панели агента.",
   welcomeAgentNote: "Агент включается автоматически при открытии папки.",
-  welcomeStepOf: "Шаг {n} из {total}",
-  welcomeFinish: "Перейти в рабочее пространство",
   welcomeSkipAll: "Пропустить и открыть приложение",
   stepConnectTitle: "Подключите модель",
   stepConnectText:
     "Добавьте API-ключ любого OpenAI-совместимого провайдера или GigaChat. Ключ хранится локально, в файле приложения с доступом только для вас.",
   stepConnectAction: "Открыть настройки подключений",
-  stepConnectDone: "Подключение готово: {name}",
   stepFolderTitle: "Откройте папку проекта",
-  stepFolderText:
-    "Magnetar прочитает ключевые файлы и соберёт память проекта, чтобы модель работала из памяти, а не перечитывала код.",
   stepFolderAction: "Выбрать папку",
-  stepFolderDone: "Открыт проект: {name}",
-  stepStartTitle: "Начните работу",
   stepStartText:
     "Опишите задачу в панели агента. Агент читает и меняет файлы, запускает команды — разрушающие действия только с вашего подтверждения.",
-  stepStartAction: "Начать",
-
-  // --- Chats panel ---------------------------------------------------------
   chatsTitle: "Чаты",
   chatsWhat: "История переписки. Решения из неё уходят в память проекта.",
   newChat: "Новый чат",
@@ -352,10 +326,6 @@ const ru: Dict = {
   memLogNoSignals: "Читать нечего — папка пуста, память не выдумывалась",
   memErrParse: "Модель вернула ответ в неожиданном формате.",
   memRetry: "Повторить анализ",
-  agentOffTitle: "Агент выключен — модель не видит файлы проекта",
-  agentOffText:
-    "Без режима агента модель получает только текст переписки: она не может читать файлы, искать по коду и запускать команды. Включите агента, чтобы работать с открытой папкой.",
-  agentOffEnable: "Включить агента",
   memAnalyzing: "Анализирую проект…",
   memInMemory: "В памяти",
   memAnalyzeHint:
@@ -413,7 +383,6 @@ const ru: Dict = {
   mentionFiles: "Файлы проекта",
   mentionCommands: "Команды",
   slashCto: "Аудит кодовой базы и задачи для плана",
-  slashTeam: "Архитектор → Разработчик → Ревьюер",
   slashExplain: "Объяснить, как это работает",
   slashFix: "Найти и исправить проблему",
   slashTest: "Написать или обновить тесты",
@@ -435,14 +404,6 @@ const ru: Dict = {
   // --- Agent run visualisation --------------------------------------------
   agentDeclinedByUser: "отклонено пользователем",
   agentStepLimit: "Достигнут лимит шагов агента.",
-  agentArchitect: "Архитектор",
-  agentDeveloper: "Разработчик",
-  agentReviewer: "Ревьюер",
-  agentArchitectRunning: "Архитектор разбирает задачу и строит план…",
-  agentDeveloperRunning: "Разработчик реализует план…",
-  agentReviewerRunning: "Ревьюер проверяет изменения…",
-
-  // --- Errors --------------------------------------------------------------
   errorTitle: "Что-то пошло не так",
   errorRequestFailed: "Запрос к модели не выполнен",
   errorDismiss: "Скрыть",
@@ -479,7 +440,6 @@ const ru: Dict = {
   settingsAgent: "Агент",
   settingsEditor: "Редактор",
   settingsMemory: "Память проекта",
-  settingsSubagents: "Помощники",
   prefMemoryModel: "Модель для фоновых задач",
   prefMemoryModelHint: "На ней собирается память проекта, резюме, «где остановились» и граф знаний. Выберите дешёвую рабочую модель — иначе приложение подбирает её само по имени и может попасть на недоступную.",
   prefMemoryModelAuto: "Авто (подбирать самому)",
@@ -504,7 +464,6 @@ const ru: Dict = {
   secondsShort: " с",
   prefSubagentParallel: "Помощников одновременно",
   prefSubagentParallelHint: "Остальные задачи ждут очереди. Больше трёх невозможно отследить глазами, и провайдеры ограничивают частоту запросов",
-  prefMemoryModelEmpty: "Список моделей пуст. Откройте селектор модели в панели агента или нажмите «Проверить» в подключениях.",
   prefAutoApply: "Применять правки сразу",
   prefAutoApplyHint: "Агент правит файлы без вопроса на каждый шаг; все изменения видны в панели «Изменения агента», любое можно откатить.",
   prefConfirmBash: "Спрашивать перед выполнением команд",
@@ -582,18 +541,6 @@ const ru: Dict = {
   projectCtoHint: "Аудит запускается в панели агента командой /cto",
   projectDescription: "Описание",
   projectDescriptionHint: "О чём этот проект?",
-  projectStack: "Технологии",
-  projectStackHint: "Например: React, Tauri, Rust, SQLite",
-  projectStandards: "Стандарты кода",
-  projectStandardsHint: "Например: ранние возвраты, строго типизированные API",
-  projectArchitecture: "Архитектурные заметки",
-  projectArchitectureHint: "Ключевые паттерны и поток данных",
-  projectDecisions: "Ключевые решения",
-  projectDecisionsHint: "Зафиксированные решения и компромиссы",
-  projectLastState: "Где остановились",
-  projectLastStateHint: "Тезис состояния — обновляется при смене модели",
-
-  // --- Roadmap -------------------------------------------------------------
   roadmapTitle: "План и задачи",
   roadmapSubtitle: "Отслеживайте прогресс и управляйте задачами проекта.",
   roadmapNoProject: "Выберите проект, чтобы увидеть его план.",
@@ -658,9 +605,6 @@ const en: Dict = {
   clear: "Clear",
   done: "Done",
   loading: "Loading…",
-  back: "Back",
-  next: "Next",
-  skip: "Skip",
   language: "Language",
 
   navExplorer: "Explorer",
@@ -668,7 +612,6 @@ const en: Dict = {
   navSourceControl: "Source control",
   navSearch: "Search in project",
   navProject: "Project memory",
-  navMore: "More",
   groupCode: "Code",
   groupProject: "Project",
   theme: "Theme",
@@ -736,9 +679,6 @@ const en: Dict = {
   divergenceDismiss: "Dismiss",
   divergenceByAgent: "found by the agent",
   divergenceBySource: "a check refuted it",
-  divergencesBadge: "divergences",
-  memoryEmptyHint: "Memory is still empty. Open a folder and Magnetar will collect the project's facts.",
-
   modelToolsReset: "Reset tool mode — it will be detected again on the next agent run",
   edit: "Edit",
   editResend: "Send again",
@@ -832,15 +772,10 @@ const en: Dict = {
   memSaveStateHint:
     "Write down what was done and where you stopped. The same happens automatically when you switch models.",
   memSaveStateDone: "State saved",
-  memAutoOnSwitch: "Filled automatically when you switch models",
-  memAutoAfterChat: "Filled automatically as the chat progresses",
-
   chatProjectNone: "This chat is not attached to a project",
-  chatProjectNoneHint: "Memory is not being updated from it. Attach it to a project.",
   chatProjectAttach: "Attach to \u201c{name}\u201d",
   chatProjectOther: "Chat belongs to another project: {name}",
 
-  indexTitle: "Code index",
   indexBuilding: "Building index\u2026",
   indexReady: "Index ready \u00b7 {files} files",
   indexStale: "Index is out of date",
@@ -878,7 +813,6 @@ const en: Dict = {
   statusAgentOn: "Agent on",
   statusAgentOff: "Agent off",
 
-  welcomeTitle: "Welcome to Magnetar",
   welcomeSubtitle:
     "A local AI development environment: open a folder and the agent can see and work on your project. Any model, your own key.",
   welcomeOpenFolder: "Open a project folder",
@@ -887,24 +821,15 @@ const en: Dict = {
   welcomeModelReady: "Model connected: {model}",
   welcomeModelReadyHint: "You can switch it any time from the agent panel.",
   welcomeAgentNote: "Agent mode turns on automatically when you open a folder.",
-  welcomeStepOf: "Step {n} of {total}",
-  welcomeFinish: "Go to workspace",
   welcomeSkipAll: "Skip and open the app",
   stepConnectTitle: "Connect a model",
   stepConnectText:
     "Add an API key for any OpenAI-compatible provider or GigaChat. The key is stored locally, in an app file only you can read.",
   stepConnectAction: "Open connection settings",
-  stepConnectDone: "Connection ready: {name}",
   stepFolderTitle: "Open a project folder",
-  stepFolderText:
-    "Magnetar reads the key files and builds project memory, so the model works from memory instead of re-reading your code.",
   stepFolderAction: "Choose a folder",
-  stepFolderDone: "Project open: {name}",
-  stepStartTitle: "Start working",
   stepStartText:
     "Describe a task in the agent panel. The agent reads and edits files and runs commands — destructive actions always ask you first.",
-  stepStartAction: "Get started",
-
   chatsTitle: "Chats",
   chatsWhat: "The conversation log. Decisions from it land in project memory.",
   newChat: "New chat",
@@ -956,10 +881,6 @@ const en: Dict = {
   memLogNoSignals: "Nothing to read — the folder is empty, so memory was left empty",
   memErrParse: "The model replied in an unexpected format.",
   memRetry: "Retry analysis",
-  agentOffTitle: "Agent is off — the model cannot see your project files",
-  agentOffText:
-    "Without agent mode the model only gets the chat text: it cannot read files, search the code, or run commands. Turn the agent on to work with the open folder.",
-  agentOffEnable: "Turn the agent on",
   memAnalyzing: "Analyzing project…",
   memInMemory: "In memory",
   memAnalyzeHint:
@@ -1014,7 +935,6 @@ const en: Dict = {
   mentionFiles: "Project files",
   mentionCommands: "Commands",
   slashCto: "Audit the codebase and propose roadmap tasks",
-  slashTeam: "Architect → Developer → Reviewer",
   slashExplain: "Explain how this works",
   slashFix: "Find and fix a problem",
   slashTest: "Write or update tests",
@@ -1035,13 +955,6 @@ const en: Dict = {
 
   agentDeclinedByUser: "declined by user",
   agentStepLimit: "Agent step limit reached.",
-  agentArchitect: "Architect",
-  agentDeveloper: "Developer",
-  agentReviewer: "Reviewer",
-  agentArchitectRunning: "Architect is analyzing the request and building a plan…",
-  agentDeveloperRunning: "Developer is implementing the plan…",
-  agentReviewerRunning: "Reviewer is checking the changes…",
-
   errorTitle: "Something went wrong",
   errorRequestFailed: "The model request failed",
   errorDismiss: "Dismiss",
@@ -1077,7 +990,6 @@ const en: Dict = {
   settingsAgent: "Agent",
   settingsEditor: "Editor",
   settingsMemory: "Project memory",
-  settingsSubagents: "Helper agents",
   prefMemoryModel: "Model for background tasks",
   prefMemoryModelHint: "Used for project memory, summaries, “where we left off”, and the knowledge graph. Pick a cheap working model — otherwise the app guesses one by name and can land on an unavailable model.",
   prefMemoryModelAuto: "Auto (pick for me)",
@@ -1102,7 +1014,6 @@ const en: Dict = {
   secondsShort: "s",
   prefSubagentParallel: "Helpers at once",
   prefSubagentParallelHint: "The rest queue. More than three cannot be followed by eye, and providers rate-limit anyway",
-  prefMemoryModelEmpty: "No models loaded. Open the model picker in the agent panel or press “Test” in connections.",
   prefAutoApply: "Apply edits immediately",
   prefAutoApplyHint: "The agent edits files without asking on every step; everything shows up in Agent changes and any edit can be undone.",
   prefConfirmBash: "Ask before running commands",
@@ -1176,17 +1087,6 @@ const en: Dict = {
   projectCtoHint: "The audit runs in the agent panel via the /cto command",
   projectDescription: "Description",
   projectDescriptionHint: "What is this project about?",
-  projectStack: "Tech stack",
-  projectStackHint: "For example: React, Tauri, Rust, SQLite",
-  projectStandards: "Coding standards",
-  projectStandardsHint: "For example: early returns, strictly typed APIs",
-  projectArchitecture: "Architecture notes",
-  projectArchitectureHint: "Key patterns and data flow",
-  projectDecisions: "Core decisions",
-  projectDecisionsHint: "Recorded decisions and trade-offs",
-  projectLastState: "Where we left off",
-  projectLastStateHint: "State thesis — refreshed when you switch models",
-
   roadmapTitle: "Roadmap & tasks",
   roadmapSubtitle: "Track progress and manage project deliverables.",
   roadmapNoProject: "Select a project to see its roadmap.",
@@ -1247,9 +1147,6 @@ const es: Dict = {
   clear: "Limpiar",
   done: "Listo",
   loading: "Cargando…",
-  back: "Atrás",
-  next: "Siguiente",
-  skip: "Omitir",
   language: "Idioma",
 
   navExplorer: "Explorador",
@@ -1257,7 +1154,6 @@ const es: Dict = {
   navSourceControl: "Control de versiones",
   navSearch: "Buscar en el proyecto",
   navProject: "Memoria del proyecto",
-  navMore: "Más",
   groupCode: "Código",
   groupProject: "Proyecto",
   theme: "Tema",
@@ -1326,10 +1222,6 @@ const es: Dict = {
   divergenceDismiss: "Descartar",
   divergenceByAgent: "lo vio el agente",
   divergenceBySource: "una comprobación lo refutó",
-  divergencesBadge: "divergencias",
-  memoryEmptyHint:
-    "La memoria está vacía. Abre una carpeta y Magnetar reunirá los datos del proyecto.",
-
   modelToolsReset: "Restablecer el modo de herramientas: se detectará de nuevo",
   edit: "Editar",
   editResend: "Enviar de nuevo",
@@ -1423,15 +1315,10 @@ const es: Dict = {
   memSaveStateHint:
     "Anota qué se hizo y dónde te detuviste. Ocurre igual al cambiar de modelo.",
   memSaveStateDone: "Estado guardado",
-  memAutoOnSwitch: "Se rellena automáticamente al cambiar de modelo",
-  memAutoAfterChat: "Se rellena automáticamente a medida que avanza el chat",
-
   chatProjectNone: "Este chat no está vinculado a ningún proyecto",
-  chatProjectNoneHint: "La memoria no se actualiza desde él. Vincúlalo a un proyecto.",
   chatProjectAttach: "Vincular a «{name}»",
   chatProjectOther: "El chat pertenece a otro proyecto: {name}",
 
-  indexTitle: "Índice de código",
   indexBuilding: "Construyendo el índice…",
   indexReady: "Índice listo · {files} archivos",
   indexStale: "El índice está desactualizado",
@@ -1469,7 +1356,6 @@ const es: Dict = {
   statusAgentOn: "Agente activo",
   statusAgentOff: "Agente inactivo",
 
-  welcomeTitle: "Bienvenido a Magnetar",
   welcomeSubtitle:
     "Un entorno de desarrollo con IA local: abre una carpeta y el agente ve tu proyecto y puede trabajar en él. Cualquier modelo, con tu clave.",
   welcomeOpenFolder: "Abrir una carpeta de proyecto",
@@ -1478,24 +1364,15 @@ const es: Dict = {
   welcomeModelReady: "Modelo conectado: {model}",
   welcomeModelReadyHint: "Puedes cambiarlo cuando quieras desde el panel del agente.",
   welcomeAgentNote: "El modo agente se activa solo al abrir una carpeta.",
-  welcomeStepOf: "Paso {n} de {total}",
-  welcomeFinish: "Ir al espacio de trabajo",
   welcomeSkipAll: "Omitir y abrir la app",
   stepConnectTitle: "Conecta un modelo",
   stepConnectText:
     "Añade una clave API de cualquier proveedor compatible con OpenAI o GigaChat. La clave se guarda localmente, en un archivo que solo tú puedes leer.",
   stepConnectAction: "Abrir ajustes de conexión",
-  stepConnectDone: "Conexión lista: {name}",
   stepFolderTitle: "Abre una carpeta de proyecto",
-  stepFolderText:
-    "Magnetar lee los archivos clave y construye la memoria del proyecto, para que el modelo trabaje desde memoria en vez de releer tu código.",
   stepFolderAction: "Elegir carpeta",
-  stepFolderDone: "Proyecto abierto: {name}",
-  stepStartTitle: "Empieza a trabajar",
   stepStartText:
     "Describe una tarea en el panel del agente. El agente lee y edita archivos y ejecuta comandos — las acciones destructivas siempre te preguntan antes.",
-  stepStartAction: "Empezar",
-
   chatsTitle: "Chats",
   chatsWhat: "El registro de la conversación. Sus decisiones pasan a la memoria del proyecto.",
   newChat: "Nuevo chat",
@@ -1547,10 +1424,6 @@ const es: Dict = {
   memLogNoSignals: "Nada que leer — la carpeta está vacía, la memoria quedó vacía",
   memErrParse: "El modelo respondió en un formato inesperado.",
   memRetry: "Reintentar análisis",
-  agentOffTitle: "El agente está desactivado — el modelo no ve los archivos del proyecto",
-  agentOffText:
-    "Sin el modo agente el modelo solo recibe el texto del chat: no puede leer archivos, buscar en el código ni ejecutar comandos. Activa el agente para trabajar con la carpeta abierta.",
-  agentOffEnable: "Activar el agente",
   memAnalyzing: "Analizando el proyecto…",
   memInMemory: "En memoria",
   memAnalyzeHint:
@@ -1605,7 +1478,6 @@ const es: Dict = {
   mentionFiles: "Archivos del proyecto",
   mentionCommands: "Comandos",
   slashCto: "Auditar el código y proponer tareas",
-  slashTeam: "Arquitecto → Desarrollador → Revisor",
   slashExplain: "Explicar cómo funciona esto",
   slashFix: "Encontrar y arreglar un problema",
   slashTest: "Escribir o actualizar tests",
@@ -1626,13 +1498,6 @@ const es: Dict = {
 
   agentDeclinedByUser: "rechazado por el usuario",
   agentStepLimit: "Se alcanzó el límite de pasos del agente.",
-  agentArchitect: "Arquitecto",
-  agentDeveloper: "Desarrollador",
-  agentReviewer: "Revisor",
-  agentArchitectRunning: "El Arquitecto analiza la petición y crea un plan…",
-  agentDeveloperRunning: "El Desarrollador implementa el plan…",
-  agentReviewerRunning: "El Revisor comprueba los cambios…",
-
   errorTitle: "Algo salió mal",
   errorRequestFailed: "La petición al modelo falló",
   errorDismiss: "Ocultar",
@@ -1668,7 +1533,6 @@ const es: Dict = {
   settingsAgent: "Agente",
   settingsEditor: "Editor",
   settingsMemory: "Memoria del proyecto",
-  settingsSubagents: "Ayudantes",
   prefMemoryModel: "Modelo para tareas en segundo plano",
   prefMemoryModelHint: "Se usa para la memoria del proyecto, los resúmenes, «dónde lo dejamos» y el grafo de conocimiento. Elige un modelo barato que funcione — si no, la app lo adivina por el nombre y puede caer en uno no disponible.",
   prefMemoryModelAuto: "Automático",
@@ -1693,7 +1557,6 @@ const es: Dict = {
   secondsShort: " s",
   prefSubagentParallel: "Ayudantes a la vez",
   prefSubagentParallelHint: "El resto espera turno. Más de tres no se pueden seguir con la vista, y los proveedores limitan la frecuencia",
-  prefMemoryModelEmpty: "No hay modelos cargados. Abre el selector de modelo en el panel del agente o pulsa «Probar» en conexiones.",
   prefAutoApply: "Aplicar cambios al instante",
   prefAutoApplyHint: "El agente edita archivos sin preguntar en cada paso; todo aparece en «Cambios del agente» y se puede deshacer.",
   prefConfirmBash: "Preguntar antes de ejecutar comandos",
@@ -1767,17 +1630,6 @@ const es: Dict = {
   projectCtoHint: "La auditoría se ejecuta en el panel del agente con el comando /cto",
   projectDescription: "Descripción",
   projectDescriptionHint: "¿De qué trata este proyecto?",
-  projectStack: "Tecnologías",
-  projectStackHint: "Por ejemplo: React, Tauri, Rust, SQLite",
-  projectStandards: "Estándares de código",
-  projectStandardsHint: "Por ejemplo: retornos tempranos, APIs estrictamente tipadas",
-  projectArchitecture: "Notas de arquitectura",
-  projectArchitectureHint: "Patrones clave y flujo de datos",
-  projectDecisions: "Decisiones clave",
-  projectDecisionsHint: "Decisiones y compromisos registrados",
-  projectLastState: "Dónde lo dejamos",
-  projectLastStateHint: "Tesis de estado — se actualiza al cambiar de modelo",
-
   roadmapTitle: "Plan y tareas",
   roadmapSubtitle: "Sigue el progreso y gestiona las entregas del proyecto.",
   roadmapNoProject: "Selecciona un proyecto para ver su plan.",

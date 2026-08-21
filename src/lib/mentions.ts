@@ -16,7 +16,6 @@ export interface SlashCommand {
 
 export const SLASH_COMMANDS: SlashCommand[] = [
   { id: "/cto", insert: "/cto", descKey: "slashCto" },
-  { id: "/team", insert: "/team ", descKey: "slashTeam" },
   { id: "/explain", insert: "/explain ", descKey: "slashExplain" },
   { id: "/fix", insert: "/fix ", descKey: "slashFix" },
   { id: "/test", insert: "/test ", descKey: "slashTest" },
@@ -58,10 +57,6 @@ export async function projectFiles(force = false): Promise<string[]> {
   } catch {
     return [];
   }
-}
-
-export function invalidateProjectFiles() {
-  cache = null;
 }
 
 /** Subsequence match, the way editors score fuzzy file pickers: every query

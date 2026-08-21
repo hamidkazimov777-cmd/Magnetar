@@ -556,8 +556,6 @@ export interface AgentHandlers {
   onText: (text: string) => void;
   /** Report a tool step starting/finishing (structured, rendered as a card). */
   onTool?: (e: AgentToolEvent) => void;
-  /** Announce a named phase of a multi-role run (Architect/Developer/Reviewer). */
-  onPhase?: (label: string, running: boolean) => void;
   /** Stream the model's thinking, when it exposes any. */
   onReasoning?: (text: string) => void;
   /** Token counts for the turn, as the provider reports them. */
@@ -593,7 +591,6 @@ export async function runAgent(
   model: string,
   history: ChatMessage[],
   h: AgentHandlers,
-  isTeam = false,
   projectMemory = "",
   opts: { isSubagent?: boolean } = {},
 ): Promise<void> {
@@ -616,7 +613,7 @@ export async function runAgent(
     : AGENT_TOOLS;
 
   try {
-    return await dispatchAgent(connection, model, history, h, system, isTeam, tools);
+    return await dispatchAgent(connection, model, history, h, system, tools);
   } finally {
     askUser = prevAsk;
     teamCtx = prevTeam;
@@ -629,12 +626,8 @@ async function dispatchAgent(
   history: ChatMessage[],
   h: AgentHandlers,
   system: string,
-  isTeam: boolean,
   tools: ToolDef[],
 ): Promise<void> {
-  if (isTeam) {
-    return runTeamAgent(connection, model, history, h, system);
-  }
   // Providers accept `tools` even for models that ignore them, so the choice
   // cannot be made from connection.kind alone — we remember what actually
   // happened the first time and fall back to text-based ReAct when needed.
@@ -645,47 +638,6 @@ async function dispatchAgent(
     return runAgentNative(connection, model, history, h, system, tools);
   }
   return runAgentReAct(connection, model, history, h, system);
-}
-
-export async function runTeamAgent(
-  connection: Connection,
-  model: string,
-  history: ChatMessage[],
-  h: AgentHandlers,
-  system: string = AGENT_SYSTEM,
-): Promise<void> {
-  if (h.cancelled?.()) return;
-
-  h.onPhase?.(tr("agentArchitect"), true);
-  h.onText(`**${tr("agentArchitect")}** — ${tr("agentArchitectRunning")}\n\n`);
-  const architectSystem =
-    "You are the Architect. Analyze the user request, break it down into a clear technical plan with steps. Do not execute code. Just output the plan." +
-    system;
-  const plan = await api.complete(connection, model, history, architectSystem);
-
-  if (h.cancelled?.()) return;
-  h.onText(
-    `${plan}\n\n---\n\n**${tr("agentDeveloper")}** — ${tr("agentDeveloperRunning")}\n\n`,
-  );
-
-  const devHistory = [...history, { id: "plan", role: "assistant", content: plan, createdAt: 0 }];
-  // Run developer with the same project memory in context.
-  if (connection.kind === "openai_compat" || connection.kind === "anthropic") {
-    await runAgentNative(connection, model, devHistory as ChatMessage[], h, system);
-  } else {
-    await runAgentReAct(connection, model, devHistory as ChatMessage[], h, system);
-  }
-
-  if (h.cancelled?.()) return;
-  h.onText(
-    `\n\n---\n\n**${tr("agentReviewer")}** — ${tr("agentReviewerRunning")}\n\n`,
-  );
-  const reviewerSystem =
-    "You are the Reviewer. Check what the developer did based on the plan, suggest any improvements, or confirm it looks good. Be concise." +
-    system;
-  const review = await api.complete(connection, model, devHistory as ChatMessage[], reviewerSystem);
-
-  h.onText(review);
 }
 
 /** Native OpenAI tool-use loop. */

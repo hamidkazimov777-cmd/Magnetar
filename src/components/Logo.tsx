@@ -25,20 +25,3 @@ export function LogoMark({
   );
 }
 
-/** "MAGNETAR" wordmark — light weight, wide tracking, uppercase. */
-export function Wordmark({
-  className,
-  size = "var(--fs-md)",
-}: {
-  className?: string;
-  size?: string;
-}) {
-  return (
-    <div
-      className={cn("font-medium uppercase text-[var(--color-text)]", className)}
-      style={{ letterSpacing: "0.22em", fontSize: size }}
-    >
-      Magnetar
-    </div>
-  );
-}

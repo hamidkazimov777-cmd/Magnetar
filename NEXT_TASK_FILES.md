@@ -1,7 +1,7 @@
 # Magnetar — состояние проекта для следующего ИИ
 
 > Прочитай этот файл + последние записи `HANDOFF.md` — и за несколько минут
-> поймёшь текущее состояние. Актуально на **2026-08-21** (после Записи 54).
+> поймёшь текущее состояние. Актуально на **2026-08-21** (после Записи 55).
 >
 > Полный разбор продукта — `OVERVIEW.md`: философия, память, агент, данные,
 > и почему каждое решение принято именно так.
@@ -321,7 +321,7 @@ ActivityBar (48px) │ Primary panel │ Центр (редактор/стран
 | `lib/store.ts` | zustand: канон в памяти + write-through в SQLite; оболочка, вкладки, `agentTrace`, `lastError`, `memoryError`, `pendingPrompt`, `theme`, `hintsOn`, `memoryLog`, `indexState`, `checkRuns`, `pendingReveal`, `subsSafariUa` |
 | `lib/i18n.ts` | 330 ключей × ru/en/es; `useT()` в компонентах, `tr()` вне React |
 | `lib/monaco.ts` | Monaco: локальные воркеры, **две темы** (`magnetar-light`/`-dark`), `monacoThemeFor`, TS/JS IntelliSense |
-| `lib/agent.ts` | Цикл агента: native tool-use и ReAct, `/team`, события `onTool`/`onPhase` |
+| `lib/agent.ts` | Цикл агента: native tool-use и ReAct, инструменты (включая `delegate`, `new_project`, `flag_memory`, `ask_decision`), события `onTool` |
 | `lib/handoff.ts` | Системный промт, rolling-summary, передача контекста между моделями |
 | `lib/memory.ts` | Анализ папки в факты, флаш состояния (`{manual:true}` для кнопки), `activateProjectForPath`, `cheapModel`, `buildProjectMemory(session, query)` |
 | `lib/facts.ts` | Факты памяти: `newFact`, миграция старых колонок, `ensureProjectFacts`, рендер с происхождением |

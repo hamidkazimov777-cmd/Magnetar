@@ -143,7 +143,6 @@ async function runOne(
           opts.budget() <= 0 ||
           useStore.getState().subagents[runId]?.cancelRequested === true,
       },
-      false,
       // The helper gets the project's memory, selected for its own task rather
       // than for the user's original message.
       buildProjectMemory(undefined, task.instructions) + `\n\n${SUBAGENT_SYSTEM}`,

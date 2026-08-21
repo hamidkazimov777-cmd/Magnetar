@@ -204,12 +204,11 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     let sessionId = useStore.getState().activeSessionId;
     if (!sessionId) sessionId = newSession();
 
-    const isTeam = text.startsWith("/team ");
     const isCto = text.startsWith("/cto");
 
     // The transcript keeps exactly what the user typed; slash commands expand
     // into an instruction that goes to the model via the system prompt.
-    const content = isTeam ? text.replace("/team ", "").trim() : text;
+    const content = text;
     const slashInstruction = isCto
       ? "\n\n## Task\nPerform a comprehensive CTO audit of this project. Check for tech debt, architectural flaws, and suggest concrete tasks for the Roadmap."
       : expandSlash(text) !== text
@@ -270,7 +269,6 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
           },
           cancelled: () => agentCancelRef.current,
         },
-        isTeam,
         projectMemory,
       );
     } catch (e) {

@@ -20,13 +20,6 @@ export async function ensureDivergences(projectId: string): Promise<void> {
   if (!st.divergences[projectId]) await st.loadDivergences(projectId);
 }
 
-export function openDivergences(projectId: string | undefined): Divergence[] {
-  if (!projectId) return [];
-  return (useStore.getState().divergences[projectId] ?? []).filter(
-    (d) => d.status === "open",
-  );
-}
-
 /** Queue one contradiction. Silent by design — nothing pops up, nothing blocks;
  *  the count in the panel is the only thing that moves. */
 export function queueDivergence(
