@@ -62,6 +62,20 @@ function Track({ run }: { run: SubagentRun }) {
           {run.tool ? ` · ${run.tool}` : ""} · {t("subagentSteps", { n: String(run.steps) })}
           {run.status === "running" ? ` · ${seconds}${t("secondsShort")}` : ""}
         </span>
+        {/* The reason, in full, on the row that failed — the lead's retelling
+            of it ("ran out of limit") was not what actually happened. */}
+        {run.error && (
+          <span
+            className="mt-0.5 block text-[length:var(--fs-2xs)] leading-snug text-[var(--color-danger)]"
+            title={run.error}
+          >
+            {run.error === "budget"
+              ? t("subagentBudget")
+              : run.error === "stopped"
+                ? t("subagentStopped")
+                : run.error}
+          </span>
+        )}
       </span>
     </div>
   );

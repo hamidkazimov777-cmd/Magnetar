@@ -144,7 +144,10 @@ async function runOne(
       : opts.budget() <= 0
         ? "refused"
         : "done";
-    useStore.getState().setSubagent(runId, { status: status === "done" ? "done" : "stopped" });
+    useStore.getState().setSubagent(runId, {
+      status: status === "done" ? "done" : "stopped",
+      error: status === "done" ? undefined : status === "refused" ? "budget" : "stopped",
+    });
     return {
       title: task.title,
       status,
@@ -153,7 +156,7 @@ async function runOne(
       steps,
     };
   } catch (e) {
-    useStore.getState().setSubagent(runId, { status: "failed" });
+    useStore.getState().setSubagent(runId, { status: "failed", error: String(e).slice(0, 300) });
     return {
       title: task.title,
       status: "failed",

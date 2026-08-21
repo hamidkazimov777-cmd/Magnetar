@@ -249,6 +249,18 @@ function resolvePath(raw: unknown): string {
   return `${root}/${p.replace(/^\.\//, "")}`;
 }
 
+/** Writing needs a home. Without an open project folder a relative path is
+ *  resolved against whatever directory the app happens to be running in — and
+ *  that is how a helper agent's page ended up inside Magnetar's own repository
+ *  (Entry 54). An absolute path is still honoured: the user may be working
+ *  deliberately outside a project. */
+function writeGuard(raw: unknown): string | null {
+  if (useStore.getState().workspaceRoot) return null;
+  const p = String(raw ?? "").trim();
+  if (p.startsWith("/")) return null;
+  return `error: no project folder is open, so "${p}" has no place to be written. Ask the user to open the project folder, or pass an absolute path.`;
+}
+
 /** What `ask_decision` needs from the UI. */
 export interface AskRequest {
   question: string;
@@ -305,6 +317,8 @@ export async function executeTool(name: string, args: ToolArgs): Promise<string>
         );
       }
       case "write_file": {
+        const blocked = writeGuard(args.path);
+        if (blocked) return blocked;
         const path = resolvePath(args.path);
         const content = String(args.content);
         // Snapshot first — null means the agent is creating a new file.
@@ -319,6 +333,8 @@ export async function executeTool(name: string, args: ToolArgs): Promise<string>
         return `wrote ${n} bytes to ${path}`;
       }
       case "edit_file": {
+        const blocked = writeGuard(args.path);
+        if (blocked) return blocked;
         const path = resolvePath(args.path);
         const before = await api.editorReadFile(path).catch(() => null);
         const r = await api.toolEditFile(
@@ -387,6 +403,12 @@ export async function executeTool(name: string, args: ToolArgs): Promise<string>
           return "error: at most 8 tasks per delegation — split the job differently";
 
         const st = useStore.getState();
+        if (!st.workspaceRoot)
+          // Helpers are given short file names by the lead and resolve them
+          // against the project root. With no root they write wherever the
+          // lead happened to be looking — one of them put a page inside
+          // Magnetar's own repository (Entry 54).
+          return "No project folder is open, so helpers have nowhere to write. Ask the user to open the project folder, or do the work yourself using absolute paths.";
         const { accepted, refused } = resolveLeases(tasks, st.workspaceRoot);
         if (!accepted.length)
           return `No task could start — every one clashed over files:\n${refused
@@ -457,7 +479,11 @@ export interface AgentToolEvent {
   id: string;
   name: string;
   args: ToolArgs;
-  status: "running" | "done" | "error" | "declined" | "killed";
+  /** "declined" is the user saying no; "blocked" is the app refusing on its own
+   *  — a loop guard tripping, or a helper agent barred from a destructive call.
+   *  They looked identical before, and the trace told the user they had
+   *  declined something they never saw. */
+  status: "running" | "done" | "error" | "declined" | "blocked" | "killed";
   /** When the call started, so the UI can show a live timer on a long command. */
   startedAt?: number;
   /** How long it ran, once finished. */
@@ -747,7 +773,7 @@ async function runAgentNative(
       const stuck = checkLoop(watch, tc.name, args, lastFailed);
       if (stuck) {
         messages.push({ role: "tool", tool_call_id: tc.id, content: stuck });
-        h.onTool?.({ id: tc.id, name: tc.name, args, status: "declined", result: stuck });
+        h.onTool?.({ id: tc.id, name: tc.name, args, status: "blocked", result: stuck });
         h.onText(`\n\n_${tr("agentLoopStopped")}_`);
         return;
       }
@@ -757,7 +783,13 @@ async function runAgentNative(
 
       if (!approved) {
         result = h.declineReason ?? "User declined this action.";
-        h.onTool?.({ id: tc.id, name: tc.name, args, status: "declined" });
+        h.onTool?.({
+          id: tc.id,
+          name: tc.name,
+          args,
+          status: h.declineReason ? "blocked" : "declined",
+          result: h.declineReason,
+        });
       } else {
         const startedAt = Date.now();
         h.onTool?.({ id: tc.id, name: tc.name, args, status: "running", startedAt });
@@ -961,7 +993,7 @@ async function runAgentReAct(
 
     const stuck = checkLoop(watch, p.action, p.input, lastFailed);
     if (stuck) {
-      h.onTool?.({ id: callId, name: p.action, args: p.input, status: "declined", result: stuck });
+      h.onTool?.({ id: callId, name: p.action, args: p.input, status: "blocked", result: stuck });
       h.onText(`\n\n_${tr("agentLoopStopped")}_`);
       return;
     }
@@ -970,12 +1002,13 @@ async function runAgentReAct(
     const approved = needsConfirm(p.action, p.input) ? await h.confirm(p.action, p.input) : true;
 
     if (!approved) {
-      result = "User declined this action.";
+      result = h.declineReason ?? "User declined this action.";
       h.onTool?.({
         id: callId,
         name: p.action,
         args: p.input,
-        status: "declined",
+        status: h.declineReason ? "blocked" : "declined",
+        result: h.declineReason,
         thought: p.thought,
       });
     } else {

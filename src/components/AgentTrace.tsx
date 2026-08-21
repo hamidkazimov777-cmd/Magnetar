@@ -18,6 +18,7 @@ import {
   MessageCircleQuestion,
   GitCompare,
   Users,
+  ShieldAlert,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { summarizeArgs, type AgentToolEvent } from "../lib/agent";
@@ -109,7 +110,7 @@ function Step({ event }: { event: AgentToolEvent }) {
         "overflow-hidden rounded-[var(--r-md)] border bg-[var(--color-surface)]",
         event.status === "error"
           ? "border-[color-mix(in_srgb,var(--color-danger)_40%,transparent)]"
-          : event.status === "declined"
+          : event.status === "declined" || event.status === "blocked"
             ? "border-[color-mix(in_srgb,var(--color-warning)_35%,transparent)]"
             : "border-[var(--color-border)]",
       )}
@@ -157,6 +158,14 @@ function Step({ event }: { event: AgentToolEvent }) {
           <span className="flex shrink-0 items-center gap-1 text-[length:var(--fs-xs)] text-[var(--color-warning)]">
             <Ban size={12} />
             {t("agentDeclinedByUser")}
+          </span>
+        )}
+        {/* The app refused this itself. Saying "declined by the user" here told
+            people they had rejected something they were never shown. */}
+        {event.status === "blocked" && (
+          <span className="flex shrink-0 items-center gap-1 text-[length:var(--fs-xs)] text-[var(--color-warning)]">
+            <ShieldAlert size={12} />
+            {t("agentBlocked")}
           </span>
         )}
 

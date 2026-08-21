@@ -214,6 +214,9 @@ export interface SubagentRun {
   tool?: string;
   steps: number;
   startedAt: number;
+  /** Why it ended badly. Without this the panel shows a warning triangle and
+   *  nothing else, and the reason has to be guessed from the lead's summary. */
+  error?: string;
 }
 
 export interface MemoryFact {
