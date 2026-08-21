@@ -297,6 +297,9 @@ interface State {
    *  palette, pendingPrompt), and a local flag let them race — the user ended
    *  up with several runs going at once, each answering nobody. */
   agentRunning: boolean;
+  /** When the current run started — the activity indicator counts from here,
+   *  and a run with no visible sign of life reads as a hang. */
+  agentRunStartedAt?: number;
   setAgentRunning: (v: boolean) => void;
 
   /** Helper agents currently running, keyed by run id. Transient — a run is
@@ -1058,7 +1061,8 @@ export const useStore = create<State>()(
       setRunningTool: (runningTool) => set({ runningTool }),
 
       agentRunning: false,
-      setAgentRunning: (v) => set({ agentRunning: v }),
+      setAgentRunning: (v) =>
+        set({ agentRunning: v, agentRunStartedAt: v ? now() : undefined }),
 
       subagents: {},
       setSubagent: (id, patch) =>

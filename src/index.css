@@ -834,3 +834,12 @@
     padding: 0;
   }
 }
+
+
+/* An indeterminate progress sweep: used by the agent activity indicator, where
+   a real percentage would be a lie — the model decides how many steps it takes. */
+@keyframes sweep {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(200%); }
+  100% { transform: translateX(-100%); }
+}

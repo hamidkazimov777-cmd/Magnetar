@@ -28,15 +28,16 @@ export function SubagentPicker() {
   return (
     <div className="relative">
       <button
-        className="toggle-pill"
+        className="toggle-pill shrink-0 px-2"
+        data-ai="true"
         data-on={roster.length > 0}
         onClick={() => setOpen((v) => !v)}
-        title={t("subagentPickerHint")}
+        title={`${t("subagentsTitle")} — ${t("subagentPickerHint")}`}
+        aria-label={t("subagentsTitle")}
       >
         <Users size={13} />
-        {t("subagentsTitle")}
         {roster.length > 0 && (
-          <span className="ml-0.5 rounded-full bg-[var(--color-ai)] px-1.5 text-[length:var(--fs-2xs)] font-semibold text-white">
+          <span className="rounded-full bg-[var(--color-ai)] px-1.5 text-[length:var(--fs-2xs)] font-semibold text-white">
             {roster.length}
           </span>
         )}
@@ -118,7 +119,7 @@ function Panel({ onClose }: { onClose: () => void }) {
   return (
     <div
       ref={ref}
-      className="anim-in absolute left-0 top-[calc(100%+6px)] z-40 w-[min(92vw,26rem)] overflow-hidden rounded-[var(--r-lg)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] shadow-[var(--e-3)]"
+      className="anim-in absolute right-0 top-[calc(100%+6px)] z-40 max-h-[70vh] w-[min(calc(100vw-2rem),24rem)] overflow-y-auto overflow-hidden rounded-[var(--r-lg)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] shadow-[var(--e-3)]"
     >
       <div className="border-b border-[var(--color-border)] px-3 py-2.5">
         <div className="flex items-center gap-2">

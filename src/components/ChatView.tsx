@@ -13,6 +13,7 @@ import {
   Loader2,
   Square,
   FolderPlus,
+  FolderOpen,
 } from "lucide-react";
 import { api } from "../lib/api";
 import { useStore } from "../lib/store";
@@ -28,6 +29,7 @@ import { ToolPreview } from "./ToolPreview";
 import { AskDialog } from "./AskDialog";
 import { SubagentTracks } from "./SubagentTracks";
 import { SubagentPicker } from "./SubagentPicker";
+import { pickWorkspaceFolder } from "./panels/ExplorerPanel";
 import { useT } from "../lib/i18n";
 import { Composer } from "./Composer";
 import { Message } from "./Message";
@@ -410,7 +412,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
         </button>
       </header>
 
-      <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--color-border)] px-2 py-1.5">
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-[var(--color-border)] px-2 py-1.5">
         {/* Two tracks, not a switch on one transcript: discussion and tool
             steps in the same thread bury each other, and an hour later nobody
             can find where a thing was agreed. Each track keeps its own model. */}
@@ -440,16 +442,19 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
         {/* The bench of helper models: a per-job decision, so it sits with the
             track buttons rather than in Settings. */}
         {agentMode && <SubagentPicker />}
+        {/* Icon only: four labelled pills do not fit a narrow panel, and the
+            last one was being cut off mid-word. The names live in the tooltip
+            and in hint mode. */}
         <Hint text={t("hintAdaptive")} side="bottom">
           <button
-            className="toggle-pill"
+            className="toggle-pill shrink-0 px-2"
             data-ai="true"
             data-on={adaptive}
             onClick={() => setAdaptive(!adaptive)}
-            title={t("adaptiveHint")}
+            title={`${t("adaptive")} — ${t("adaptiveHint")}`}
+            aria-label={t("adaptive")}
           >
             <Sparkles size={13} />
-            {t("adaptive")}
           </button>
         </Hint>
       </div>
@@ -535,7 +540,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
         </div>
       )}
 
-      <RunningToolBar />
+      <AgentActivity />
 
       <SubagentTracks />
 
@@ -618,6 +623,23 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
                   }}
                 >
                   {t("confirmTrustAll")}
+                </button>
+              )}
+              {/* Being told where a project must go is not a choice. Picking a
+                  folder here resolves the call as approved: the tool sees a
+                  root is already open and tells the model to work there. */}
+              {confirm.name === "new_project" && (
+                <button
+                  className="btn btn-secondary"
+                  onClick={async () => {
+                    const picked = await pickWorkspaceFolder();
+                    if (!picked) return;
+                    confirm.resolve(true);
+                    setConfirm(null);
+                  }}
+                >
+                  <FolderOpen size={13} />
+                  {t("newProjectChoose")}
                 </button>
               )}
               <button
@@ -717,44 +739,58 @@ function EmptyChat({
  *  never — and the user is left talking to a wall, which is exactly what
  *  happened. This bar makes the state visible and gives the one action that
  *  actually unblocks the conversation: kill the command. */
-function RunningToolBar() {
+/** Proof that the agent is alive.
+ *
+ *  Between tool calls the panel showed nothing at all: the message was sent,
+ *  the screen sat still, and the only way to tell "thinking" from "hung" was to
+ *  wait and then send another message. Anything running now says so — what it
+ *  is doing, for how long, and how many helpers are out. */
+function AgentActivity() {
   const t = useT();
+  const running = useStore((s) => s.agentRunning);
+  const startedAt = useStore((s) => s.agentRunStartedAt);
   const tool = useStore((s) => s.runningTool);
   const queued = useStore((s) => s.agentInterjections.length);
+  const helpers = useStore((s) => s.subagents);
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    if (!tool) return;
-    const iv = setInterval(() => setNow(Date.now()), 1000);
+    if (!running) return;
+    const iv = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(iv);
-  }, [tool]);
+  }, [running]);
 
-  if (!tool) return null;
-  const secs = Math.max(0, Math.round((now - tool.startedAt) / 1000));
+  if (!running) return null;
 
-  // Stay out of the way. A normal command finishes in a couple of seconds and
-  // its progress is already visible in the run trace; a permanent bar above the
-  // composer would just be noise. This appears only when something is actually
-  // wrong — the command is dragging, or the user has already written and is
-  // waiting to be heard.
-  if (secs < 20 && queued === 0) return null;
+  const secs = Math.max(0, Math.round((now - (startedAt ?? now)) / 1000));
+  const active = Object.values(helpers).filter((h) => h.status === "running").length;
+  const label = tool
+    ? t("toolRunning", { name: tool.name, n: String(secs) })
+    : t("agentThinking", { n: String(secs) });
 
   return (
-    <div className="mx-2 mb-1 flex items-center gap-2 rounded-[var(--r-md)] border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2.5 py-1.5 text-[length:var(--fs-xs)]">
-      <Loader2 size={12} className="shrink-0 animate-spin text-[var(--color-ai)]" />
-      <span className="min-w-0 flex-1 truncate text-[var(--color-text-dim)]">
-        {t("toolRunning", { name: tool.name, n: String(secs) })}
-        {queued > 0 && ` · ${t("toolQueued", { n: String(queued) })}`}
-      </span>
-      {tool.name === "run_bash" && (
-        <button
-          className="btn btn-danger btn-sm shrink-0"
-          onClick={() => void api.toolKillBash().catch(() => {})}
-        >
-          <Square size={11} />
-          {t("agentKillCommand")}
-        </button>
-      )}
+    <div className="mx-2 mb-1 overflow-hidden rounded-[var(--r-md)] border border-[var(--color-border)] bg-[var(--color-surface-2)]">
+      {/* An indeterminate sweep: no fake percentage, just a sign of life. */}
+      <div className="h-0.5 w-full bg-[var(--color-border)]">
+        <div className="h-full w-1/3 animate-[sweep_1.4s_ease-in-out_infinite] bg-[var(--color-ai)]" />
+      </div>
+      <div className="flex items-center gap-2 px-2.5 py-1.5 text-[length:var(--fs-xs)]">
+        <Loader2 size={12} className="shrink-0 animate-spin text-[var(--color-ai)]" />
+        <span className="min-w-0 flex-1 truncate text-[var(--color-text-dim)]">
+          {label}
+          {active > 0 && ` · ${t("subagentsActive", { n: String(active) })}`}
+          {queued > 0 && ` · ${t("toolQueued", { n: String(queued) })}`}
+        </span>
+        {tool?.name === "run_bash" && (
+          <button
+            className="btn btn-danger btn-sm shrink-0"
+            onClick={() => void api.toolKillBash().catch(() => {})}
+          >
+            <Square size={11} />
+            {t("agentKillCommand")}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
