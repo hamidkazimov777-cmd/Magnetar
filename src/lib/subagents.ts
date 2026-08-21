@@ -54,6 +54,14 @@ export interface SubagentReport {
   steps: number;
 }
 
+/** Providers count parallel helpers against one rate limit: three at once on a
+ *  free tier is three requests in the same second, and the second and third
+ *  come back 429. */
+const isRateLimit = (e: unknown) =>
+  /429|rate.?limit|too many requests/i.test(String(e));
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 const uid = () =>
   (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)) as string;
 
@@ -130,7 +138,10 @@ async function runOne(
             if (typeof p === "string") changed.add(p);
           }
         },
-        cancelled: () => opts.cancelled() || opts.budget() <= 0,
+        cancelled: () =>
+          opts.cancelled() ||
+          opts.budget() <= 0 ||
+          useStore.getState().subagents[runId]?.cancelRequested === true,
       },
       false,
       // The helper gets the project's memory, selected for its own task rather
@@ -139,7 +150,9 @@ async function runOne(
       { isSubagent: true },
     );
 
-    const status: SubagentReport["status"] = opts.cancelled()
+    const stoppedByUser =
+      useStore.getState().subagents[runId]?.cancelRequested === true;
+    const status: SubagentReport["status"] = opts.cancelled() || stoppedByUser
       ? "stopped"
       : opts.budget() <= 0
         ? "refused"
@@ -156,6 +169,14 @@ async function runOne(
       steps,
     };
   } catch (e) {
+    // Retry a rate limit, but only when nothing has happened yet: re-running a
+    // helper that already wrote files would do the work twice.
+    if (isRateLimit(e) && steps === 0 && !opts.cancelled()) {
+      useStore.getState().setSubagent(runId, { error: "ratelimit" });
+      await sleep(20000);
+      if (!opts.cancelled())
+        return runOne(connection, model, task, runId, opts);
+    }
     useStore.getState().setSubagent(runId, { status: "failed", error: String(e).slice(0, 300) });
     return {
       title: task.title,
@@ -189,7 +210,10 @@ export async function runTeam(
   };
 
   let next = 0;
-  const worker = async () => {
+  const worker = async (seat: number) => {
+    // Stagger the openings so the whole bench does not hit the provider in the
+    // same second. A second and a half costs nothing next to a run.
+    if (seat > 0) await sleep(seat * 1500);
     for (;;) {
       const i = next++;
       if (i >= tasks.length) return;
@@ -212,7 +236,9 @@ export async function runTeam(
     }
   };
 
-  await Promise.all(Array.from({ length: Math.min(parallel, tasks.length) }, worker));
+  await Promise.all(
+    Array.from({ length: Math.min(parallel, tasks.length) }, (_, seat) => worker(seat)),
+  );
   return reports;
 }
 

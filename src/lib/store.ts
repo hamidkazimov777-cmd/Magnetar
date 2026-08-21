@@ -312,6 +312,10 @@ interface State {
     patch: Partial<import("./types").SubagentRun> & Pick<import("./types").SubagentRun, "id"> | Partial<import("./types").SubagentRun>,
   ) => void;
   clearSubagents: () => void;
+  /** Ask one helper to stop; it ends at its next step boundary. */
+  stopSubagent: (id: string) => void;
+  /** Ask every running helper to stop. */
+  stopAllSubagents: () => void;
 
   /** What the user typed while an agent run was in flight. The run folds these
    *  in before its next model call, so a long run can be steered or questioned
@@ -863,9 +867,12 @@ export const useStore = create<State>()(
       selectSession: (id) =>
         set((s) => {
           const sess = s.sessions.find((x) => x.id === id);
-          if (!sess) return { activeSessionId: id };
+          // Helper rows belong to the run that produced them; carrying them
+          // into another conversation makes them look like live work there.
+          if (!sess) return { activeSessionId: id, subagents: {} };
           return {
             activeSessionId: id,
+            subagents: {},
             agentMode: sess.track !== "chat",
             activeConnectionId: sess.connectionId ?? s.activeConnectionId,
             activeModel: sess.model ?? s.activeModel,
@@ -1072,6 +1079,23 @@ export const useStore = create<State>()(
           return { subagents: { ...s.subagents, [id]: next } };
         }),
       clearSubagents: () => set({ subagents: {} }),
+
+      stopSubagent: (id) =>
+        set((s) => {
+          const run = s.subagents[id];
+          if (!run) return {};
+          return { subagents: { ...s.subagents, [id]: { ...run, cancelRequested: true } } };
+        }),
+
+      stopAllSubagents: () =>
+        set((s) => ({
+          subagents: Object.fromEntries(
+            Object.entries(s.subagents).map(([k, v]) => [
+              k,
+              v.status === "running" ? { ...v, cancelRequested: true } : v,
+            ]),
+          ),
+        })),
 
       agentInterjections: [],
       pushAgentInterjection: (text) =>

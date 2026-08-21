@@ -217,6 +217,9 @@ export interface SubagentRun {
   /** Why it ended badly. Without this the panel shows a warning triangle and
    *  nothing else, and the reason has to be guessed from the lead's summary. */
   error?: string;
+  /** The user asked this one to stop. Checked between its steps, so a helper
+   *  stuck on a rate-limited provider can be dropped without killing the rest. */
+  cancelRequested?: boolean;
 }
 
 export interface MemoryFact {

@@ -1,4 +1,4 @@
-import { Bot, Check, Loader2, TriangleAlert, X } from "lucide-react";
+import { Bot, Check, Loader2, Square, TriangleAlert, X } from "lucide-react";
 import { useStore } from "../lib/store";
 import { cn } from "../lib/cn";
 import { useT } from "../lib/i18n";
@@ -13,10 +13,16 @@ import type { SubagentRun } from "../lib/types";
 export function SubagentTracks() {
   const t = useT();
   const runs = useStore((s) => s.subagents);
+  const stopAll = useStore((s) => s.stopAllSubagents);
+  const clear = useStore((s) => s.clearSubagents);
+  // Helpers exist only in the agent track; showing their rows in a plain
+  // conversation makes it look like something is running there.
+  const agentMode = useStore((s) => s.agentMode);
   const list = Object.values(runs).sort((a, b) => a.startedAt - b.startedAt);
-  if (!list.length) return null;
+  if (!list.length || !agentMode) return null;
 
   const done = list.filter((r) => r.status !== "running").length;
+  const running = list.length - done;
 
   return (
     <div className="mx-2 my-2 rounded-[var(--r-md)] border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2">
@@ -28,6 +34,22 @@ export function SubagentTracks() {
         <span className="badge ml-auto">
           {done}/{list.length}
         </span>
+        {/* Two different needs: stop what is running, and clear what has
+            finished. Without the second the rows hung around after the chat
+            they belonged to was gone. */}
+        {running > 0 ? (
+          <button
+            className="icon-btn h-5 w-5"
+            title={t("subagentStopAll")}
+            onClick={() => stopAll()}
+          >
+            <Square size={11} />
+          </button>
+        ) : (
+          <button className="icon-btn h-5 w-5" title={t("clear")} onClick={() => clear()}>
+            <X size={11} />
+          </button>
+        )}
       </div>
       {/* A bar for the batch as a whole: with three helpers going at once, the
           question is "how far along is this", not "what is each one doing". */}
@@ -48,6 +70,7 @@ export function SubagentTracks() {
 
 function Track({ run }: { run: SubagentRun }) {
   const t = useT();
+  const stopOne = useStore((s) => s.stopSubagent);
   const seconds = Math.round((Date.now() - run.startedAt) / 1000);
 
   const icon =
@@ -96,10 +119,23 @@ function Track({ run }: { run: SubagentRun }) {
               ? t("subagentBudget")
               : run.error === "stopped"
                 ? t("subagentStopped")
-                : run.error}
+                : run.error === "ratelimit"
+                  ? t("subagentRateLimit")
+                  : /429|too many requests/i.test(run.error)
+                    ? t("subagentRateLimited")
+                    : run.error}
           </span>
         )}
       </span>
+      {run.status === "running" && (
+        <button
+          className="icon-btn h-5 w-5 shrink-0"
+          title={t("subagentStopOne")}
+          onClick={() => stopOne(run.id)}
+        >
+          <Square size={10} />
+        </button>
+      )}
     </div>
   );
 }

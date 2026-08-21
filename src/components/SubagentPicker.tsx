@@ -119,7 +119,7 @@ function Panel({ onClose }: { onClose: () => void }) {
   return (
     <div
       ref={ref}
-      className="anim-in absolute right-0 top-[calc(100%+6px)] z-40 max-h-[70vh] w-[min(calc(100vw-2rem),24rem)] overflow-y-auto overflow-hidden rounded-[var(--r-lg)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] shadow-[var(--e-3)]"
+      className="anim-in absolute right-0 top-[calc(100%+6px)] z-40 max-h-[70vh] w-[min(calc(100vw-2rem),26rem)] overflow-y-auto overflow-hidden rounded-[var(--r-lg)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] shadow-[var(--e-3)]"
     >
       <div className="border-b border-[var(--color-border)] px-3 py-2.5">
         <div className="flex items-center gap-2">
@@ -159,17 +159,29 @@ function Panel({ onClose }: { onClose: () => void }) {
         )}
       </div>
 
-      <div className="flex gap-1 border-y border-[var(--color-border)] px-2 py-1.5">
-        {connections.map((c) => (
-          <button
-            key={c.id}
-            className="toggle-pill h-6 text-[length:var(--fs-xs)]"
-            data-on={openConn === c.id}
-            onClick={() => setOpenConn(c.id)}
-          >
-            {c.name}
-          </button>
-        ))}
+      {/* Providers wrap instead of running off the edge: a connection named
+          after a model ("nvidia/nemotron-3-ultra-…") pushed everything after
+          it out of the popover, and Kimi simply could not be reached. */}
+      <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto border-y border-[var(--color-border)] px-2 py-1.5">
+        {connections.map((c) => {
+          const picked = roster.filter((r) => r.connectionId === c.id).length;
+          return (
+            <button
+              key={c.id}
+              className="toggle-pill h-6 max-w-full shrink-0 text-[length:var(--fs-xs)]"
+              data-on={openConn === c.id}
+              onClick={() => setOpenConn(c.id)}
+              title={c.name}
+            >
+              <span className="max-w-[9rem] truncate">{c.name}</span>
+              {picked > 0 && (
+                <span className="shrink-0 rounded-full bg-[var(--color-ai)] px-1 text-[length:var(--fs-2xs)] font-semibold text-white">
+                  {picked}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       <div className="flex items-center gap-2 border-b border-[var(--color-border)] px-3 py-1.5">
