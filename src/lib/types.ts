@@ -203,6 +203,19 @@ export interface Divergence {
   resolvedAt?: number;
 }
 
+/** A helper agent's run, as the panel shows it. Transient: this is process,
+ *  not canon, so it is never persisted. */
+export interface SubagentRun {
+  id: string;
+  title: string;
+  model: string;
+  status: "running" | "done" | "failed" | "stopped";
+  /** Tool the helper is on right now. */
+  tool?: string;
+  steps: number;
+  startedAt: number;
+}
+
 export interface MemoryFact {
   id: string;
   projectId: string;

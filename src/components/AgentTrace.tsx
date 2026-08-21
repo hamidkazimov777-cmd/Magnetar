@@ -16,6 +16,8 @@ import {
   ChevronRight,
   Square,
   MessageCircleQuestion,
+  GitCompare,
+  Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { summarizeArgs, type AgentToolEvent } from "../lib/agent";
@@ -33,6 +35,8 @@ const ICONS: Record<string, LucideIcon> = {
   run_bash: TerminalSquare,
   attach_file: Paperclip,
   ask_decision: MessageCircleQuestion,
+  flag_memory: GitCompare,
+  delegate: Users,
 };
 
 /** The agent's run, rendered as a sequence of steps: which tool, on what, and

@@ -65,6 +65,13 @@ export interface Prefs {
    *  graph. Undefined = pick automatically. Explicit is safer — the automatic
    *  pick can land on a catalogue entry the token cannot actually call. */
   memoryModel?: { connectionId: string; model: string };
+  /** Model the helper agents run on. Undefined = the same model as the lead.
+   *  Splitting them is the point of delegation economics: the lead is the
+   *  expensive one, the helpers are the many. */
+  subagentModel?: { connectionId: string; model: string };
+  /** How many helpers actually run at once. More than a handful is not
+   *  followable on screen, and providers rate-limit anyway. */
+  subagentParallel: number;
   editorFontSize: number;
   editorWordWrap: boolean;
   editorMinimap: boolean;
@@ -75,6 +82,7 @@ export const DEFAULT_PREFS: Prefs = {
   confirmBash: true,
   agentMaxSteps: 40,
   bashTimeoutSecs: 600,
+  subagentParallel: 3,
   editorFontSize: 13,
   editorWordWrap: false,
   editorMinimap: true,
@@ -288,6 +296,17 @@ interface State {
    *  up with several runs going at once, each answering nobody. */
   agentRunning: boolean;
   setAgentRunning: (v: boolean) => void;
+
+  /** Helper agents currently running, keyed by run id. Transient — a run is
+   *  process, not canon, and never survives a restart. Kept in the store
+   *  rather than in React state because several places start runs, and a stale
+   *  local flag is what let parallel runs overlap before (Entry 48). */
+  subagents: Record<string, import("./types").SubagentRun>;
+  setSubagent: (
+    id: string,
+    patch: Partial<import("./types").SubagentRun> & Pick<import("./types").SubagentRun, "id"> | Partial<import("./types").SubagentRun>,
+  ) => void;
+  clearSubagents: () => void;
 
   /** What the user typed while an agent run was in flight. The run folds these
    *  in before its next model call, so a long run can be steered or questioned
@@ -1038,6 +1057,15 @@ export const useStore = create<State>()(
 
       agentRunning: false,
       setAgentRunning: (v) => set({ agentRunning: v }),
+
+      subagents: {},
+      setSubagent: (id, patch) =>
+        set((s) => {
+          const prev = s.subagents[id];
+          const next = { ...(prev ?? {}), ...patch, id } as import("./types").SubagentRun;
+          return { subagents: { ...s.subagents, [id]: next } };
+        }),
+      clearSubagents: () => set({ subagents: {} }),
 
       agentInterjections: [],
       pushAgentInterjection: (text) =>

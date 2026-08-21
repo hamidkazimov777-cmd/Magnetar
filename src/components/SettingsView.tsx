@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   Bot,
+  Users,
   FileCode2,
   Gauge,
   Timer,
@@ -86,6 +87,30 @@ export function SettingsView() {
               onChange={(v) => setPrefs({ memoryModel: v })}
             />
           </div>
+        </Section>
+
+        {/* Helper agents */}
+        <Section icon={Users} title={t("settingsSubagents")}>
+          <div className="py-3">
+            <div className="text-[length:var(--fs-base)]">{t("prefSubagentModel")}</div>
+            <p className="mt-0.5 text-[length:var(--fs-xs)] leading-relaxed text-[var(--color-text-mute)]">
+              {t("prefSubagentModelHint")}
+            </p>
+            <BackgroundModelPicker
+              pinned={prefs.subagentModel}
+              onChange={(v) => setPrefs({ subagentModel: v })}
+            />
+          </div>
+          <Slider
+            icon={Users}
+            label={t("prefSubagentParallel")}
+            hint={t("prefSubagentParallelHint")}
+            value={prefs.subagentParallel}
+            min={1}
+            max={5}
+            step={1}
+            onChange={(v) => setPrefs({ subagentParallel: v })}
+          />
         </Section>
 
         {/* Editor */}

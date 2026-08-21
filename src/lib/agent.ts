@@ -2,6 +2,7 @@ import { api, type ToolDef } from "./api";
 import { useStore } from "./store";
 import { recordDecision } from "./decisions";
 import { queueDivergence } from "./divergence";
+import { renderReports, resolveLeases, runTeam, type SubagentTask } from "./subagents";
 import { projectFacts } from "./facts";
 import { similarity } from "./relevance";
 import { alwaysConfirm, checkLoop, newLoopWatch } from "./guards";
@@ -93,6 +94,38 @@ export const AGENT_TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "delegate",
+    description:
+      "Split work across helper agents and run them in parallel. Give each helper a self-contained task and the files it owns — two helpers must never be given the same file, the second write wins and the first one's work disappears. You do not write code while delegating: you split, then integrate what comes back. Helpers cannot delegate further, cannot ask the user anything, and are refused destructive actions. Returns one short report per task.",
+    parameters: {
+      type: "object",
+      properties: {
+        tasks: {
+          type: "array",
+          description: "Independent tasks to run in parallel",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string", description: "Short name for the panel" },
+              instructions: {
+                type: "string",
+                description:
+                  "Everything the helper needs, standalone — it cannot see this conversation",
+              },
+              files: {
+                type: "array",
+                description: "Paths this task may change. Omit for read-only work.",
+                items: { type: "string" },
+              },
+            },
+            required: ["title", "instructions"],
+          },
+        },
+      },
+      required: ["tasks"],
+    },
+  },
+  {
     name: "ask_decision",
     description:
       "Ask the user to settle a notable choice before you build on it — which library, which data schema, which approach. Use it when the choice would be expensive to reverse and the project's memory does not already answer it; do NOT use it for ordinary steps you can just take. The answer is recorded in the project's decision log, with your question as the context, so it survives this conversation.",
@@ -172,6 +205,7 @@ How to work:
 - Long-running processes (servers, bots, watchers) never exit, so never run them in the foreground. Detach them completely — redirect ALL three streams: \`npm run dev > /tmp/dev.log 2>&1 < /dev/null &\`. Leaving stdout attached keeps the pipe open after the shell exits and the call appears to hang for minutes. Then wait a moment, read the log, and report what it says.
 - Speak while you work. Before a group of tool calls, say in one short line what you are about to do ("checking the logs", "fixing the config"); after they run, say in one line what you found. The user watches this live — a dozen silent calls in a row reads as a hang, not as focus. Do not re-describe the trace in detail, and do not pad.
 - If the user writes to you mid-run, answer them on your very next turn before continuing.
+- For a job that splits into genuinely independent pieces — several screens, a set of tests, the same change across many files — use delegate: give each helper a standalone task and the files it owns, then integrate what comes back. Do not delegate work that depends on itself step by step; one agent doing it in order is better than three guessing at each other.
 - Project memory can be out of date. If a remembered fact contradicts what the code actually shows, believe the code, call flag_memory once with what you saw, and keep going — it queues a note for the user and never blocks you.
 - When you are about to make a choice that is expensive to reverse — a library, a data schema, an approach — and memory does not already settle it, call ask_decision with your options and your recommendation. One short question at the moment of choosing beats a rewrite later. Ordinary steps do not need permission.
 
@@ -221,6 +255,15 @@ export interface AskRequest {
   options: string[];
   recommendation?: string;
 }
+
+/** Context a lead agent needs to start helpers: which provider and model to
+ *  run them on, and whether the user pressed Stop. Installed by `runAgent` and
+ *  restored afterwards, so a helper's own run cannot clear the lead's. */
+let teamCtx: {
+  connection: Connection;
+  model: string;
+  cancelled: () => boolean;
+} | null = null;
 
 /** The live question channel, installed by `runAgent` for the duration of a
  *  run. `executeTool` is a plain function shared by both loops (native and
@@ -328,6 +371,40 @@ export async function executeTool(name: string, args: ToolArgs): Promise<string>
           });
         return `The user answered: ${answer}`;
       }
+      case "delegate": {
+        if (!teamCtx) return "Delegation is not available in this run.";
+        const raw = Array.isArray(args.tasks) ? args.tasks : [];
+        const tasks: SubagentTask[] = raw
+          .map((t) => t as Record<string, unknown>)
+          .filter((t) => String(t.title ?? "").trim() && String(t.instructions ?? "").trim())
+          .map((t) => ({
+            title: String(t.title).slice(0, 80),
+            instructions: String(t.instructions),
+            files: Array.isArray(t.files) ? t.files.map((f) => String(f)) : undefined,
+          }));
+        if (!tasks.length) return "error: tasks must be a non-empty array of {title, instructions}";
+        if (tasks.length > 8)
+          return "error: at most 8 tasks per delegation — split the job differently";
+
+        const st = useStore.getState();
+        const { accepted, refused } = resolveLeases(tasks, st.workspaceRoot);
+        if (!accepted.length)
+          return `No task could start — every one clashed over files:\n${refused
+            .map((r) => `- ${r.title}: ${r.reason}`)
+            .join("\n")}`;
+
+        // Helpers run on their own model when one is configured: the lead is
+        // the expensive part, the helpers are the many.
+        const helper = st.prefs?.subagentModel;
+        const helperConn = helper && st.connections.find((c) => c.id === helper.connectionId);
+        const reports = await runTeam(accepted, {
+          connection: helperConn || teamCtx.connection,
+          model: helperConn ? helper!.model : teamCtx.model,
+          parallel: st.prefs?.subagentParallel,
+          cancelled: teamCtx.cancelled,
+        });
+        return renderReports(reports, refused);
+      }
       case "flag_memory": {
         const projectId = useStore.getState().activeProjectId;
         if (!projectId) return "No project is open, so there is no memory to correct.";
@@ -413,6 +490,10 @@ export interface AgentHandlers {
   setStop?: (stop: () => void) => void;
   /** Returns true when the user pressed Stop — the loop halts between steps. */
   cancelled?: () => boolean;
+  /** What the model is told when `confirm` says no. A helper agent is refused
+   *  for a different reason than a user declining, and saying "the user
+   *  declined" would have it wait for a person who is not there. */
+  declineReason?: string;
 }
 
 /** Keep tool previews small — the full result still goes to the model. */
@@ -436,15 +517,31 @@ export async function runAgent(
   h: AgentHandlers,
   isTeam = false,
   projectMemory = "",
+  opts: { isSubagent?: boolean } = {},
 ): Promise<void> {
   const system = AGENT_SYSTEM + projectMemory;
-  // Open the question channel for the length of the run, and close it after —
-  // a stale bridge would let a finished run put a dialog on screen.
-  askUser = h.ask ?? null;
+
+  // Both bridges are saved and restored rather than cleared, because a helper
+  // agent runs through this same function: clearing on its way out would strip
+  // the lead of channels it is still using.
+  const prevAsk = askUser;
+  const prevTeam = teamCtx;
+  askUser = opts.isSubagent ? null : (h.ask ?? null);
+  // A helper cannot delegate further. Without this the lead's context leaks
+  // into its helpers and delegation recurses.
+  teamCtx = opts.isSubagent
+    ? null
+    : { connection, model, cancelled: () => h.cancelled?.() ?? false };
+
+  const tools = opts.isSubagent
+    ? AGENT_TOOLS.filter((t) => t.name !== "delegate" && t.name !== "ask_decision")
+    : AGENT_TOOLS;
+
   try {
-    return await dispatchAgent(connection, model, history, h, system, isTeam);
+    return await dispatchAgent(connection, model, history, h, system, isTeam, tools);
   } finally {
-    askUser = null;
+    askUser = prevAsk;
+    teamCtx = prevTeam;
   }
 }
 
@@ -455,6 +552,7 @@ async function dispatchAgent(
   h: AgentHandlers,
   system: string,
   isTeam: boolean,
+  tools: ToolDef[],
 ): Promise<void> {
   if (isTeam) {
     return runTeamAgent(connection, model, history, h, system);
@@ -466,7 +564,7 @@ async function dispatchAgent(
   const canUseNativeTools =
     connection.kind === "openai_compat" || connection.kind === "anthropic";
   if (canUseNativeTools && mode !== "react") {
-    return runAgentNative(connection, model, history, h, system);
+    return runAgentNative(connection, model, history, h, system, tools);
   }
   return runAgentReAct(connection, model, history, h, system);
 }
@@ -519,6 +617,7 @@ async function runAgentNative(
   history: ChatMessage[],
   h: AgentHandlers,
   system: string = AGENT_SYSTEM,
+  tools: ToolDef[] = AGENT_TOOLS,
 ): Promise<void> {
   const messages: unknown[] = [
     { role: "system", content: system },
@@ -542,7 +641,7 @@ async function runAgentNative(
     // The same call still returns the tool calls for the loop to execute — the
     // difference is only that the user is no longer staring at nothing.
     let streamed = "";
-    const run = api.agentStepStream(connection, model, messages, AGENT_TOOLS, {
+    const run = api.agentStepStream(connection, model, messages, tools, {
       onDelta: (d) => {
         streamed += d;
         h.onText(d);
@@ -657,7 +756,7 @@ async function runAgentNative(
       const approved = needsConfirm(tc.name, args) ? await h.confirm(tc.name, args) : true;
 
       if (!approved) {
-        result = "User declined this action.";
+        result = h.declineReason ?? "User declined this action.";
         h.onTool?.({ id: tc.id, name: tc.name, args, status: "declined" });
       } else {
         const startedAt = Date.now();
@@ -713,7 +812,8 @@ Available tools (Action Input is JSON):
 - run_bash {"command":"...","cwd"?:"..."}
 - attach_file {"path":"..."}
 - ask_decision {"question":"...","options"?:["...","..."],"recommendation"?:"..."}  ← put a hard-to-reverse choice to the user; the answer is stored in the decision log
-- flag_memory {"summary":"...","proposal"?:"...","evidence"?:"..."}  ← memory contradicts the code; queued for later, does not interrupt you`;
+- flag_memory {"summary":"...","proposal"?:"...","evidence"?:"..."}  ← memory contradicts the code; queued for later, does not interrupt you
+- delegate {"tasks":[{"title":"...","instructions":"...","files":["..."]}]}  ← run helper agents in parallel on independent pieces; never give two of them the same file`;
 
 interface ReActParse {
   thought?: string;
@@ -926,6 +1026,10 @@ export function summarizeArgs(name: string, args: ToolArgs): string {
       return `→ ${String(args.question ?? "").slice(0, 80)}`;
     case "flag_memory":
       return `→ ${String(args.summary ?? "").slice(0, 80)}`;
+    case "delegate": {
+      const n = Array.isArray(args.tasks) ? args.tasks.length : 0;
+      return `→ ${n}`;
+    }
     case "grep":
       return `→ "${args.pattern ?? ""}"`;
     case "run_bash":

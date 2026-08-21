@@ -25,6 +25,7 @@ import { LogoMark } from "./Logo";
 import { Hint } from "./ui/Hint";
 import { ToolPreview } from "./ToolPreview";
 import { AskDialog } from "./AskDialog";
+import { SubagentTracks } from "./SubagentTracks";
 import { useT } from "../lib/i18n";
 import { Composer } from "./Composer";
 import { Message } from "./Message";
@@ -220,6 +221,9 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     agentCancelRef.current = false;
     setStreaming(true);
     useStore.getState().setAgentRunning(true);
+    // Helper rows belong to the run that started them; the previous run's
+    // results stay on screen until a new one begins.
+    useStore.getState().clearSubagents();
     const agentStartedAt = Date.now();
     try {
       const sess = useStore.getState().sessions.find((s) => s.id === sessionId);
@@ -527,6 +531,8 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
       )}
 
       <RunningToolBar />
+
+      <SubagentTracks />
 
       <Composer disabled={!ready} streaming={streaming} onSend={send} onStop={stop} />
 
