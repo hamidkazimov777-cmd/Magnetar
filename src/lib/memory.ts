@@ -437,6 +437,19 @@ export function buildProjectMemory(
     parts.push(
       `\n## Workspace root\n${root}\nAll relative paths resolve here. Use search_code to locate things, then read_file.`,
     );
+  else
+    // Without this the model does the reasonable thing and goes hunting: it ran
+    // `find /Users`, walked three unrelated projects, and settled on Magnetar's
+    // own source tree as the place to write the user's pages. Say plainly that
+    // there is no project and that looking for one is not the job.
+    parts.push(
+      `\n## No project folder is open\n` +
+        `There is no workspace root, so relative paths lead nowhere and writing files is refused.\n` +
+        `Do NOT go looking for a project: no scanning the home directory, no \`find /Users\`, no guessing from folder names. ` +
+        `Whatever you found that way would be the wrong project, and writing into it damages something the user did not ask you to touch.\n` +
+        `If the task needs files, say in one line that the project folder has to be opened first (the Files panel, "Open folder"), and stop. ` +
+        `Questions that need no files — explaining, planning, reviewing text — answer normally.`,
+    );
 
   const p = session?.projectId
     ? st.projects.find((x) => x.id === session.projectId)
