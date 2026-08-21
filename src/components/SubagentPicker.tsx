@@ -20,7 +20,9 @@ import { cn } from "../lib/cn";
 
 export function SubagentPicker() {
   const t = useT();
-  const roster = useStore((s) => s.prefs.subagentRoster);
+  // Belt and braces: the store merges defaults on rehydrate, but a panel
+  // should not be one missing field away from taking itself down.
+  const roster = useStore((s) => s.prefs.subagentRoster) ?? [];
   const [open, setOpen] = useState(false);
 
   return (
@@ -93,7 +95,7 @@ function Panel({ onClose }: { onClose: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openConn]);
 
-  const roster = prefs.subagentRoster;
+  const roster = prefs.subagentRoster ?? [];
   const has = (connectionId: string, model: string) =>
     roster.some((r) => r.connectionId === connectionId && r.model === model);
 
@@ -230,7 +232,7 @@ function Panel({ onClose }: { onClose: () => void }) {
         <div className="flex items-baseline justify-between">
           <span className="text-[length:var(--fs-sm)]">{t("prefSubagentParallel")}</span>
           <span className="font-mono text-[length:var(--fs-sm)] text-[var(--color-text-dim)]">
-            {prefs.subagentParallel}
+            {prefs.subagentParallel ?? 3}
           </span>
         </div>
         <input
@@ -238,7 +240,7 @@ function Panel({ onClose }: { onClose: () => void }) {
           min={1}
           max={5}
           step={1}
-          value={prefs.subagentParallel}
+          value={prefs.subagentParallel ?? 3}
           onChange={(e) => setPrefs({ subagentParallel: Number(e.target.value) })}
           className="mt-1.5 w-full accent-[var(--color-ai)]"
         />

@@ -1140,6 +1140,25 @@ export const useStore = create<State>()(
     }),
     {
       name: "magnetar-store",
+      /** Saved preferences are older than the code reading them.
+       *
+       *  zustand replaces state with what it restored, so a `prefs` object
+       *  written before a field existed comes back missing that field — and
+       *  the first component to read it crashes. That is exactly what
+       *  `subagentRoster` did: an agent panel that had never seen the new
+       *  setting rendered `undefined.length` and took the whole panel down.
+       *
+       *  Every future field has the same problem, so the fix belongs here:
+       *  defaults first, saved values on top.
+       */
+      merge: (persisted, current) => {
+        const saved = (persisted ?? {}) as Partial<State>;
+        return {
+          ...current,
+          ...saved,
+          prefs: { ...DEFAULT_PREFS, ...(saved.prefs ?? {}) },
+        };
+      },
       // Canon (sessions) + connections live in SQLite; models re-warm at startup.
       // Keep only small, non-critical preferences in localStorage.
       partialize: (s) => ({
