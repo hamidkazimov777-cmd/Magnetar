@@ -435,7 +435,14 @@ export function buildProjectMemory(
   const root = st.workspaceRoot;
   if (root)
     parts.push(
-      `\n## Workspace root\n${root}\nAll relative paths resolve here. Use search_code to locate things, then read_file.`,
+      `\n## Workspace root\n${root}\n` +
+        `Relative paths resolve here, and this is where the work belongs by default. ` +
+        // It is a default, not a fence. Read as a fence, the agent refused to
+        // make a folder on the Desktop the user had just asked for, and told
+        // them to do it by hand instead.
+        `It is not a boundary: when the user asks for something outside it, use an absolute path ` +
+        `(~ works in run_bash) and do it — the usual confirmation still applies. ` +
+        `Use search_code to locate things, then read_file.`,
     );
   else
     // Without this the model does the reasonable thing and goes hunting: it ran

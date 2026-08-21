@@ -105,6 +105,11 @@ export const AGENT_TOOLS: ToolDef[] = [
           type: "string",
           description: "Short folder name for the work, e.g. \"portfolio site\"",
         },
+        confirm_new: {
+          type: "boolean",
+          description:
+            "Set true only when a project is already open and the user explicitly asked for another one",
+        },
       },
       required: ["name"],
     },
@@ -405,8 +410,15 @@ export async function executeTool(name: string, args: ToolArgs): Promise<string>
       }
       case "new_project": {
         const st = useStore.getState();
-        if (st.workspaceRoot)
-          return `A project is already open at ${st.workspaceRoot}. Work there instead of creating another one.`;
+        if (st.workspaceRoot && args.confirm_new !== true)
+          // Refusing outright was too blunt: the user may genuinely want a
+          // second project, and a folder that is not a project at all is a
+          // `mkdir` away. Say what is true and let the model choose.
+          return (
+            `A project is already open at ${st.workspaceRoot}, so work there by default. ` +
+            `If the user explicitly asked for a NEW project, say so and call this tool again with confirm_new set to true. ` +
+            `If they only asked for a folder somewhere, just create it with run_bash and an absolute path.`
+          );
         const path = await api.createProjectDir(String(args.name ?? "project"));
         // Open it the same way the Files panel does, so the tree, the index and
         // project memory all come up — otherwise the agent would be writing
