@@ -24,10 +24,12 @@ import {
   Sun,
   Moon,
   Monitor,
+  FileCode2,
 } from "lucide-react";
 import { useStore, NEW_CHAT_TITLE, type CenterView, type SidePanel } from "../../lib/store";
 import { useT, LANGS } from "../../lib/i18n";
 import { pickWorkspaceFolder } from "../panels/ExplorerPanel";
+import { projectFiles, rankFiles } from "../../lib/mentions";
 import { cn } from "../../lib/cn";
 
 interface Cmd {
@@ -43,6 +45,7 @@ interface Cmd {
  *  user having to learn where each surface lives. */
 export function CommandPalette({
   open,
+  mode = "commands",
   onClose,
   onOpenSettings,
   onOpenGuide,
@@ -51,10 +54,19 @@ export function CommandPalette({
   onClose: () => void;
   onOpenSettings: () => void;
   onOpenGuide: () => void;
+  /** "files" opens straight into the project's files (⌘P). */
+  mode?: "commands" | "files";
 }) {
   const t = useT();
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
+  // The project's files, for ⌘P. Loaded when the palette opens in that mode —
+  // the list is cached in mentions.ts, so reopening is instant.
+  const [files, setFiles] = useState<string[]>([]);
+  useEffect(() => {
+    if (!open || mode !== "files") return;
+    void projectFiles().then(setFiles);
+  }, [open, mode]);
   const listRef = useRef<HTMLDivElement>(null);
 
   const sessions = useStore((s) => s.sessions);
@@ -133,11 +145,28 @@ export function CommandPalette({
     return [...nav, ...actions, ...chats, ...settings];
   }, [t, sessions, onOpenSettings, onOpenGuide]);
 
+  const root = useStore((s) => s.workspaceRoot);
+  const openTab = useStore((s) => s.openTab);
+
+  const fileCommands = useMemo<Cmd[]>(() => {
+    if (mode !== "files") return [];
+    return rankFiles(files, query, 40).map((path) => ({
+      id: `file-${path}`,
+      group: "cmdGroupFiles",
+      // Show the path relative to the project: the absolute prefix is the same
+      // on every row and only pushes the useful part off screen.
+      label: root && path.startsWith(root) ? path.slice(root.length + 1) : path,
+      icon: FileCode2,
+      run: () => openTab({ path, name: path.split("/").pop() ?? path, kind: "file" }),
+    }));
+  }, [mode, files, query, root, openTab]);
+
   const results = useMemo(() => {
+    if (mode === "files") return fileCommands;
     const q = query.trim().toLowerCase();
     if (!q) return commands;
     return commands.filter((c) => c.label.toLowerCase().includes(q));
-  }, [commands, query]);
+  }, [mode, fileCommands, commands, query]);
 
   // Reset when reopened; keep the cursor inside the result set.
   useEffect(() => {
@@ -195,7 +224,7 @@ export function CommandPalette({
                 onClose();
               }
             }}
-            placeholder={t("cmdPlaceholder")}
+            placeholder={mode === "files" ? t("cmdFilePlaceholder") : t("cmdPlaceholder")}
             className="h-12 w-full bg-transparent text-[length:var(--fs-lg)] outline-none placeholder:text-[var(--color-text-mute)]"
           />
         </div>

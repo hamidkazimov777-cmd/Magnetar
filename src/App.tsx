@@ -16,7 +16,9 @@ import { ensureDivergences } from "./lib/divergence";
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
-  const [paletteOpen, setPaletteOpen] = useState(false);
+  // The palette serves two shortcuts: ⌘K for commands, ⌘P for the project's
+  // files. Same surface, different starting list.
+  const [palette, setPalette] = useState<null | "commands" | "files">(null);
   const [showSplash, setShowSplash] = useState(true);
 
   const connections = useStore((s) => s.connections);
@@ -80,7 +82,10 @@ export default function App() {
       const st = useStore.getState();
       if (e.key === "k") {
         e.preventDefault();
-        setPaletteOpen((v) => !v);
+        setPalette((v) => (v === "commands" ? null : "commands"));
+      } else if (e.key === "p" && !e.shiftKey) {
+        e.preventDefault();
+        setPalette((v) => (v === "files" ? null : "files"));
       } else if (e.key === "j") {
         e.preventDefault();
         st.toggleTerminal();
@@ -114,8 +119,9 @@ export default function App() {
       )}
 
       <CommandPalette
-        open={paletteOpen}
-        onClose={() => setPaletteOpen(false)}
+        open={palette !== null}
+        mode={palette ?? "commands"}
+        onClose={() => setPalette(null)}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenGuide={() => setGuideOpen(true)}
       />

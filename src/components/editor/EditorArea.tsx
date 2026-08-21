@@ -3,6 +3,7 @@ import Editor, { type OnMount } from "@monaco-editor/react";
 import { X, Save, FileCode2, GitCompare, Loader2 } from "lucide-react";
 import { api } from "../../lib/api";
 import { useStore, type EditorTab } from "../../lib/store";
+import { syncCheckMarkers } from "../../lib/markers";
 import { useT } from "../../lib/i18n";
 import { cn } from "../../lib/cn";
 import { EmptyState } from "../ui/EmptyState";
@@ -116,6 +117,14 @@ export function EditorArea() {
     // Monaco owns ⌘S inside the editor; wire it to the same save path.
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => void save());
   };
+
+  // Errors from the project's own checks belong under the code, not only in a
+  // panel. Re-synced when a check finishes and when a tab opens, because a
+  // problem found while the file was closed still has to show up on opening.
+  const checkRuns = useStore((s) => s.checkRuns);
+  useEffect(() => {
+    syncCheckMarkers(checkRuns);
+  }, [checkRuns, active?.path, buffers]);
 
   // Jump to a line requested from elsewhere (Problems panel). Runs after the
   // buffer for that path has loaded, so the line actually exists to reveal.
