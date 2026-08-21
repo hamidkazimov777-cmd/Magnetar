@@ -112,6 +112,38 @@ pub fn read_text(path: &str) -> Result<String, String> {
     std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))
 }
 
+/// Create a project folder under the user's Documents and return its path.
+///
+/// The location is fixed by the app, not chosen by the model: letting a model
+/// pick a path is how a generated page ended up inside Magnetar's own
+/// repository (Entry 54). A name that already exists gets a numeric suffix
+/// rather than being written into — an existing folder belongs to somebody.
+pub fn create_project_dir(home: &str, name: &str) -> Result<String, String> {
+    let safe: String = name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' { c } else { '-' })
+        .collect::<String>()
+        .trim()
+        .trim_matches('-')
+        .to_string();
+    let safe = if safe.is_empty() { "project".to_string() } else { safe };
+
+    let base = Path::new(home).join("Documents").join("Magnetar");
+    std::fs::create_dir_all(&base).map_err(|e| e.to_string())?;
+
+    let mut target = base.join(&safe);
+    let mut n = 2;
+    while target.exists() {
+        target = base.join(format!("{safe} {n}"));
+        n += 1;
+        if n > 99 {
+            return Err("too many folders with this name".into());
+        }
+    }
+    std::fs::create_dir(&target).map_err(|e| e.to_string())?;
+    Ok(target.to_string_lossy().into_owned())
+}
+
 pub fn write_file(path: &str, content: &str) -> Result<usize, String> {
     if let Some(parent) = Path::new(path).parent() {
         if !parent.as_os_str().is_empty() {

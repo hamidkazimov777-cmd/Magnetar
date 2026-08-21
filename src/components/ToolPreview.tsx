@@ -1,4 +1,5 @@
 import { diffLines } from "diff";
+import { useT } from "../lib/i18n";
 
 /** Human-readable preview of a destructive tool call shown in the confirm modal.
  *  edit_file → colored line diff; write_file → new content; run_bash → command. */
@@ -9,11 +10,30 @@ export function ToolPreview({
   name: string;
   args: Record<string, unknown>;
 }) {
+  const t = useT();
+
+  // A new project is not an edit and not a command: showing raw JSON here would
+  // make a harmless folder look like something to fear.
+  if (name === "new_project") {
+    return (
+      <div className="space-y-1.5">
+        <p className="text-[length:var(--fs-base)]">{t("newProjectPreview")}</p>
+        <p className="font-mono text-[length:var(--fs-sm)] text-[var(--color-text-dim)]">
+          ~/Documents/Magnetar/{String(args.name ?? "project")}
+        </p>
+        <p className="text-[length:var(--fs-xs)] text-[var(--color-text-mute)]">
+          {t("newProjectNote")}
+        </p>
+      </div>
+    );
+  }
+
   if (name === "edit_file") {
     const path = String(args.path ?? "");
     const oldStr = String(args.old_string ?? "");
     const newStr = String(args.new_string ?? "");
-    return (
+
+  return (
       <div className="space-y-2">
         <PathLabel path={path} />
         <DiffBlock oldStr={oldStr} newStr={newStr} />

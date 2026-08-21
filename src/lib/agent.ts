@@ -4,6 +4,7 @@ import { recordDecision } from "./decisions";
 import { queueDivergence } from "./divergence";
 import { renderReports, resolveLeases, runTeam, type SubagentTask } from "./subagents";
 import { projectFacts } from "./facts";
+import { activateProjectForPath, analyzeFolderIntoMemory } from "./memory";
 import { similarity } from "./relevance";
 import { alwaysConfirm, checkLoop, newLoopWatch } from "./guards";
 import { tr } from "./i18n";
@@ -91,6 +92,21 @@ export const AGENT_TOOLS: ToolDef[] = [
         cwd: { type: "string", description: "Working directory (optional)" },
       },
       required: ["command"],
+    },
+  },
+  {
+    name: "new_project",
+    description:
+      "Create a project folder and open it, when the user asked for something that needs files and no folder is open. The app decides where it goes (a fixed place in the user's Documents) and asks them to confirm — you only supply a short name for the work. Never use this when a project folder is already open, and never as a way around a path you could not resolve.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Short folder name for the work, e.g. \"portfolio site\"",
+        },
+      },
+      required: ["name"],
     },
   },
   {
@@ -387,7 +403,26 @@ export async function executeTool(name: string, args: ToolArgs): Promise<string>
           });
         return `The user answered: ${answer}`;
       }
-      case "delegate": {
+      case "new_project": {
+        const st = useStore.getState();
+        if (st.workspaceRoot)
+          return `A project is already open at ${st.workspaceRoot}. Work there instead of creating another one.`;
+        const path = await api.createProjectDir(String(args.name ?? "project"));
+        // Open it the same way the Files panel does, so the tree, the index and
+        // project memory all come up — otherwise the agent would be writing
+        // into a folder the app still knows nothing about.
+        const s2 = useStore.getState();
+        s2.setWorkspaceRoot(path);
+        s2.closeAllTabs();
+        s2.refreshExplorer();
+        activateProjectForPath(path);
+        s2.setAgentMode(true);
+        void analyzeFolderIntoMemory(path).catch(() => {});
+        return `Created and opened ${path}. Relative paths now resolve there — carry on with the task.`;
+      }
+      case "new_project":
+      return `→ ${String(args.name ?? "")}`;
+    case "delegate": {
         if (!teamCtx) return "Delegation is not available in this run.";
         const raw = Array.isArray(args.tasks) ? args.tasks : [];
         const tasks: SubagentTask[] = raw
@@ -845,6 +880,7 @@ Available tools (Action Input is JSON):
 - attach_file {"path":"..."}
 - ask_decision {"question":"...","options"?:["...","..."],"recommendation"?:"..."}  ← put a hard-to-reverse choice to the user; the answer is stored in the decision log
 - flag_memory {"summary":"...","proposal"?:"...","evidence"?:"..."}  ← memory contradicts the code; queued for later, does not interrupt you
+- new_project {"name":"..."}  ← no folder is open and the task needs files: creates one in the user's Documents, with their confirmation, and opens it
 - delegate {"tasks":[{"title":"...","instructions":"...","files":["..."]}]}  ← run helper agents in parallel on independent pieces; never give two of them the same file`;
 
 interface ReActParse {

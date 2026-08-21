@@ -69,6 +69,7 @@ pub fn run() {
             commands::list_projects,
             commands::save_project,
             commands::delete_project,
+            commands::create_project_dir,
             commands::list_facts,
             commands::save_facts,
             commands::delete_fact,

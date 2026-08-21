@@ -12,6 +12,7 @@ import {
   X,
   Loader2,
   Square,
+  FolderPlus,
 } from "lucide-react";
 import { api } from "../lib/api";
 import { useStore } from "../lib/store";
@@ -577,13 +578,19 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
         >
           <DialogContent className="w-[min(92vw,42rem)] max-w-[92vw] gap-0 overflow-hidden border-[var(--color-border)] bg-[var(--color-surface)] p-0 text-[var(--color-text)]">
             <DialogHeader className="flex flex-row items-center gap-2.5 border-b border-[var(--color-border)] px-5 py-3.5">
-              <TriangleAlert size={17} className="shrink-0 text-[var(--color-warning)]" />
+              {confirm.name === "new_project" ? (
+                <FolderPlus size={17} className="shrink-0 text-[var(--color-ai)]" />
+              ) : (
+                <TriangleAlert size={17} className="shrink-0 text-[var(--color-warning)]" />
+              )}
               <div className="min-w-0">
                 <DialogTitle className="text-[length:var(--fs-md)] font-semibold">
-                  {t("confirmTitle")}
+                  {confirm.name === "new_project" ? t("newProjectTitle") : t("confirmTitle")}
                 </DialogTitle>
                 <p className="mt-0.5 text-[length:var(--fs-sm)] text-[var(--color-text-dim)]">
-                  {t("confirmSubtitle")}
+                  {confirm.name === "new_project"
+                    ? t("newProjectSubtitle")
+                    : t("confirmSubtitle")}
                 </p>
               </div>
             </DialogHeader>
@@ -625,7 +632,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
                   setConfirm(null);
                 }}
               >
-                {t("confirmApprove")}
+                {confirm.name === "new_project" ? t("newProjectCreate") : t("confirmApprove")}
               </button>
             </div>
           </DialogContent>

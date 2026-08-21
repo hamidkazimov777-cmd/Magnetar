@@ -98,6 +98,18 @@ pub fn delete_project(id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn create_project_dir(app: tauri::AppHandle, name: String) -> Result<String, String> {
+    use tauri::Manager;
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|e| e.to_string())?
+        .to_string_lossy()
+        .into_owned();
+    tools::create_project_dir(&home, &name)
+}
+
+#[tauri::command]
 pub fn list_facts(project_id: String) -> Result<Vec<MemoryFact>, String> {
     workspace::list_facts(&project_id)
 }

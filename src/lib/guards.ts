@@ -44,6 +44,9 @@ export function alwaysConfirm(name: string, args: ToolArgs): boolean {
     return DANGEROUS_SHELL.test(cmd);
   }
   if (name === "delete_file") return true;
+  // Creating a project folder is not destructive, but it puts a directory on
+  // the user's disk in a place they did not name. One dialog, once.
+  if (name === "new_project") return true;
   return false;
 }
 

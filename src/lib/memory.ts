@@ -447,7 +447,8 @@ export function buildProjectMemory(
         `There is no workspace root, so relative paths lead nowhere and writing files is refused.\n` +
         `Do NOT go looking for a project: no scanning the home directory, no \`find /Users\`, no guessing from folder names. ` +
         `Whatever you found that way would be the wrong project, and writing into it damages something the user did not ask you to touch.\n` +
-        `If the task needs files, say in one line that the project folder has to be opened first (the Files panel, "Open folder"), and stop. ` +
+        `If the task needs files, call new_project with a short name for the work: the app will create a folder in the user's Documents, ask them to confirm, and open it. ` +
+        `If they decline, say in one line that a folder has to be opened first and stop. ` +
         `Questions that need no files — explaining, planning, reviewing text — answer normally.`,
     );
 
