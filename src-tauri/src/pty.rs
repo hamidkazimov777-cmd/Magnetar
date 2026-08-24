@@ -52,6 +52,18 @@ pub fn spawn(
         .map_err(|e| e.to_string())?;
     let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
 
+    // Register before streaming, so the reader thread can find and reap the
+    // session once it ends — a closed terminal must not leak a process or an
+    // entry in the map.
+    SESSIONS.lock().map_err(|e| e.to_string())?.insert(
+        id.clone(),
+        PtyHandle {
+            master: pair.master,
+            writer,
+            child,
+        },
+    );
+
     // Stream output → frontend.
     std::thread::spawn(move || {
         let mut buf = [0u8; 4096];
@@ -73,16 +85,18 @@ pub fn spawn(
                 Err(_) => break,
             }
         }
+
+        // The shell exited (EOF), the channel went away, or the read failed —
+        // reap the child and drop the session. `kill` may already have removed
+        // it, in which case this is a no-op.
+        if let Ok(mut sessions) = SESSIONS.lock() {
+            if let Some(mut h) = sessions.remove(&id) {
+                let _ = h.child.kill();
+                let _ = h.child.wait();
+            }
+        }
     });
 
-    SESSIONS.lock().map_err(|e| e.to_string())?.insert(
-        id,
-        PtyHandle {
-            master: pair.master,
-            writer,
-            child,
-        },
-    );
     Ok(())
 }
 
@@ -116,6 +130,10 @@ pub fn kill(id: &str) -> Result<(), String> {
     let mut m = SESSIONS.lock().map_err(|e| e.to_string())?;
     if let Some(mut h) = m.remove(id) {
         let _ = h.child.kill();
+        // Reap the zombie: without `wait`, a killed shell lingers until the app
+        // exits. The reader thread reaps sessions that end on their own; this
+        // reaps the ones we terminate explicitly.
+        let _ = h.child.wait();
     }
     Ok(())
 }
