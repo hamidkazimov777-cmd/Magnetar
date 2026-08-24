@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { memo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -38,7 +38,7 @@ function Pre({ children }: { children?: React.ReactNode }) {
   );
 }
 
-export function Message({
+export const Message = memo(function Message({
   message,
   onEdit,
 }: {
@@ -224,7 +224,7 @@ export function Message({
       </div>
     </div>
   );
-}
+});
 
 function Dot({ delay = 0 }: { delay?: number }) {
   return (

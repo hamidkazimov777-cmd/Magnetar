@@ -2799,3 +2799,35 @@ Monaco, диагностика в реальном времени, четыре 
 
 `tsc`, `npm run build`, `cargo check`, `cargo test` (7), полнота i18n по трём
 языкам — всё зелёное.
+
+### Запись 56 — 2026-08-24 — Kimi Code — оптимизация рендера чата (аудит P0.1)
+
+#### Что сделано
+
+Внешний аудит выявил лишние ререндеры сообщений чата во время стриминга.
+Закрыты P0.1 и P0.1.1:
+
+- `Message` обёрнут в `React.memo`.
+- В `ChatView` стабилизирован обработчик `onEdit` через `useCallback` + ref,
+  чтобы мемоизация сообщений работала на каждой дельте.
+- Транскрипт чата вынесен в отдельный компонент `ChatTranscript`.
+  `ChatView` больше не подписан на весь `sessions` и не ререндерится
+  на каждый токен — ререндерится только `ChatTranscript` и одно
+  сообщение-ассистент.
+
+#### Файлы
+
+- `src/components/Message.tsx`
+- `src/components/ChatView.tsx`
+- `src/components/ChatTranscript.tsx` (новый)
+
+#### Проверки
+
+`npm run build` и `npm run tauri build` проходят.
+Сборка подписана скриптом `scripts/sign-app.sh`, `/Applications/Magnetar.app`
+обновлена.
+
+#### Следующий шаг
+
+P0.2 аудита: перевод файловых операций на blocking/background потоки
+(`src-tauri/src/tools.rs` и связанные команды).

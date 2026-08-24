@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Sparkles,
   ArrowUpRight,
@@ -8,8 +8,6 @@ import {
   PanelRightClose,
   MessagesSquare,
   Eye,
-  RotateCcw,
-  X,
   Loader2,
   Square,
   FolderPlus,
@@ -23,7 +21,6 @@ import { runAgent, AGENT_SYSTEM } from "../lib/agent";
 import { buildProjectMemory } from "../lib/memory";
 import type { AskRequest } from "../lib/agent";
 import { buildMentionContext, expandSlash } from "../lib/mentions";
-import { LogoMark } from "./Logo";
 import { Hint } from "./ui/Hint";
 import { ToolPreview } from "./ToolPreview";
 import { AskDialog } from "./AskDialog";
@@ -32,9 +29,8 @@ import { SubagentPicker } from "./SubagentPicker";
 import { pickWorkspaceFolder } from "./panels/ExplorerPanel";
 import { useT } from "../lib/i18n";
 import { Composer } from "./Composer";
-import { Message } from "./Message";
+import { ChatTranscript } from "./ChatTranscript";
 import { ModelSwitcher } from "./ModelSwitcher";
-import { cn } from "../lib/cn";
 import type { Attachment } from "../lib/types";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 
@@ -56,7 +52,6 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
   const switchTrack = useStore((s) => s.switchTrack);
   const activeConnectionId = useStore((s) => s.activeConnectionId);
   const activeModel = useStore((s) => s.activeModel);
-  const sessions = useStore((s) => s.sessions);
   const activeSessionId = useStore((s) => s.activeSessionId);
   const newSession = useStore((s) => s.newSession);
   const addMessage = useStore((s) => s.addMessage);
@@ -68,7 +63,6 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
   const toggleAgentPanel = useStore((s) => s.toggleAgentPanel);
   const pushAgentEvent = useStore((s) => s.pushAgentEvent);
   const refreshExplorer = useStore((s) => s.refreshExplorer);
-  const lastError = useStore((s) => s.lastError);
   const setLastError = useStore((s) => s.setLastError);
   const setModelStatus = useStore((s) => s.setModelStatus);
   const setTrustCommands = useStore((s) => s.setTrustCommands);
@@ -92,21 +86,11 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
   } | null>(null);
   const stopRef = useRef<null | (() => void)>(null);
   const agentCancelRef = useRef(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
   /** Kept so the error banner's Retry can resend the exact same turn. */
   const lastSendRef = useRef<{ text: string; attachments: Attachment[] } | null>(null);
 
-  const session = useMemo(
-    () => sessions.find((s) => s.id === activeSessionId),
-    [sessions, activeSessionId],
-  );
-  const messages = session?.messages ?? [];
   const conn = connections.find((c) => c.id === activeConnectionId);
   const ready = Boolean(conn && activeModel);
-
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [messages]);
 
   const runSend = async (
     text: string,
@@ -350,6 +334,16 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     void send(text, edited?.attachments ?? [], { skipUserMessage: true });
   };
 
+  // The edit handler is passed to every Message; without a stable reference,
+  // every message would re-render whenever ChatView re-renders (e.g. on each
+  // streaming delta). Keep the latest implementation in a ref and expose a
+  // memoized wrapper so React.memo can skip unchanged messages.
+  const editAndResendRef = useRef(editAndResend);
+  editAndResendRef.current = editAndResend;
+  const stableEditAndResend = useCallback((messageId: string, text: string) => {
+    editAndResendRef.current(messageId, text);
+  }, []);
+
   const stop = () => {
     agentCancelRef.current = true; // halt the agent loop between steps
     stopRef.current?.();
@@ -463,53 +457,13 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
         </p>
       )}
 
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
-        <div className="w-full px-3 py-4">
-          {messages.length === 0 ? (
-            <EmptyChat
-              ready={ready}
-              hasWorkspace={Boolean(workspaceRoot)}
-              onOpenSettings={onOpenSettings}
-            />
-          ) : (
-            <div className="space-y-4">
-              {messages.map((m) => (
-                <Message key={m.id} message={m} onEdit={editAndResend} />
-              ))}
-            </div>
-          )}
-
-          {lastError && lastError.sessionId === activeSessionId && (
-            <div className="alert anim-in mt-3 flex-col items-stretch">
-              <div className="flex items-start gap-2">
-                <TriangleAlert size={15} className="mt-0.5 shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <div className="font-semibold">{t("errorRequestFailed")}</div>
-                  <p className="mt-1 break-words text-[length:var(--fs-sm)] opacity-90">
-                    {lastError.message}
-                  </p>
-                </div>
-                <button
-                  className="icon-btn h-5 w-5 shrink-0"
-                  title={t("errorDismiss")}
-                  onClick={() => setLastError(undefined)}
-                >
-                  <X size={12} />
-                </button>
-              </div>
-              <div className="mt-2 flex gap-2">
-                <button className="btn btn-sm btn-secondary" onClick={retry}>
-                  <RotateCcw size={13} />
-                  {t("retry")}
-                </button>
-                <button className="btn btn-sm btn-ghost" onClick={onOpenSettings}>
-                  {t("errorCheckSettings")}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+      <ChatTranscript
+        ready={ready}
+        hasWorkspace={Boolean(workspaceRoot)}
+        onOpenSettings={onOpenSettings}
+        onEdit={stableEditAndResend}
+        onRetry={retry}
+      />
 
       {(note || upgrade) && (
         <div className="shrink-0 px-3">
@@ -676,58 +630,6 @@ function noteModelFailure(
 ) {
   if (/no access to model|403|404|model_not_found|does not exist/i.test(message))
     mark(connectionId, model, "denied");
-}
-
-/** Empty transcript: brand, plus whichever setup step is still missing. */
-function EmptyChat({
-  ready,
-  hasWorkspace,
-  onOpenSettings,
-}: {
-  ready: boolean;
-  hasWorkspace: boolean;
-  onOpenSettings: () => void;
-}) {
-  const t = useT();
-  const setSidePanel = useStore((s) => s.setSidePanel);
-
-  return (
-    <div className="flex min-h-[40vh] flex-col items-center justify-center px-1 text-center">
-      <LogoMark size={52} className="opacity-90" />
-      <p className="mt-4 max-w-[300px] text-[length:var(--fs-base)] leading-relaxed text-[var(--color-text-dim)]">
-        {ready ? t("emptyReady") : t("stepConnectText")}
-      </p>
-
-      <div className="mt-5 w-full space-y-2 text-left">
-        {!ready && (
-          <button className="card" onClick={onOpenSettings}>
-            <span className="step-chip">1</span>
-            <span className="min-w-0">
-              <span className="card-title">{t("stepConnectTitle")}</span>
-              <span className="card-text">{t("stepConnectAction")}</span>
-            </span>
-          </button>
-        )}
-        {!hasWorkspace && (
-          <button className="card" onClick={() => setSidePanel("explorer")}>
-            <span className="step-chip" data-done={hasWorkspace}>
-              2
-            </span>
-            <span className="min-w-0">
-              <span className="card-title">{t("stepFolderTitle")}</span>
-              <span className="card-text">{t("stepFolderAction")}</span>
-            </span>
-          </button>
-        )}
-      </div>
-
-      {ready && hasWorkspace && (
-        <p className={cn("mt-4 text-[length:var(--fs-xs)] text-[var(--color-text-mute)]")}>
-          {t("stepStartText")}
-        </p>
-      )}
-    </div>
-  );
 }
 
 /** Shown while a tool call is in flight, above the composer.
