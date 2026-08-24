@@ -16,7 +16,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const FIXTURE = join(ROOT, ".magnetar-test", "fixture");
+const FIXTURE = join(homedir(), "Documents", "Magnetar", "_fixture");
 
 const green = (s) => `\x1b[32m${s}\x1b[0m`;
 const red = (s) => `\x1b[31m${s}\x1b[0m`;
@@ -50,7 +50,7 @@ ok = run("Rust tests", cargoBin(), ["test"], join(ROOT, "src-tauri")) && ok;
 ok = run("Фикстура", "node", ["scripts/gen-fixture.mjs"]) && ok;
 
 console.log(bold("\nСтупень 2 — проверь в приложении (2–3 мин):"));
-console.log(`  1. Открыть папку (⌘K → «Открыть папку»): ${FIXTURE}`);
+console.log(`  1. Открыть папку (⌘K → «Открыть папку» → Documents/Magnetar/_fixture): ${FIXTURE}`);
 console.log("  2. Дерево: раскрыть bulk/ → 300+ файлов скроллятся плавно; свернуть/раскрыть dirNN;");
 console.log("     deep/ — цепочка из 12 уровней; .env виден, прочие dotfiles скрыты.");
 console.log("  3. Проблемы: панель «Проблемы» → «Запустить все» → cargo check даёт ~300 ошибок;");
