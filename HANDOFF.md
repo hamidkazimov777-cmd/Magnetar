@@ -3126,3 +3126,47 @@ build` — проходит. Коммит `1a08499`.
 #### Следующий шаг
 
 Вернуться к аудиту: P1.8 — ленивая загрузка Monaco (`src/lib/monaco.ts`).
+
+### Запись 64 — 2026-08-25 — Kimi Code — P1.8: ленивая загрузка Monaco
+
+#### Что сделано
+
+`monaco-editor` (~5 МБ) тянулся в главный бандл при старте через статический
+`import * as monaco from "monaco-editor"` в `src/lib/monaco.ts`, который `main.tsx`
+подключал eagerly. Теперь движок грузится только когда он действительно нужен —
+при первом открытии редактора или первой синхронизации маркеров.
+
+- `src/lib/monaco.ts` переписан: статический импорт заменён на
+  `import type * as monaco` (только типы) + мемоизированный `loadMonaco()`.
+  Внутри — динамический `import("monaco-editor")`, настройка воркеров
+  (`window.MonacoEnvironment`, пять `?worker`-чанков остались как были), две
+  темы, TypeScript-дефолты и `loader.config({ monaco })`. Офлайн-гарантия
+  сохранена: лоадер по-прежнему указывает на локальную копию, не на CDN.
+- `setMonacoTheme` стал лениво-осведомлённым: до загрузки движка запоминает
+  `pendingTheme` (применяется в `loadMonaco`), после — применяет сразу.
+- `src/main.tsx`: убран eager-импорт `import "./lib/monaco"`.
+- `editor/EditorArea.tsx`: монтирует `<Editor>`/`<DiffView>` только после
+  `loadMonaco()` (гейт `monacoReady`, до этого — `EditorSkeleton`); `onMount`
+  берёт `monacoInstance` из второго аргумента `OnMount` вместо импорта значения.
+- `lib/markers.ts`: `syncCheckMarkers` стал async и ждёт `loadMonaco()`.
+
+#### Эффект
+
+Главный JS-чанк упал с ~5.3 МБ до ~1.4 МБ (raw); ядро Monaco (~4 МБ) вынесено в
+отдельный чанк, загружаемый по требованию. Воркеры (`ts`/`json`/`css`/`html`/
+`editor.worker`) остались отдельными файлами, как раньше.
+
+#### Файлы
+
+- `src/lib/monaco.ts`, `src/lib/markers.ts`
+- `src/components/editor/EditorArea.tsx`, `src/main.tsx`
+
+#### Проверки
+
+`npx tsc --noEmit` — чисто. `npm run build` — проходит (главный чанк
+`index-*.js` = 1 388.68 kB, Monaco-чанк = 3 961.64 kB, воркеры на месте).
+`npm run tauri build` — проходит (app + dmg). Коммит `1999316`.
+
+#### Следующий шаг
+
+P1.9 аудита: оптимизация поиска файлов в Composer (`lib/mentions.ts`).
