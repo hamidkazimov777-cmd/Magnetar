@@ -1,4 +1,5 @@
-import { monaco } from "./monaco";
+import { loadMonaco } from "./monaco";
+import type * as monaco from "monaco-editor";
 import type { CheckRun, Problem } from "./problems";
 
 /* ==========================================================================
@@ -16,7 +17,7 @@ import type { CheckRun, Problem } from "./problems";
 
 const OWNER = "magnetar-checks";
 
-function severityOf(p: Problem): number {
+function severityOf(p: Problem, monaco: typeof import("monaco-editor")): number {
   if (p.severity === "error") return monaco.MarkerSeverity.Error;
   if (p.severity === "warning") return monaco.MarkerSeverity.Warning;
   return monaco.MarkerSeverity.Info;
@@ -58,7 +59,10 @@ function pathOf(model: monaco.editor.ITextModel): string {
  *
  *  Called both when a check finishes and when a tab opens: a problem found
  *  while the file was closed still has to appear once it is opened. */
-export function syncCheckMarkers(runs: Record<string, CheckRun>): void {
+export async function syncCheckMarkers(
+  runs: Record<string, CheckRun>,
+): Promise<void> {
+  const monaco = await loadMonaco();
   const byFile = new Map<string, Problem[]>();
   for (const run of Object.values(runs)) {
     for (const p of run.problems ?? []) {
@@ -82,7 +86,7 @@ export function syncCheckMarkers(runs: Record<string, CheckRun>): void {
       (problems ?? []).map((p) => ({
         ...rangeFor(model, p),
         message: p.code ? `${p.message} (${p.code})` : p.message,
-        severity: severityOf(p),
+        severity: severityOf(p, monaco),
         source: p.code ? undefined : "check",
       })),
     );

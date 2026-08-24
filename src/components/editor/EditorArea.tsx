@@ -8,7 +8,8 @@ import { useT } from "../../lib/i18n";
 import { cn } from "../../lib/cn";
 import { EmptyState } from "../ui/EmptyState";
 import { DiffView } from "./DiffView";
-import { monacoThemeFor, languageForPath, monaco } from "../../lib/monaco";
+import type * as monaco from "monaco-editor";
+import { monacoThemeFor, languageForPath, loadMonaco } from "../../lib/monaco";
 import { useResolvedTheme } from "../../lib/useTheme";
 
 const tabKey = (tab: EditorTab) =>
@@ -32,10 +33,24 @@ export function EditorArea() {
   const [dirty, setDirty] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [monacoReady, setMonacoReady] = useState(false);
   const loadedRef = useRef<Set<string>>(new Set());
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   /** Cursor position per path, so switching tabs returns you where you were. */
   const viewStates = useRef<Record<string, monaco.editor.ICodeEditorViewState | null>>({});
+
+  // Monaco is heavy, so it loads on first use instead of at app start. The
+  // editor and diff views render a skeleton until the engine is ready.
+  useEffect(() => {
+    if (tabs.length === 0) return;
+    let cancelled = false;
+    void loadMonaco().then(() => {
+      if (!cancelled) setMonacoReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [tabs.length]);
 
   // Load the active file's content once per path.
   useEffect(() => {
@@ -112,10 +127,13 @@ export function EditorArea() {
     return () => window.removeEventListener("keydown", onKey);
   }, [active, dirty, save, closeTab]);
 
-  const onMount: OnMount = (editor) => {
+  const onMount: OnMount = (editor, monacoInstance) => {
     editorRef.current = editor;
     // Monaco owns ⌘S inside the editor; wire it to the same save path.
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => void save());
+    editor.addCommand(
+      monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyS,
+      () => void save(),
+    );
   };
 
   // Errors from the project's own checks belong under the code, not only in a
@@ -123,7 +141,7 @@ export function EditorArea() {
   // problem found while the file was closed still has to show up on opening.
   const checkRuns = useStore((s) => s.checkRuns);
   useEffect(() => {
-    syncCheckMarkers(checkRuns);
+    void syncCheckMarkers(checkRuns);
   }, [checkRuns, active?.path, buffers]);
 
   // Jump to a line requested from elsewhere (Problems panel). Runs after the
@@ -242,7 +260,9 @@ export function EditorArea() {
       )}
 
       <div className="min-h-0 flex-1 overflow-hidden">
-        {active?.kind === "diff" ? (
+        {!monacoReady ? (
+          <EditorSkeleton />
+        ) : active?.kind === "diff" ? (
           <DiffView path={active.path} staged={Boolean(active.staged)} />
         ) : active && buffers[active.path] !== undefined ? (
           <Editor
