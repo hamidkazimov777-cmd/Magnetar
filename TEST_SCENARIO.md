@@ -13,7 +13,7 @@
 
 ```bash
 npx tsc --noEmit && npm run build          # фронтенд
-cd src-tauri && cargo test                 # Rust: 7 тестов
+cd src-tauri && cargo test                 # Rust: 9 тестов
 ```
 
 Что покрыто:
@@ -24,6 +24,8 @@ cd src-tauri && cargo test                 # Rust: 7 тестов
 | `utf8::*` (4 теста) | Кириллица не рвётся на границе сетевого чанка, поток не застревает на битом байте |
 | `tools::background_child_holding_stdout_does_not_hang` | Фоновый процесс, держащий stdout, не вешает прогон до таймаута |
 | `tools::ordinary_command_returns_complete_output` | Обычная команда возвращает вывод целиком |
+| `tools::oversized_output_is_capped_during_execution` | Вывод `run_bash` ограничен `MAX_BASH_BYTES` во время выполнения, а не после; переполнение помечается |
+| `tools::git_exec_runs_a_quick_command` | `git_exec` выполняет быстрый сабкоманд и возвращает вывод |
 
 Полнота переводов (должно печатать пустые списки) — скрипт в разделе 8
 `NEXT_TASK_FILES.md`.

@@ -16,6 +16,11 @@ use wait_timeout::ChildExt;
 /// routinely runs longer than two minutes, so the caller can raise this.
 const BASH_TIMEOUT_SECS: u64 = 600;
 
+/// A git subcommand that hangs (a credential prompt with no TTY, a stalled
+/// network) must not block the agent loop forever. Generous enough for slow
+/// pulls, short enough to actually matter.
+const GIT_TIMEOUT_SECS: u64 = 120;
+
 /// Hard caps so a single tool call can't blow up the context window.
 const MAX_READ_BYTES: usize = 60_000;
 const MAX_BASH_BYTES: usize = 20_000;
@@ -256,12 +261,74 @@ fn walk_grep(dir: &Path, needle: &str, hits: &mut Vec<GrepHit>) {
 }
 
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::collections::HashMap;
 use once_cell::sync::Lazy;
 
 /// Map of PID to child process id for killing. (Platform specific, simplified here for macOS/Unix)
 pub static BASH_PROCESSES: Lazy<Mutex<HashMap<u32, u32>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
+
+/// Drain a child's output pipe into a bounded buffer. The buffer never grows
+/// past MAX_BASH_BYTES: once it is full the tail is dropped and `overflow` is
+/// set, so a chatty command (`yes`, `npm install`) cannot balloon memory while
+/// it runs. The incremental UTF-8 decoder keeps multi-byte characters intact
+/// across 8 KiB reads.
+fn pump<R: Read + Send + 'static>(
+    mut src: R,
+    sink: Arc<Mutex<String>>,
+    overflow: Arc<AtomicBool>,
+) {
+    let mut chunk = [0u8; 8192];
+    let mut decoder = crate::utf8::Utf8Stream::new();
+    loop {
+        match src.read(&mut chunk) {
+            Ok(0) | Err(_) => {
+                let rest = decoder.finish();
+                if !rest.is_empty() {
+                    append_capped(&sink, &rest, &overflow);
+                }
+                return;
+            }
+            Ok(n) => {
+                let text = decoder.push(&chunk[..n]);
+                if !text.is_empty() {
+                    append_capped(&sink, &text, &overflow);
+                }
+            }
+        }
+    }
+}
+
+/// Append to a pump buffer, dropping the tail once MAX_BASH_BYTES is reached.
+fn append_capped(sink: &Arc<Mutex<String>>, text: &str, overflow: &Arc<AtomicBool>) {
+    let Ok(mut b) = sink.lock() else { return };
+    let room = MAX_BASH_BYTES.saturating_sub(b.len());
+    if room == 0 {
+        overflow.store(true, Ordering::Relaxed);
+        return;
+    }
+    if text.len() <= room {
+        b.push_str(text);
+    } else {
+        let mut end = room;
+        while !text.is_char_boundary(end) && end > 0 {
+            end -= 1;
+        }
+        b.push_str(&text[..end]);
+        overflow.store(true, Ordering::Relaxed);
+    }
+}
+
+/// Reconstruct the user-visible "…[truncated]" marker from the overflow flag the
+/// pump recorded. The buffer is already bounded, so this is just presentation.
+fn finalize_buf(raw: String, overflowed: bool) -> (String, bool) {
+    if overflowed {
+        (format!("{raw}\n…[truncated]"), true)
+    } else {
+        (raw, false)
+    }
+}
 
 pub fn run_bash(
     command: &str,
@@ -297,50 +364,23 @@ pub fn run_bash(
     // could not touch, because there was nothing left to kill.
     let out_buf = Arc::new(Mutex::new(String::new()));
     let err_buf = Arc::new(Mutex::new(String::new()));
+    let overflow_o = Arc::new(AtomicBool::new(false));
+    let overflow_e = Arc::new(AtomicBool::new(false));
     let mut so = child.stdout.take();
     let mut se = child.stderr.take();
-    // Append as it arrives rather than at EOF: when a detached child holds the
-    // pipe open we abandon these threads, and whatever they had already read
-    // must still be there. `read_to_string` would have handed us nothing.
-    fn pump<R: Read + Send + 'static>(mut src: R, sink: Arc<Mutex<String>>) {
-        let mut chunk = [0u8; 8192];
-        // A command that prints Russian (or any non-ASCII) fills the pipe with
-        // multi-byte characters, and an 8 KiB read lands mid-character sooner
-        // or later. Decoding per read would corrupt those letters.
-        let mut decoder = crate::utf8::Utf8Stream::new();
-        loop {
-            match src.read(&mut chunk) {
-                Ok(0) | Err(_) => {
-                    let rest = decoder.finish();
-                    if !rest.is_empty() {
-                        if let Ok(mut b) = sink.lock() {
-                            b.push_str(&rest);
-                        }
-                    }
-                    return;
-                }
-                Ok(n) => {
-                    let text = decoder.push(&chunk[..n]);
-                    if !text.is_empty() {
-                        if let Ok(mut b) = sink.lock() {
-                            b.push_str(&text);
-                        }
-                    }
-                }
-            }
-        }
-    }
 
     let ob = out_buf.clone();
+    let ov_o = overflow_o.clone();
     let th_o = std::thread::spawn(move || {
         if let Some(p) = so.take() {
-            pump(p, ob);
+            pump(p, ob, ov_o);
         }
     });
     let eb = err_buf.clone();
+    let ov_e = overflow_e.clone();
     let th_e = std::thread::spawn(move || {
         if let Some(p) = se.take() {
-            pump(p, eb);
+            pump(p, eb, ov_e);
         }
     });
 
@@ -372,45 +412,95 @@ pub fn run_bash(
     let detached = !th_o.is_finished() || !th_e.is_finished();
 
     let stdout_raw = out_buf.lock().map(|b| b.clone()).unwrap_or_default();
-    let mut stderr_raw = err_buf.lock().map(|b| b.clone()).unwrap_or_default();
+    let stderr_raw = err_buf.lock().map(|b| b.clone()).unwrap_or_default();
+    let killed_by_user = code == -1 && stdout_raw.is_empty() && stderr_raw.is_empty();
 
+    let (stdout, stdout_trunc) = finalize_buf(stdout_raw, overflow_o.load(Ordering::Relaxed));
+    let (mut stderr, stderr_trunc) = finalize_buf(stderr_raw, overflow_e.load(Ordering::Relaxed));
+
+    // App-owned notes go after the command's own output so a chatty command
+    // can't clip them away.
     if timed_out {
-        stderr_raw.push_str(&format!("\n[killed: exceeded {timeout}s timeout]"));
-    } else if code == -1 && stdout_raw.is_empty() && stderr_raw.is_empty() {
-        stderr_raw.push_str("\n[killed by user]");
+        stderr.push_str(&format!("\n[killed: exceeded {timeout}s timeout]"));
+    } else if killed_by_user {
+        stderr.push_str("\n[killed by user]");
     }
     if detached {
-        stderr_raw.push_str(
+        stderr.push_str(
             "\n[note: a background process is still holding this command's output pipe, \
              so its output may be incomplete. Redirect it — e.g. `cmd > /tmp/x.log 2>&1 < /dev/null &` \
              — to detach cleanly.]",
         );
     }
 
-    let (stdout, t1) = clip(&stdout_raw, MAX_BASH_BYTES);
-    let (stderr, t2) = clip(&stderr_raw, MAX_BASH_BYTES);
     Ok(BashResult {
         stdout,
         stderr,
         code,
-        truncated: t1 || t2,
+        truncated: stdout_trunc || stderr_trunc,
     })
 }
 
 /// Run a git subcommand in `cwd`. Only invokes the `git` binary (not a shell),
-/// so it's safer than run_bash. Output is capped like bash output.
+/// so it's safer than run_bash. Output is capped like bash output, and a git
+/// command that hangs (a credential prompt, a stalled network) is killed after
+/// GIT_TIMEOUT_SECS instead of blocking the agent loop forever.
 pub fn git_exec(cwd: &str, args: Vec<String>) -> Result<BashResult, String> {
-    let out = std::process::Command::new("git")
-        .args(&args)
+    let mut cmd = std::process::Command::new("git");
+    cmd.args(&args)
         .current_dir(cwd)
-        .output()
-        .map_err(|e| e.to_string())?;
-    let (stdout, t1) = clip(&String::from_utf8_lossy(&out.stdout), MAX_BASH_BYTES);
-    let (stderr, t2) = clip(&String::from_utf8_lossy(&out.stderr), MAX_BASH_BYTES);
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    // Own process group so the whole tree (ssh, credential helpers) dies on timeout.
+    cmd.process_group(0);
+    let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+    let pid = child.id();
+
+    let out_buf = Arc::new(Mutex::new(String::new()));
+    let err_buf = Arc::new(Mutex::new(String::new()));
+    let overflow_o = Arc::new(AtomicBool::new(false));
+    let overflow_e = Arc::new(AtomicBool::new(false));
+
+    let so = child.stdout.take().expect("stdout piped");
+    let se = child.stderr.take().expect("stderr piped");
+    let ob = out_buf.clone();
+    let ov_o = overflow_o.clone();
+    let th_o = std::thread::spawn(move || pump(so, ob, ov_o));
+    let eb = err_buf.clone();
+    let ov_e = overflow_e.clone();
+    let th_e = std::thread::spawn(move || pump(se, eb, ov_e));
+
+    let status = match child
+        .wait_timeout(Duration::from_secs(GIT_TIMEOUT_SECS))
+        .map_err(|e| e.to_string())?
+    {
+        Some(status) => status,
+        None => {
+            unsafe { libc::kill(-(pid as i32), libc::SIGKILL) };
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!("git command timed out after {GIT_TIMEOUT_SECS}s"));
+        }
+    };
+
+    // git closes its pipes when it exits; a spawned helper (ssh, a credential
+    // prompt) might still hold them, so give the readers a grace period instead
+    // of joining forever.
+    let deadline = std::time::Instant::now() + Duration::from_millis(1500);
+    while (!th_o.is_finished() || !th_e.is_finished()) && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(25));
+    }
+
+    let stdout_raw = out_buf.lock().map(|b| b.clone()).unwrap_or_default();
+    let stderr_raw = err_buf.lock().map(|b| b.clone()).unwrap_or_default();
+
+    let (stdout, t1) = finalize_buf(stdout_raw, overflow_o.load(Ordering::Relaxed));
+    let (stderr, t2) = finalize_buf(stderr_raw, overflow_e.load(Ordering::Relaxed));
+
     Ok(BashResult {
         stdout,
         stderr,
-        code: out.status.code().unwrap_or(-1),
+        code: status.code().unwrap_or(-1),
         truncated: t1 || t2,
     })
 }
@@ -474,5 +564,31 @@ mod tests {
         let r = run_bash("printf 'a\\nb\\nc\\n'", None, Some(30)).expect("run_bash");
         assert_eq!(r.stdout.trim(), "a\nb\nc");
         assert_eq!(r.code, 0);
+    }
+
+    /// A command that floods stdout must not balloon memory while it runs: the
+    /// buffer is capped at MAX_BASH_BYTES during execution (not after), and the
+    /// result is flagged truncated.
+    #[test]
+    fn oversized_output_is_capped_during_execution() {
+        let r = run_bash("yes x | head -c 100000", None, Some(30)).expect("run_bash");
+        assert!(r.truncated, "a 100 KB output must be flagged truncated");
+        assert!(
+            r.stdout.len() <= MAX_BASH_BYTES + 64,
+            "stdout grew to {} bytes, exceeding the cap",
+            r.stdout.len()
+        );
+    }
+
+    /// The rewritten git_exec still runs a quick subcommand and returns its output.
+    #[test]
+    fn git_exec_runs_a_quick_command() {
+        let r = git_exec(".", vec!["--version".to_string()]).expect("git_exec");
+        assert_eq!(r.code, 0, "git --version should exit 0: {:?}", r.stderr);
+        assert!(
+            r.stdout.contains("git version"),
+            "unexpected output: {:?}",
+            r.stdout
+        );
     }
 }
