@@ -3043,3 +3043,45 @@ P1.7 аудита: виртуализация списка проблем
 
 P1.8 аудита: ленивая загрузка Monaco (`src/lib/monaco.ts`) — не тянуть
 `monaco-editor` и воркеры при старте, пока не открыт редактор.
+
+### Запись 62 — 2026-08-24 — Kimi Code — сценарий прогона сборки (smoke)
+
+#### Что сделано
+
+По просьбе владельца добавлен воспроизводимый сценарий проверки каждой сборки.
+Раньше виртуализацию (P1.5–P1.7) было нечем проверить: она проявляется только
+на больших данных, а руками нагнать 1000 файлов / 300 ошибок неудобно и
+невоспроизводимо.
+
+- `scripts/smoke.mjs` — единый вход `npm run smoke`: `tsc --noEmit` →
+  `npm run build` → `cargo test` → генерация фикстуры → печать чеклиста.
+  Без ключей и без сети; `cargo` резолвится из `~/.cargo/bin`, если его нет в
+  PATH.
+- `scripts/gen-fixture.mjs` — детерминированная фикстура
+  `.magnetar-test/fixture/` (PRNG mulberry32, содержимое одинаково каждый
+  запуск): широкое дерево (`bulk/` — 300 файлов + 40 папок × 10, цепочка
+  `deep/…` в 12 уровней, dotfiles + `.env`) и Rust-крейт с 300 намеренными
+  ошибками в `src/main.rs` для `cargo check`. Проверено: `cargo check
+  --message-format short` даёт ровно 300 строк вида `src/main.rs:N:C:
+  error[E0308]: …`, которые `parseProblems` разбирает.
+- `package.json`: скрипты `gen-fixture` и `smoke`.
+- `.gitignore`: `.magnetar-test/fixture/` не коммитится.
+- `TEST_SCENARIO.md`: новый раздел «§0. Прогон сборки (smoke)» с чеклистом.
+
+Живой API-прогон (`e2e-test.mjs`, `agent-e2e.mjs`) остаётся отдельным и
+ручным — он тратит токены, поэтому в `npm run smoke` по умолчанию не входит.
+
+#### Файлы
+
+- `scripts/gen-fixture.mjs` (новый)
+- `scripts/smoke.mjs` (новый)
+- `package.json`, `.gitignore`, `TEST_SCENARIO.md`
+
+#### Проверки
+
+`npm run smoke` — 4/4 (tsc, build, cargo test, фикстура). `npm run tauri
+build` — проходит. Коммит `1a08499`.
+
+#### Следующий шаг
+
+Вернуться к аудиту: P1.8 — ленивая загрузка Monaco (`src/lib/monaco.ts`).

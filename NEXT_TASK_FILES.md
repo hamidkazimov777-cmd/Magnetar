@@ -1,7 +1,7 @@
 # Magnetar — состояние проекта для следующего ИИ
 
 > Прочитай этот файл + последние записи `HANDOFF.md` — и за несколько минут
-> поймёшь текущее состояние. Актуально на **2026-08-24** (после Записи 61).
+> поймёшь текущее состояние. Актуально на **2026-08-24** (после Записи 62).
 >
 > Полный разбор продукта — `OVERVIEW.md`: философия, память, агент, данные,
 > и почему каждое решение принято именно так.
@@ -476,6 +476,9 @@ npm run tauri build && bash scripts/sign-app.sh
 ```bash
 npx tsc --noEmit && npm run build && (cd src-tauri && cargo check)
 ```
+
+Единый прогон: `npm run smoke` — типы + build + `cargo test` + фикстура +
+чеклист (см. `TEST_SCENARIO.md` §0).
 
 Dev: `npm run tauri dev` (при необходимости `source $HOME/.cargo/env`).
 Релиз: `npx tauri build --bundles app` → `src-tauri/target/release/bundle/macos/`.
