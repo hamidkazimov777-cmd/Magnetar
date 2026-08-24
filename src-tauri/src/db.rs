@@ -15,6 +15,12 @@ pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
     conn.execute_batch(
         r#"
         PRAGMA journal_mode = WAL;
+        -- WAL's companion: fewer fsyncs per commit, still crash-safe.
+        PRAGMA synchronous = NORMAL;
+        -- Wait instead of failing with SQLITE_BUSY under contention.
+        PRAGMA busy_timeout = 5000;
+        -- Referential integrity for any REFERENCES the schema adds later.
+        PRAGMA foreign_keys = ON;
 
         CREATE TABLE IF NOT EXISTS sessions (
             id               TEXT PRIMARY KEY,
