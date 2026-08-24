@@ -59,6 +59,28 @@ export async function projectFiles(force = false): Promise<string[]> {
   }
 }
 
+/** Precomputed per-file strings, so ranking does not re-lower-case every path
+ *  on every keystroke (the dominant allocation in the fuzzy picker). */
+interface FileEntry {
+  path: string;
+  lower: string;
+  base: string;
+}
+
+// Keyed by array identity: the file list is stable while the user types, and a
+// new list (project switch / refresh) rebuilds the index once.
+let indexCache: { files: string[]; entries: FileEntry[] } | null = null;
+
+function indexFiles(files: string[]): FileEntry[] {
+  if (indexCache?.files === files) return indexCache.entries;
+  const entries: FileEntry[] = files.map((path) => {
+    const lower = path.toLowerCase();
+    return { path, lower, base: lower.split("/").pop() ?? lower };
+  });
+  indexCache = { files, entries };
+  return entries;
+}
+
 /** Subsequence match, the way editors score fuzzy file pickers: every query
  *  character must appear in order; matches on the basename rank higher. */
 export function rankFiles(files: string[], query: string, limit = 30): string[] {
@@ -66,10 +88,7 @@ export function rankFiles(files: string[], query: string, limit = 30): string[] 
   if (!q) return files.slice(0, limit);
 
   const scored: { path: string; score: number }[] = [];
-  for (const path of files) {
-    const lower = path.toLowerCase();
-    const base = lower.split("/").pop() ?? lower;
-
+  for (const { path, lower, base } of indexFiles(files)) {
     let score: number;
     if (base.startsWith(q)) score = 0;
     else if (base.includes(q)) score = 1;
