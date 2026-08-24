@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "gen-fixture": "node scripts/gen-fixture.mjs",
+    "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "@fontsource/jetbrains-mono": "^5.3.0",

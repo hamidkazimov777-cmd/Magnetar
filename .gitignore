@@ -25,6 +25,7 @@ dist-ssr
 
 # Local test keys — never commit
 .magnetar-test/keys.json
+.magnetar-test/fixture/
 
 # Claude Code local settings (machine-specific)
 .claude/settings.local.json
