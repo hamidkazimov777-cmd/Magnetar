@@ -98,7 +98,7 @@ pub fn delete_project(id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn create_project_dir(app: tauri::AppHandle, name: String) -> Result<String, String> {
+pub async fn create_project_dir(app: tauri::AppHandle, name: String) -> Result<String, String> {
     use tauri::Manager;
     let home = app
         .path()
@@ -106,7 +106,7 @@ pub fn create_project_dir(app: tauri::AppHandle, name: String) -> Result<String,
         .map_err(|e| e.to_string())?
         .to_string_lossy()
         .into_owned();
-    tools::create_project_dir(&home, &name)
+    blocking(move || tools::create_project_dir(&home, &name)).await
 }
 
 #[tauri::command]
@@ -286,17 +286,17 @@ pub fn delete_messages_from(session_id: String, message_id: String) -> Result<()
 // ---- Agent tools -----------------------------------------------------------
 
 #[tauri::command]
-pub fn tool_read_file(
+pub async fn tool_read_file(
     path: String,
     offset: Option<usize>,
     limit: Option<usize>,
 ) -> Result<tools::ReadResult, String> {
-    tools::read_file(&path, offset, limit)
+    blocking(move || tools::read_file(&path, offset, limit)).await
 }
 
 #[tauri::command]
-pub fn tool_list_dir(path: String) -> Result<Vec<tools::DirEntry>, String> {
-    tools::list_dir(&path)
+pub async fn tool_list_dir(path: String) -> Result<Vec<tools::DirEntry>, String> {
+    blocking(move || tools::list_dir(&path)).await
 }
 
 #[tauri::command]
@@ -308,8 +308,8 @@ pub async fn tool_grep(
 }
 
 #[tauri::command]
-pub fn tool_write_file(path: String, content: String) -> Result<usize, String> {
-    tools::write_file(&path, &content)
+pub async fn tool_write_file(path: String, content: String) -> Result<usize, String> {
+    blocking(move || tools::write_file(&path, &content)).await
 }
 
 #[tauri::command]
@@ -318,17 +318,17 @@ pub async fn list_project_files(root: String) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-pub fn tool_delete_file(path: String) -> Result<(), String> {
-    tools::delete_file(&path)
+pub async fn tool_delete_file(path: String) -> Result<(), String> {
+    blocking(move || tools::delete_file(&path)).await
 }
 
 #[tauri::command]
-pub fn tool_edit_file(
+pub async fn tool_edit_file(
     path: String,
     old_string: String,
     new_string: String,
 ) -> Result<tools::EditResult, String> {
-    tools::edit_file(&path, &old_string, &new_string)
+    blocking(move || tools::edit_file(&path, &old_string, &new_string)).await
 }
 
 #[tauri::command]
@@ -364,8 +364,8 @@ pub async fn extract_pdf_text(path: String) -> Result<String, String> {
 
 /// Full file read for the code editor (no size cap).
 #[tauri::command]
-pub fn editor_read_file(path: String) -> Result<String, String> {
-    tools::read_text(&path)
+pub async fn editor_read_file(path: String) -> Result<String, String> {
+    blocking(move || tools::read_text(&path)).await
 }
 
 // ---- Codebase index (BM25 retrieval) --------------------------------------
