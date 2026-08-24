@@ -2831,3 +2831,46 @@ Monaco, диагностика в реальном времени, четыре 
 
 P0.2 аудита: перевод файловых операций на blocking/background потоки
 (`src-tauri/src/tools.rs` и связанные команды).
+
+### Запись 57 — 2026-08-24 — Kimi Code — файловые операции на blocking-потоках (аудит P0.2)
+
+#### Что сделано
+
+Внешний аудит (Корень 2, P0.2) показал: файловые Tauri-команды остались
+синхронными (`#[tauri::command] pub fn`) и выполняются в главном потоке —
+чтение/запись крупного файла замораживало всё окно. Хелпер `blocking()` в
+`commands.rs` уже существовал, но был подключён только к grep/bash/git/index/pdf.
+
+Семь файловых команд переведены с `pub fn` на `pub async fn` + `blocking()`:
+
+- `tool_read_file`
+- `tool_list_dir`
+- `tool_write_file`
+- `tool_delete_file`
+- `tool_edit_file`
+- `editor_read_file`
+- `create_project_dir`
+
+Сами функции в `tools.rs` не тронуты — они остались синхронными, обёртка
+происходит на уровне команды (ровно как уже сделано для `grep`/`git`/`bash`).
+Фронтенд не менялся: `invoke<T>(...)` возвращает Promise и для `fn`, и для
+`async fn`.
+
+Не трогал намеренно:
+- `tool_attach_file` — только `Path::exists()`, мгновенный stat, реального I/O нет.
+- `tool_kill_bash` — сигнал kill + mutex, обязан оставаться мгновенным.
+- SQLite/Keychain-команды — быстрые, по правилу 13 оставлены синхронными.
+
+#### Файлы
+
+- `src-tauri/src/commands.rs`
+
+#### Проверки
+
+`cargo check`, `npm run build`, `npm run tauri build` — проходят.
+Коммит `f58ea58`.
+
+#### Следующий шаг
+
+P0.3 аудита: потолок буферов `run_bash` во время выполнения (обрезать хвост по
+мере накопления) + таймаут для `git_exec` (`src-tauri/src/tools.rs`).
