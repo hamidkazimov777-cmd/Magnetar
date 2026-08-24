@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
   ChevronRight,
@@ -17,6 +17,7 @@ import {
   FolderX,
   Clock,
 } from "lucide-react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { api } from "../../lib/api";
 import { useStore } from "../../lib/store";
 import { analyzeFolderIntoMemory, activateProjectForPath } from "../../lib/memory";
@@ -54,29 +55,105 @@ const GIT_TONE: Record<string, string> = {
   "•": "text-[var(--color-modified)]",
 };
 
-function TreeNode({
-  path,
-  name,
-  isDir,
-  depth,
-  defaultExpanded = false,
+/** A directory entry, once fetched from the backend. */
+type Entry = { name: string; isDir: boolean };
+
+/** Per-node state, lifted so the tree can be flattened for virtualization. */
+type NodeState = {
+  expanded: boolean;
+  children: Entry[] | null;
+  loading: boolean;
+};
+
+/** One row in the flattened, virtualized tree. */
+type FlatRow =
+  | { kind: "node"; path: string; name: string; isDir: boolean; depth: number; expanded: boolean }
+  | { kind: "loading"; path: string; depth: number }
+  | { kind: "empty"; path: string; depth: number };
+
+/** Folders first, alphabetical, dotfiles hidden except `.env`. */
+function sortEntries(entries: Entry[]): Entry[] {
+  return entries
+    .filter((e) => !e.name.startsWith(".") || e.name === ".env")
+    .sort((a, b) =>
+      a.isDir === b.isDir ? a.name.localeCompare(b.name) : a.isDir ? -1 : 1,
+    );
+}
+
+/** Depth-first walk of the expanded part of the tree into a flat row list. */
+function flattenTree(
+  tree: Record<string, NodeState>,
+  rootPath: string,
+  rootName: string,
+): FlatRow[] {
+  const rows: FlatRow[] = [];
+  const walk = (path: string, name: string, isDir: boolean, depth: number) => {
+    const state = tree[path];
+    rows.push({
+      kind: "node",
+      path,
+      name,
+      isDir,
+      depth,
+      expanded: isDir && Boolean(state?.expanded),
+    });
+    if (!isDir || !state?.expanded) return;
+    if (state.loading) {
+      rows.push({ kind: "loading", path, depth });
+      return;
+    }
+    if (!state.children) return;
+    if (state.children.length === 0) {
+      rows.push({ kind: "empty", path, depth });
+      return;
+    }
+    for (const c of state.children) {
+      walk(`${path}/${c.name}`, c.name, c.isDir, depth + 1);
+    }
+  };
+  walk(rootPath, rootName, true, 0);
+  return rows;
+}
+
+/** One row of the tree. Git status is computed here, only for rows that are
+ *  actually mounted — off-screen rows cost nothing. */
+const TreeRow = memo(function TreeRow({
+  row,
+  onToggle,
 }: {
-  path: string;
-  name: string;
-  isDir: boolean;
-  depth: number;
-  defaultExpanded?: boolean;
+  row: FlatRow;
+  onToggle: (path: string, name: string, isDir: boolean) => void;
 }) {
-  const openTab = useStore((s) => s.openTab);
+  const t = useT();
   const activeTabPath = useStore((s) => s.activeTabPath);
   const workspaceRoot = useStore((s) => s.workspaceRoot);
   const gitStatus = useStore((s) => s.gitStatus);
-  const t = useT();
 
+  if (row.kind === "loading") {
+    return (
+      <div style={{ paddingLeft: 20 + row.depth * 11 }} className="space-y-1 py-1 pr-3">
+        <div className="skel h-3 w-2/3" />
+        <div className="skel h-3 w-1/2" />
+      </div>
+    );
+  }
+  if (row.kind === "empty") {
+    return (
+      <div
+        style={{ paddingLeft: 20 + row.depth * 11 }}
+        className="py-1 text-[length:var(--fs-sm)] text-[var(--color-text-mute)]"
+      >
+        {t("explorerEmptyFolder")}
+      </div>
+    );
+  }
+
+  const { path, name, isDir, depth, expanded } = row;
   // Git reports repo-relative paths; the tree works in absolute ones.
-  const rel = workspaceRoot && path.startsWith(workspaceRoot)
-    ? path.slice(workspaceRoot.length + 1)
-    : path;
+  const rel =
+    workspaceRoot && path.startsWith(workspaceRoot)
+      ? path.slice(workspaceRoot.length + 1)
+      : path;
   const status = isDir
     ? // A folder is marked when anything inside it changed.
       Object.keys(gitStatus).some((p) => p.startsWith(`${rel}/`))
@@ -84,119 +161,47 @@ function TreeNode({
       : undefined
     : gitStatus[rel];
 
-  const [expanded, setExpanded] = useState(defaultExpanded);
-  const [children, setChildren] = useState<{ name: string; isDir: boolean }[] | null>(
-    null,
-  );
-  const [loading, setLoading] = useState(false);
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      const entries = await api.toolListDir(path);
-      // Hide dotfiles except .env, then folders first, alphabetical.
-      const visible = entries
-        .filter((e) => !e.name.startsWith(".") || e.name === ".env")
-        .sort((a, b) =>
-          a.isDir === b.isDir
-            ? a.name.localeCompare(b.name)
-            : a.isDir
-              ? -1
-              : 1,
-        );
-      setChildren(visible);
-    } catch {
-      setChildren([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (defaultExpanded && isDir && children === null) void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const toggle = async () => {
-    if (!isDir) {
-      openTab({ path, name, kind: "file" });
-      return;
-    }
-    if (!expanded && children === null) await load();
-    setExpanded((v) => !v);
-  };
-
   return (
-    <div>
-      <button
-        onClick={toggle}
-        title={path}
-        style={{ paddingLeft: 6 + depth * 11 }}
-        className="row"
-        data-active={!isDir && activeTabPath === path}
-      >
-        {isDir ? (
-          <>
-            {expanded ? (
-              <ChevronDown size={13} className="shrink-0 text-[var(--color-text-mute)]" />
-            ) : (
-              <ChevronRight size={13} className="shrink-0 text-[var(--color-text-mute)]" />
-            )}
-            {expanded ? (
-              <FolderOpen size={14} className="shrink-0 text-[var(--color-accent)]" />
-            ) : (
-              <Folder size={14} className="shrink-0 text-[var(--color-accent)]" />
-            )}
-          </>
-        ) : (
-          <>
-            <span className="w-[13px] shrink-0" />
-            <FileIcon size={14} className="shrink-0 text-[var(--color-text-mute)]" />
-          </>
-        )}
-        <span className={cn("truncate", status && GIT_TONE[status])}>{name}</span>
-        {status && (
-          <span
-            className={cn(
-              "ml-auto shrink-0 pr-1 font-mono text-[length:var(--fs-xs)] font-bold",
-              GIT_TONE[status] ?? "text-[var(--color-modified)]",
-            )}
-          >
-            {status}
-          </span>
-        )}
-      </button>
-
-      {expanded && (
-        <div>
-          {loading && (
-            <div style={{ paddingLeft: 20 + depth * 11 }} className="space-y-1 py-1 pr-3">
-              <div className="skel h-3 w-2/3" />
-              <div className="skel h-3 w-1/2" />
-            </div>
+    <button
+      onClick={() => onToggle(path, name, isDir)}
+      title={path}
+      style={{ paddingLeft: 6 + depth * 11 }}
+      className="row"
+      data-active={!isDir && activeTabPath === path}
+    >
+      {isDir ? (
+        <>
+          {expanded ? (
+            <ChevronDown size={13} className="shrink-0 text-[var(--color-text-mute)]" />
+          ) : (
+            <ChevronRight size={13} className="shrink-0 text-[var(--color-text-mute)]" />
           )}
-          {!loading && children?.length === 0 && (
-            <div
-              style={{ paddingLeft: 20 + depth * 11 }}
-              className="py-1 text-[length:var(--fs-sm)] text-[var(--color-text-mute)]"
-            >
-              {t("explorerEmptyFolder")}
-            </div>
+          {expanded ? (
+            <FolderOpen size={14} className="shrink-0 text-[var(--color-accent)]" />
+          ) : (
+            <Folder size={14} className="shrink-0 text-[var(--color-accent)]" />
           )}
-          {children?.map((c) => (
-            <TreeNode
-              key={c.name}
-              path={`${path}/${c.name}`}
-              name={c.name}
-              isDir={c.isDir}
-              depth={depth + 1}
-            />
-          ))}
-        </div>
+        </>
+      ) : (
+        <>
+          <span className="w-[13px] shrink-0" />
+          <FileIcon size={14} className="shrink-0 text-[var(--color-text-mute)]" />
+        </>
       )}
-    </div>
+      <span className={cn("truncate", status && GIT_TONE[status])}>{name}</span>
+      {status && (
+        <span
+          className={cn(
+            "ml-auto shrink-0 pr-1 font-mono text-[length:var(--fs-xs)] font-bold",
+            GIT_TONE[status] ?? "text-[var(--color-modified)]",
+          )}
+        >
+          {status}
+        </span>
+      )}
+    </button>
   );
-}
+});
 
 export function ExplorerPanel() {
   const t = useT();
@@ -205,13 +210,102 @@ export function ExplorerPanel() {
   const refreshExplorer = useStore((s) => s.refreshExplorer);
   const memoryError = useStore((s) => s.memoryError);
   const setMemoryError = useStore((s) => s.setMemoryError);
+  const openTab = useStore((s) => s.openTab);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzed, setAnalyzed] = useState<string | null>(null);
+  const [tree, setTree] = useState<Record<string, NodeState>>(() =>
+    workspaceRoot
+      ? { [workspaceRoot]: { expanded: true, children: null, loading: false } }
+      : {},
+  );
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const rootName = useMemo(
     () => workspaceRoot?.split(/[/\\]/).pop() || workspaceRoot,
     [workspaceRoot],
   );
+
+  const loadChildren = useCallback(async (path: string) => {
+    setTree((prev) => ({ ...prev, [path]: { ...prev[path], loading: true } }));
+    try {
+      const entries = await api.toolListDir(path);
+      const visible = sortEntries(entries);
+      setTree((prev) => ({
+        ...prev,
+        [path]: { ...prev[path], children: visible, loading: false },
+      }));
+    } catch {
+      setTree((prev) => ({
+        ...prev,
+        [path]: { ...prev[path], children: [], loading: false },
+      }));
+    }
+  }, []);
+
+  // Reset the tree and load the root whenever the folder or its refresh
+  // version changes — the same remount the old `key` on TreeNode used to do.
+  useEffect(() => {
+    if (!workspaceRoot) return;
+    setTree({
+      [workspaceRoot]: { expanded: true, children: null, loading: false },
+    });
+    void loadChildren(workspaceRoot);
+  }, [workspaceRoot, explorerVersion, loadChildren]);
+
+  // Keep the current tree in a ref so the row callback stays stable without
+  // re-rendering every visible row on each toggle.
+  const treeRef = useRef(tree);
+  treeRef.current = tree;
+
+  const toggle = useCallback(
+    (path: string, name: string, isDir: boolean) => {
+      if (!isDir) {
+        openTab({ path, name, kind: "file" });
+        return;
+      }
+      const st = treeRef.current[path] ?? {
+        expanded: false,
+        children: null,
+        loading: false,
+      };
+      if (!st.expanded && st.children === null) {
+        setTree((prev) => ({
+          ...prev,
+          [path]: {
+            ...(prev[path] ?? { expanded: false, children: null, loading: false }),
+            expanded: true,
+            loading: true,
+          },
+        }));
+        void loadChildren(path);
+      } else {
+        setTree((prev) => ({
+          ...prev,
+          [path]: {
+            ...(prev[path] ?? { expanded: false, children: null, loading: false }),
+            expanded: !st.expanded,
+          },
+        }));
+      }
+    },
+    [openTab, loadChildren],
+  );
+
+  const rows = useMemo(
+    () => (workspaceRoot ? flattenTree(tree, workspaceRoot, rootName ?? "") : []),
+    [tree, workspaceRoot, rootName],
+  );
+
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 26,
+    overscan: 12,
+    getItemKey: (index) => {
+      const r = rows[index];
+      return r.kind === "node" ? r.path : `${r.kind}:${r.path}`;
+    },
+  });
 
   const analyze = async () => {
     if (!workspaceRoot) return;
@@ -304,20 +398,38 @@ export function ExplorerPanel() {
         </div>
       )}
 
-      <div className={cn("min-h-0 flex-1 overflow-auto py-1 pr-1")}>
-        <TreeNode
-          key={`${workspaceRoot}:${explorerVersion}`}
-          path={workspaceRoot}
-          name={rootName || workspaceRoot}
-          isDir
-          depth={0}
-          defaultExpanded
-        />
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto py-1 pr-1">
+        <div
+          style={{
+            height: virtualizer.getTotalSize(),
+            position: "relative",
+            width: "100%",
+          }}
+        >
+          {virtualizer.getVirtualItems().map((vi) => {
+            const row = rows[vi.index];
+            return (
+              <div
+                key={vi.key}
+                data-index={vi.index}
+                ref={virtualizer.measureElement}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  transform: `translateY(${vi.start}px)`,
+                }}
+              >
+                <TreeRow row={row} onToggle={toggle} />
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
 }
-
 
 /** Folder actions: switch, reopen a recent one, or close the current folder.
  *  Closing was previously impossible — the root could only ever be replaced. */
