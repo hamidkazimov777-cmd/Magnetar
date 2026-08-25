@@ -399,6 +399,44 @@
     color: var(--color-ai);
   }
 
+  /* Segmented control — the chat panel's mode switch. One control that both
+     names the mode and is its identity, so no separate icon+label is needed. */
+  .segmented {
+    display: inline-flex;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--r-md);
+    background: var(--color-bg);
+  }
+  .segmented button {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    height: 24px;
+    padding: 0 var(--sp-3);
+    border: none;
+    border-radius: calc(var(--r-md) - 2px);
+    background: transparent;
+    color: var(--color-text-dim);
+    font-size: var(--fs-sm);
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all var(--dur-fast) var(--ease);
+  }
+  .segmented button:hover {
+    color: var(--color-text);
+  }
+  .segmented button[data-on="true"] {
+    background: var(--color-surface-2);
+    color: var(--color-text);
+    box-shadow: 0 0 0 1px var(--color-border);
+  }
+  .segmented button[data-on="true"][data-ai="true"] {
+    color: var(--color-ai);
+  }
+
   /* --- Fields ------------------------------------------------------------ */
   .input {
     width: 100%;

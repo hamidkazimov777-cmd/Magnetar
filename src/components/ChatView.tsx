@@ -9,7 +9,9 @@ import {
   PanelRightClose,
   MessagesSquare,
   Eye,
-  EyeOff,
+  Folder,
+  FolderX,
+  MoreHorizontal,
   Loader2,
   Square,
   FolderPlus,
@@ -76,6 +78,18 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
   const setLastContext = useStore((s) => s.setLastContext);
   const lastContext = useStore((s) => s.lastContext);
   const [contextOpen, setContextOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  // The "more" menu closes when the click lands anywhere outside it.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [menuOpen]);
 
   const [streaming, setStreaming] = useState(false);
   const [upgrade, setUpgrade] = useState<Recommendation["upgrade"]>();
@@ -436,52 +450,13 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
         data-tauri-drag-region
         className="flex h-[var(--h-titlebar)] shrink-0 items-center gap-1.5 border-b border-[var(--color-border)] px-2"
       >
-        {/* The one violet accent in the chrome: this panel is the AI. */}
-        <Bot size={15} className="shrink-0 text-[var(--color-ai)]" />
-        <span className="shrink-0 text-[length:var(--fs-base)] font-semibold">
-          {t("agent")}
-        </span>
-        <div className="min-w-0 flex-1">
-          {conn ? (
-            <ModelSwitcher />
-          ) : (
-            <button className="btn btn-ghost btn-sm" onClick={onOpenSettings}>
-              {t("connectModel")}
-            </button>
-          )}
-        </div>
-        <Hint text={t("hintShowContext")} side="left">
-          <button
-            className="icon-btn"
-            title={t("showContext")}
-            onClick={() => setContextOpen(true)}
-            disabled={!lastContext}
-          >
-            <Eye size={15} />
-          </button>
-        </Hint>
-        <Hint text={t("hintNewChat")} side="left">
-          <button className="icon-btn" title={t("newChat")} onClick={() => newSession()}>
-            <Plus size={15} />
-          </button>
-        </Hint>
-        <button
-          className="icon-btn"
-          title={t("cmdToggleAgentPanel")}
-          onClick={() => toggleAgentPanel(false)}
-        >
-          <PanelRightClose size={15} />
-        </button>
-      </header>
-
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-[var(--color-border)] px-2 py-1.5">
-        {/* Two tracks, not a switch on one transcript: discussion and tool
-            steps in the same thread bury each other, and an hour later nobody
-            can find where a thing was agreed. Each track keeps its own model. */}
+        {/* One segmented control is the panel's identity: it both names the
+            active mode and switches it, so no separate icon+label is needed.
+            Each mode keeps its own model; discussion talks, agent acts,
+            generation makes images and audio. */}
         <Hint text={t("hintAgentToggle")} side="bottom">
-          <div className="flex items-center gap-1">
+          <div className="segmented shrink-0">
             <button
-              className="toggle-pill"
               data-on={activeTrack === "chat"}
               onClick={() => switchTrack("chat")}
               title={t("trackChatHint")}
@@ -490,7 +465,6 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
               {t("trackChat")}
             </button>
             <button
-              className="toggle-pill"
               data-ai="true"
               data-on={activeTrack === "agent"}
               onClick={() => switchTrack("agent")}
@@ -500,7 +474,6 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
               {t("agent")}
             </button>
             <button
-              className="toggle-pill"
               data-ai="true"
               data-on={activeTrack === "generation"}
               onClick={() => switchTrack("generation")}
@@ -511,33 +484,89 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
             </button>
           </div>
         </Hint>
-        {/* The bench of helper models: a per-job decision, so it sits with the
-            track buttons rather than in Settings. */}
-        {activeTrack === "agent" && <SubagentPicker />}
-        {/* Icon only: four labelled pills do not fit a narrow panel, and the
-            last one was being cut off mid-word. The names live in the tooltip
-            and in hint mode. */}
-        <Hint text={t("hintAdaptive")} side="bottom">
-          <button
-            className="toggle-pill shrink-0 px-2"
-            data-ai="true"
-            data-on={adaptive}
-            onClick={() => setAdaptive(!adaptive)}
-            title={`${t("adaptive")} — ${t("adaptiveHint")}`}
-            aria-label={t("adaptive")}
-          >
-            <Sparkles size={13} />
+        <div className="flex-1" />
+        <Hint text={t("hintNewChat")} side="left">
+          <button className="icon-btn" title={t("newChat")} onClick={() => newSession()}>
+            <Plus size={15} />
           </button>
         </Hint>
+        {/* "Show context" is a power feature, not a daily one — it lives in the
+            overflow menu rather than the hot path. */}
+        <div className="relative" ref={menuRef}>
+          <button
+            className="icon-btn"
+            title={t("moreActions")}
+            aria-label={t("moreActions")}
+            onClick={() => setMenuOpen((v) => !v)}
+          >
+            <MoreHorizontal size={15} />
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-full z-30 mt-1 min-w-[190px] rounded-[var(--r-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-1 shadow-lg">
+              <button
+                className="flex w-full items-center gap-2 rounded-[var(--r-sm)] px-2 py-1.5 text-left text-[length:var(--fs-base)] hover:bg-[var(--color-surface-2)] disabled:opacity-40"
+                disabled={!lastContext}
+                onClick={() => {
+                  setContextOpen(true);
+                  setMenuOpen(false);
+                }}
+              >
+                <Eye size={14} className="shrink-0 text-[var(--color-text-mute)]" />
+                {t("showContext")}
+              </button>
+            </div>
+          )}
+        </div>
+        <button
+          className="icon-btn"
+          title={t("cmdToggleAgentPanel")}
+          onClick={() => toggleAgentPanel(false)}
+        >
+          <PanelRightClose size={15} />
+        </button>
+      </header>
+
+      {/* Config bar: the active mode's model on the left, mode-specific controls
+          next to it, and the one project-context toggle on the right — the same
+          switch for every mode, so "does the AI see my project" is answered in
+          one place instead of a cryptic eye. */}
+      <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--color-border)] px-2 py-1.5">
+        {conn ? (
+          <div className="min-w-0 max-w-[190px]">
+            <ModelSwitcher />
+          </div>
+        ) : (
+          <button className="btn btn-ghost btn-sm shrink-0" onClick={onOpenSettings}>
+            {t("connectModel")}
+          </button>
+        )}
+        {/* The bench of helper models and adaptive routing only apply to the
+            text tracks; generation is dispatched straight to its provider. */}
+        {activeTrack === "agent" && <SubagentPicker />}
+        {activeTrack !== "generation" && (
+          <Hint text={t("hintAdaptive")} side="bottom">
+            <button
+              className="toggle-pill shrink-0 px-2"
+              data-ai="true"
+              data-on={adaptive}
+              onClick={() => setAdaptive(!adaptive)}
+              title={`${t("adaptive")} — ${t("adaptiveHint")}`}
+              aria-label={t("adaptive")}
+            >
+              <Sparkles size={13} />
+            </button>
+          </Hint>
+        )}
+        <div className="flex-1" />
         <Hint text={t("hintSeesProject")} side="bottom">
           <button
-            className="toggle-pill shrink-0 px-2"
+            className="toggle-pill shrink-0"
             data-on={seesProject}
             onClick={toggleProjectContext}
             title={seesProject ? t("seesProject") : t("hidesProject")}
-            aria-label={seesProject ? t("seesProject") : t("hidesProject")}
           >
-            {seesProject ? <Eye size={13} /> : <EyeOff size={13} />}
+            {seesProject ? <Folder size={13} /> : <FolderX size={13} />}
+            {t("projectContext")}
           </button>
         </Hint>
       </div>
