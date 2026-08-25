@@ -428,7 +428,7 @@ export async function executeTool(name: string, args: ToolArgs): Promise<string>
         s2.closeAllTabs();
         s2.refreshExplorer();
         activateProjectForPath(path);
-        s2.setAgentMode(true);
+        s2.switchTrack("agent");
         void analyzeFolderIntoMemory(path).catch(() => {});
         return `Created and opened ${path}. Relative paths now resolve there — carry on with the task.`;
       }

@@ -81,6 +81,8 @@ const ru: Dict = {
   trackChat: "Обсуждение",
   trackChatHint: "Разговор о проекте: модель знает память проекта, но не видит и не меняет файлы. Своя модель и своя история",
   trackChatNote: "Обсуждение: модель знает память проекта, но файлы не видит и не меняет. Для правок — вкладка «Агент».",
+  trackGeneration: "Генерация",
+  trackGenerationHint: "Генерация файлов (изображения, видео, аудио, голос) через генеративные модели. Своя модель и своя история",
   sendToAgent: "В агента",
   sendToAgentHint: "Открыть вкладку «Агент» и вставить этот текст в поле ввода — перед запуском можно поправить",
   decisionsTitle: "Решения",
@@ -617,6 +619,8 @@ const ru: Dict = {
   genResult: "Результат",
   genDownload: "Скачать",
   genError: "Ошибка",
+  genProviderUnavailable: "Этот провайдер пока недоступен",
+  genEmpty: "Провайдер не вернул файлов",
 };
 
 /* ==========================================================================
@@ -682,6 +686,8 @@ const en: Dict = {
   trackChat: "Discussion",
   trackChatHint: "Talking the project through: the model knows the project's memory but cannot see or change files. Its own model, its own history",
   trackChatNote: "Discussion: the model knows the project's memory but cannot see or change files. Use the Agent tab for edits.",
+  trackGeneration: "Generation",
+  trackGenerationHint: "Generate assets (image, video, audio, voice) through generative models. Its own model, its own history",
   sendToAgent: "To agent",
   sendToAgentHint: "Open the Agent tab and drop this text into the composer — edit it before running",
   decisionsTitle: "Decisions",
@@ -1192,6 +1198,8 @@ const en: Dict = {
   genResult: "Result",
   genDownload: "Download",
   genError: "Error",
+  genProviderUnavailable: "This provider is not available yet",
+  genEmpty: "The provider returned no files",
 };
 
 /* ==========================================================================
@@ -1258,6 +1266,8 @@ const es: Dict = {
   trackChat: "Discusión",
   trackChatHint: "Hablar del proyecto: el modelo conoce la memoria del proyecto pero no ve ni cambia archivos. Con su propio modelo e historial",
   trackChatNote: "Discusión: el modelo conoce la memoria del proyecto pero no ve ni cambia archivos. Para editar, usa la pestaña «Agente».",
+  trackGeneration: "Generación",
+  trackGenerationHint: "Genera archivos (imagen, vídeo, audio, voz) con modelos generativos. Con su propio modelo e historial",
   sendToAgent: "Al agente",
   sendToAgentHint: "Abre la pestaña «Agente» y pega este texto en el campo — puedes editarlo antes de ejecutar",
   decisionsTitle: "Decisiones",
@@ -1770,6 +1780,8 @@ const es: Dict = {
   genResult: "Resultado",
   genDownload: "Descargar",
   genError: "Error",
+  genProviderUnavailable: "Este proveedor aún no está disponible",
+  genEmpty: "El proveedor no devolvió archivos",
 };
 
 const DICTS: Record<Lang, Dict> = { ru, en, es };

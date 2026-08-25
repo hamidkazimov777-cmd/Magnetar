@@ -3,7 +3,8 @@ import { persist } from "zustand/middleware";
 import { db, type SessionMetaRow } from "./db";
 import type { Lang } from "./i18n";
 import { applyTheme, type Theme } from "./theme";
-import type { ChatMessage, Connection, ModelInfo, Session } from "./types";
+import type { ChatMessage, Connection, ModelInfo, Session, Track } from "./types";
+import { providerForBaseUrl } from "./generation";
 
 /** Which panel the activity bar shows in the primary (left) sidebar. */
 export type SidePanel =
@@ -123,13 +124,12 @@ interface State {
   models: Record<string, ModelInfo[]>;
   adaptive: boolean;
   /** Mirror of the active conversation's track, kept for the UI. The truth is
-   *  `session.track`; toggling this switches tracks, which is why turning the
-   *  agent off does not disarm the conversation you are in — it moves you to
-   *  the other one, with its own model and its own history. */
-  agentMode: boolean;
-  setAgentMode: (on: boolean) => void;
+   *  `session.track`; switching tracks moves you to that track's conversation,
+   *  with its own model and its own history — turning the agent "off" does not
+   *  disarm the conversation you are in, it moves you to another one. */
+  activeTrack: Track;
   /** Move to a track, adopting (or starting) that track's conversation. */
-  switchTrack: (track: "agent" | "chat") => void;
+  switchTrack: (track: Track) => void;
   workspaceRoot?: string;
   setWorkspaceRoot: (path: string | undefined) => void;
   /** Most-recently opened folders, newest first (for the welcome screen). */
@@ -257,7 +257,7 @@ interface State {
 
   setSummary: (sessionId: string, summary: string, upToId: string) => void;
 
-  newSession: (track?: "agent" | "chat") => string;
+  newSession: (track?: Track) => string;
   selectSession: (id: string) => void;
   deleteSession: (id: string) => void;
   renameSession: (id: string, title: string) => void;
@@ -265,6 +265,9 @@ interface State {
   addMessage: (sessionId: string, m: Omit<ChatMessage, "id" | "createdAt">) => string;
   appendToMessage: (sessionId: string, messageId: string, delta: string) => void;
   setMessageContent: (sessionId: string, messageId: string, content: string) => void;
+  /** Attach produced assets (e.g. generated images) to a finished message.
+   *  In-memory only — attachments are ephemeral, like pasted images. */
+  setMessageAttachments: (sessionId: string, messageId: string, attachments: ChatMessage["attachments"]) => void;
   /** Append a chunk of the model's thinking, shown collapsed above the answer. */
   appendReasoning: (sessionId: string, messageId: string, delta: string) => void;
   /** Attach cost and timing to a finished message. */
@@ -371,8 +374,7 @@ export const useStore = create<State>()(
       connections: [],
       models: {},
       adaptive: false,
-      agentMode: false,
-      setAgentMode: (on) => get().switchTrack(on ? "agent" : "chat"),
+      activeTrack: "chat",
       recentFolders: [],
       setWorkspaceRoot: (path) =>
         set((s) => ({
@@ -545,11 +547,15 @@ export const useStore = create<State>()(
               };
             }),
           );
-          set((s) => ({
-            sessions,
-            activeSessionId: s.activeSessionId ?? sessions[0]?.id,
-            hydrated: true,
-          }));
+          set((s) => {
+            const activeId = s.activeSessionId ?? sessions[0]?.id;
+            return {
+              sessions,
+              activeSessionId: activeId,
+              activeTrack: sessions.find((x) => x.id === activeId)?.track ?? "chat",
+              hydrated: true,
+            };
+          });
         } catch {
           set({ hydrated: true });
         }
@@ -841,21 +847,34 @@ export const useStore = create<State>()(
 
       newSession: (track) => {
         const id = uid();
+        const st = get();
+        const resolvedTrack = track ?? st.activeTrack;
+        // A generative conversation runs on a generative provider; a fresh one
+        // must not inherit the text model the user was just talking to.
+        const genConn =
+          resolvedTrack === "generation"
+            ? st.connections.find((c) => c.kind === "generative")
+            : undefined;
         const session: Session = {
           id,
           title: NEW_CHAT_TITLE,
           messages: [],
-          connectionId: get().activeConnectionId,
-          model: get().activeModel,
-          projectId: get().activeProjectId,
-          track: track ?? (get().agentMode ? "agent" : "chat"),
+          connectionId: resolvedTrack === "generation" ? genConn?.id : st.activeConnectionId,
+          model:
+            resolvedTrack === "generation"
+              ? (genConn ? providerForBaseUrl(genConn.baseUrl)?.models[0] : undefined)
+              : st.activeModel,
+          projectId: st.activeProjectId,
+          track: resolvedTrack,
           createdAt: now(),
           updatedAt: now(),
         };
         set((s) => ({
           sessions: [session, ...s.sessions],
           activeSessionId: id,
-          agentMode: session.track === "agent",
+          activeTrack: resolvedTrack,
+          activeConnectionId: session.connectionId,
+          activeModel: session.model,
         }));
         persistMeta(session);
         return id;
@@ -870,12 +889,20 @@ export const useStore = create<State>()(
           // Helper rows belong to the run that produced them; carrying them
           // into another conversation makes them look like live work there.
           if (!sess) return { activeSessionId: id, subagents: {} };
+          // A generative conversation must not fall back to the text model the
+          // user was just on — the two tracks use different provider kinds.
           return {
             activeSessionId: id,
             subagents: {},
-            agentMode: sess.track !== "chat",
-            activeConnectionId: sess.connectionId ?? s.activeConnectionId,
-            activeModel: sess.model ?? s.activeModel,
+            activeTrack: sess.track ?? "chat",
+            activeConnectionId:
+              sess.track === "generation"
+                ? sess.connectionId
+                : (sess.connectionId ?? s.activeConnectionId),
+            activeModel:
+              sess.track === "generation"
+                ? sess.model
+                : (sess.model ?? s.activeModel),
           };
         }),
 
@@ -883,7 +910,7 @@ export const useStore = create<State>()(
         const st = get();
         const current = st.sessions.find((x) => x.id === st.activeSessionId);
         if (current?.track === track) {
-          set({ agentMode: track === "agent" });
+          set({ activeTrack: track });
           return;
         }
 
@@ -1064,6 +1091,19 @@ export const useStore = create<State>()(
         get().persistMessage(sessionId, messageId);
       },
 
+      setMessageAttachments: (sessionId, messageId, attachments) =>
+        set((s) => ({
+          sessions: s.sessions.map((sess) =>
+            sess.id !== sessionId
+              ? sess
+              : {
+                  ...sess,
+                  messages: sess.messages.map((msg) =>
+                    msg.id === messageId ? { ...msg, attachments } : msg,
+                  ),
+                },
+          ),
+        })),
       runningTool: undefined,
       setRunningTool: (runningTool) => set({ runningTool }),
 
@@ -1193,7 +1233,7 @@ export const useStore = create<State>()(
         activeConnectionId: s.activeConnectionId,
         activeModel: s.activeModel,
         adaptive: s.adaptive,
-        agentMode: s.agentMode,
+        activeTrack: s.activeTrack,
         workspaceRoot: s.workspaceRoot,
         recentFolders: s.recentFolders,
         prefs: s.prefs,

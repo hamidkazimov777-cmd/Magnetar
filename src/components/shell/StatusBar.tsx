@@ -22,8 +22,8 @@ export function StatusBar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const activeModel = useStore((s) => s.activeModel);
   const connections = useStore((s) => s.connections);
   const activeConnectionId = useStore((s) => s.activeConnectionId);
-  const agentMode = useStore((s) => s.agentMode);
-  const setAgentMode = useStore((s) => s.setAgentMode);
+  const activeTrack = useStore((s) => s.activeTrack);
+  const switchTrack = useStore((s) => s.switchTrack);
   const terminalOpen = useStore((s) => s.terminalOpen);
   const toggleTerminal = useStore((s) => s.toggleTerminal);
   const setSidePanel = useStore((s) => s.setSidePanel);
@@ -110,9 +110,19 @@ export function StatusBar({ onOpenSettings }: { onOpenSettings: () => void }) {
       {/* Agent and model are AI state — the only violet in the status bar. */}
       <Item
         icon={Bot}
-        label={agentMode ? t("statusAgentOn") : t("statusAgentOff")}
-        onClick={() => setAgentMode(!agentMode)}
-        tone={agentMode ? "ai" : undefined}
+        label={
+          activeTrack === "agent"
+            ? t("statusAgentOn")
+            : activeTrack === "generation"
+              ? t("trackGeneration")
+              : t("statusAgentOff")
+        }
+        onClick={() =>
+          switchTrack(
+            activeTrack === "chat" ? "agent" : activeTrack === "agent" ? "generation" : "chat",
+          )
+        }
+        tone={activeTrack !== "chat" ? "ai" : undefined}
       />
       <Hint text={t("hintTerminal")} side="top">
         <Item

@@ -21,6 +21,7 @@ import { runAgent, AGENT_SYSTEM } from "../lib/agent";
 import { buildProjectMemory } from "../lib/memory";
 import type { AskRequest } from "../lib/agent";
 import { buildMentionContext, expandSlash } from "../lib/mentions";
+import { providerForBaseUrl } from "../lib/generation";
 import { Hint } from "./ui/Hint";
 import { ToolPreview } from "./ToolPreview";
 import { AskDialog } from "./AskDialog";
@@ -48,7 +49,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
   const models = useStore((s) => s.models);
   const adaptive = useStore((s) => s.adaptive);
   const setAdaptive = useStore((s) => s.setAdaptive);
-  const agentMode = useStore((s) => s.agentMode);
+  const activeTrack = useStore((s) => s.activeTrack);
   const switchTrack = useStore((s) => s.switchTrack);
   const activeConnectionId = useStore((s) => s.activeConnectionId);
   const activeModel = useStore((s) => s.activeModel);
@@ -272,6 +273,63 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     }
   };
 
+  const runGeneration = async (
+    text: string,
+    attachments: Attachment[],
+    connId: string,
+    model: string,
+    opts: SendOpts = {},
+  ) => {
+    const connection = useStore.getState().connections.find((c) => c.id === connId);
+    if (!connection) return;
+    let sessionId = useStore.getState().activeSessionId;
+    if (!sessionId) sessionId = newSession("generation");
+
+    if (!opts.skipUserMessage)
+      addMessage(sessionId, { role: "user", content: text, attachments });
+    const assistantId = addMessage(sessionId, { role: "assistant", content: "", model });
+
+    // The provider catalogue is the single source of truth for how to reach a
+    // generative model — base URL, endpoint, response format and defaults.
+    const provider = providerForBaseUrl(connection.baseUrl);
+    if (!provider || !provider.available) {
+      useStore.getState().setMessageContent(sessionId, assistantId, "");
+      setLastError({ message: t("genProviderUnavailable"), sessionId });
+      return;
+    }
+
+    const params: Record<string, unknown> = {};
+    for (const p of provider.params) if (p.default !== undefined) params[p.key] = p.default;
+    if (provider.responseFormat) params.response_format = provider.responseFormat;
+
+    setStreaming(true);
+    try {
+      const result = await api.generate(connection, {
+        kind: provider.kind,
+        model,
+        prompt: text,
+        endpoint: provider.endpoint,
+        params,
+      });
+      const assets: Attachment[] = result.assets.map((a, i) => ({
+        id: `${assistantId}-${i}`,
+        type: "image",
+        mimeType: a.mimeType ?? "image/png",
+        name: `${provider.name} · ${i + 1}`,
+        data: a.b64 ?? undefined,
+        path: a.url ?? undefined,
+      }));
+      const st = useStore.getState();
+      st.setMessageContent(sessionId, assistantId, assets.length ? t("genResult") : t("genEmpty"));
+      st.setMessageAttachments(sessionId, assistantId, assets);
+    } catch (e) {
+      useStore.getState().setMessageContent(sessionId, assistantId, "");
+      setLastError({ message: String(e), sessionId });
+    } finally {
+      setStreaming(false);
+    }
+  };
+
   const send = async (
     text: string,
     attachments: Attachment[] = [],
@@ -304,7 +362,9 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     let connId = activeConnectionId!;
     let model = activeModel;
 
-    if (adaptive) {
+    // Adaptive routing picks among *text* models; generation runs on a
+    // generative provider and is dispatched directly.
+    if (activeTrack !== "generation" && adaptive) {
       const catalog = buildCatalog(connections, models);
       const rec = recommend(text, catalog, { connectionId: connId, model });
       const reason = t(`reason_${rec.tier}`);
@@ -317,7 +377,11 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
       if (rec.upgrade) setUpgrade(rec.upgrade);
     }
 
-    const isAgentTurn = agentMode || text.startsWith("/team ") || text.startsWith("/cto");
+    if (activeTrack === "generation") {
+      await runGeneration(text, attachments, connId, model, opts);
+      return;
+    }
+    const isAgentTurn = activeTrack === "agent" || text.startsWith("/team ") || text.startsWith("/cto");
     if (isAgentTurn) await runAgentPath(text, attachments, connId, model, opts);
     else await runSend(text, attachments, connId, model, opts);
   };
@@ -412,7 +476,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
           <div className="flex items-center gap-1">
             <button
               className="toggle-pill"
-              data-on={!agentMode}
+              data-on={activeTrack === "chat"}
               onClick={() => switchTrack("chat")}
               title={t("trackChatHint")}
             >
@@ -422,18 +486,28 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
             <button
               className="toggle-pill"
               data-ai="true"
-              data-on={agentMode}
+              data-on={activeTrack === "agent"}
               onClick={() => switchTrack("agent")}
               title={t("agentHint")}
             >
               <Bot size={13} />
               {t("agent")}
             </button>
+            <button
+              className="toggle-pill"
+              data-ai="true"
+              data-on={activeTrack === "generation"}
+              onClick={() => switchTrack("generation")}
+              title={t("trackGenerationHint")}
+            >
+              <Sparkles size={13} />
+              {t("trackGeneration")}
+            </button>
           </div>
         </Hint>
         {/* The bench of helper models: a per-job decision, so it sits with the
             track buttons rather than in Settings. */}
-        {agentMode && <SubagentPicker />}
+        {activeTrack === "agent" && <SubagentPicker />}
         {/* Icon only: four labelled pills do not fit a narrow panel, and the
             last one was being cut off mid-word. The names live in the tooltip
             and in hint mode. */}
@@ -451,7 +525,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
         </Hint>
       </div>
 
-      {workspaceRoot && !agentMode && (
+      {workspaceRoot && activeTrack === "chat" && (
         <p className="px-3 py-2 text-[length:var(--fs-xs)] leading-relaxed text-[var(--color-text-mute)]">
           {t("trackChatNote")}
         </p>

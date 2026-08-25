@@ -30,7 +30,7 @@ export function WelcomeView({
   const activeModel = useStore((s) => s.activeModel);
   const recentFolders = useStore((s) => s.recentFolders);
   const setWorkspaceRoot = useStore((s) => s.setWorkspaceRoot);
-  const setAgentMode = useStore((s) => s.setAgentMode);
+  const switchTrack = useStore((s) => s.switchTrack);
   const refreshExplorer = useStore((s) => s.refreshExplorer);
   const [keyed, setKeyed] = useState(false);
 
@@ -57,7 +57,7 @@ export function WelcomeView({
 
   const openRecent = (path: string) => {
     setWorkspaceRoot(path);
-    setAgentMode(true);
+    switchTrack("agent");
     refreshExplorer();
     activateProjectForPath(path);
     void analyzeFolderIntoMemory(path).catch(() => {});

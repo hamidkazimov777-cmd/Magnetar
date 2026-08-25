@@ -48,7 +48,7 @@ export function buildSnapshot(): MemorySnapshot {
     environment: {
       workspaceRoot: st.workspaceRoot,
       activeModel: st.activeModel,
-      agentMode: st.agentMode,
+      activeTrack: st.activeTrack,
       memoryModel: st.prefs?.memoryModel ?? null,
       indexState: st.indexState ?? null,
       connections: st.connections.map((c) => ({

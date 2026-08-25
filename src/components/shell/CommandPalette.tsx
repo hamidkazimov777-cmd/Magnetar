@@ -96,7 +96,7 @@ export function CommandPalette({
     const actions: Cmd[] = [
       { id: "new-chat", group: "cmdGroupActions", label: t("cmdNewChat"), icon: Plus, run: () => { st.newSession(); st.toggleAgentPanel(true); } },
       { id: "open-folder", group: "cmdGroupActions", label: t("cmdOpenFolder"), icon: FolderGit2, run: () => void pickWorkspaceFolder() },
-      { id: "toggle-agent", group: "cmdGroupActions", label: t("cmdToggleAgent"), icon: Bot, run: () => st.setAgentMode(!st.agentMode) },
+      { id: "toggle-agent", group: "cmdGroupActions", label: t("cmdToggleAgent"), icon: Bot, run: () => st.switchTrack(st.activeTrack === "chat" ? "agent" : st.activeTrack === "agent" ? "generation" : "chat") },
       { id: "toggle-adaptive", group: "cmdGroupActions", label: t("cmdToggleAdaptive"), icon: Sparkles, run: () => st.setAdaptive(!st.adaptive) },
       { id: "toggle-terminal", group: "cmdGroupActions", label: t("cmdToggleTerminal"), hint: "⌘J", icon: TerminalSquare, run: () => st.toggleTerminal() },
       { id: "toggle-agent-panel", group: "cmdGroupActions", label: t("cmdToggleAgentPanel"), icon: PanelRight, run: () => st.toggleAgentPanel() },

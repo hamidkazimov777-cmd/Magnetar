@@ -13,6 +13,7 @@ import {
 import { api } from "../lib/api";
 import { useStore } from "../lib/store";
 import { flushHandoffToMemory } from "../lib/memory";
+import { providerForBaseUrl } from "../lib/generation";
 import { Hint } from "./ui/Hint";
 import { useT } from "../lib/i18n";
 import type { ModelInfo } from "../lib/types";
@@ -23,6 +24,7 @@ export function ModelSwitcher() {
   const connections = useStore((s) => s.connections);
   const activeConnectionId = useStore((s) => s.activeConnectionId);
   const activeModel = useStore((s) => s.activeModel);
+  const activeTrack = useStore((s) => s.activeTrack);
   const setActiveConnection = useStore((s) => s.setActiveConnection);
   const setActiveModel = useStore((s) => s.setActiveModel);
   const cacheModels = useStore((s) => s.setModels);
@@ -53,7 +55,17 @@ export function ModelSwitcher() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [models, query, modelStatus, activeConnectionId]);
 
-  const activeConn = connections.find((c) => c.id === activeConnectionId);
+  // The generation track shows only generative connections; every other track
+  // shows only text connections. One dropdown, scoped to the track.
+  const trackConns = useMemo(
+    () =>
+      connections.filter((c) =>
+        activeTrack === "generation" ? c.kind === "generative" : c.kind !== "generative",
+      ),
+    [connections, activeTrack],
+  );
+
+  const activeConn = trackConns.find((c) => c.id === activeConnectionId);
 
   // Seed from the persisted catalog so models never appear "lost" after restart.
   const cachedModels = useStore((s) =>
@@ -79,7 +91,13 @@ export function ModelSwitcher() {
     setLoading(true);
     setError(null);
     try {
-      const list = await api.listModels(conn);
+      let list: ModelInfo[];
+      if (activeTrack === "generation") {
+        // Generative models are curated in the catalogue — no /models call.
+        list = (providerForBaseUrl(conn.baseUrl)?.models ?? []).map((id) => ({ id }));
+      } else {
+        list = await api.listModels(conn);
+      }
       setModels(list);
       cacheModels(connId, list); // cache for the adaptive router
       if (!activeModel && list[0]) setActiveModel(list[0].id);
@@ -126,10 +144,10 @@ export function ModelSwitcher() {
 
       {open && (
         <div className="anim-in absolute left-0 top-full z-30 mt-1.5 w-80 overflow-hidden rounded-[var(--r-lg)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] shadow-[var(--e-3)]">
-          {connections.length > 1 && (
+          {trackConns.length > 1 && (
             <div className="border-b border-[var(--color-border)] p-2">
               <div className="section-label pt-1">{t("connection")}</div>
-              {connections.map((c) => (
+              {trackConns.map((c) => (
                 <button
                   key={c.id}
                   onClick={() => {

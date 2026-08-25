@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { MessageSquare, Plus, Search, Trash2, Pencil, Check, X,
   Bot,
+  Sparkles,
 } from "lucide-react";
 import { useStore, NEW_CHAT_TITLE } from "../../lib/store";
 import { useT } from "../../lib/i18n";
@@ -170,6 +171,8 @@ export function ChatsPanel() {
                               and are easy to confuse in a list of titles. */}
                           {(s.track ?? "agent") === "agent" ? (
                             <Bot size={14} className="shrink-0 text-[var(--color-ai)] opacity-80" />
+                          ) : (s.track ?? "agent") === "generation" ? (
+                            <Sparkles size={14} className="shrink-0 text-[var(--color-ai)] opacity-80" />
                           ) : (
                             <MessageSquare size={14} className="shrink-0 opacity-70" />
                           )}

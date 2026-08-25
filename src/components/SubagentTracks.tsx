@@ -17,9 +17,9 @@ export function SubagentTracks() {
   const clear = useStore((s) => s.clearSubagents);
   // Helpers exist only in the agent track; showing their rows in a plain
   // conversation makes it look like something is running there.
-  const agentMode = useStore((s) => s.agentMode);
+  const isAgentTrack = useStore((s) => s.activeTrack === "agent");
   const list = Object.values(runs).sort((a, b) => a.startedAt - b.startedAt);
-  if (!list.length || !agentMode) return null;
+  if (!list.length || !isAgentTrack) return null;
 
   const done = list.filter((r) => r.status !== "running").length;
   const running = list.length - done;

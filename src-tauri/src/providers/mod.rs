@@ -44,6 +44,10 @@ pub enum ProviderKind {
     /// Native Claude API — not OpenAI-shaped (x-api-key, /v1/messages).
     Anthropic,
     Custom,
+    /// Generative provider (image/video/audio/voice). Reached through the same
+    /// OpenAI-shaped adapter — the only difference is the endpoint the caller
+    /// passes (e.g. `images/generations`) and the response shape it parses.
+    Generative,
 }
 
 /// Everything an adapter needs to reach an endpoint. The secret API key is not
@@ -210,5 +214,10 @@ pub fn build_provider(
         ProviderKind::Anthropic => Ok(Box::new(anthropic::Anthropic::new(conn.clone(), api_key))),
         // Custom/self-hosted: wired but hidden in the UI for now.
         ProviderKind::Custom => Err(ProviderError::NotImplemented),
+        // Generative providers share the OpenAI-compatible wire format; the
+        // generation command supplies the endpoint and parses the assets.
+        ProviderKind::Generative => Ok(Box::new(
+            openai_compat::OpenAiCompat::new(conn.clone(), api_key),
+        )),
     }
 }

@@ -40,7 +40,7 @@ export async function pickWorkspaceFolder(): Promise<string | undefined> {
   activateProjectForPath(selected);
   // Opening a project means the user wants the model to work on it — without
   // the agent track the model gets no tools and cannot see a single file.
-  useStore.getState().setAgentMode(true);
+  useStore.getState().switchTrack("agent");
   void analyzeFolderIntoMemory(selected).catch(() => {});
   return selected;
 }

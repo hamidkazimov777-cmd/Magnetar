@@ -52,7 +52,7 @@ export const Message = memo(function Message({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
   const trace = useStore((s) => s.agentTrace[message.id]);
-  const inChatTrack = useStore((s) => !s.agentMode);
+  const inChatTrack = useStore((s) => s.activeTrack === "chat");
 
   const copyAll = async () => {
     try {
@@ -133,9 +133,9 @@ export const Message = memo(function Message({
                   className="overflow-hidden rounded-[var(--r-md)] border border-[var(--color-border)]"
                   title={a.name}
                 >
-                  {a.type === "image" && a.data ? (
+                  {a.type === "image" && (a.data || a.path) ? (
                     <img
-                      src={`data:${a.mimeType};base64,${a.data}`}
+                      src={a.data ? `data:${a.mimeType};base64,${a.data}` : a.path}
                       alt={a.name}
                       className="max-h-44 max-w-full object-contain"
                     />
