@@ -20,6 +20,7 @@ import { useT } from "../lib/i18n";
 import { api } from "../lib/api";
 import {
   providerForBaseUrl,
+  providerFor,
   type GenerationKind,
 } from "../lib/generation";
 import { buildGenerationContext } from "../lib/memory";
@@ -38,6 +39,7 @@ import { cn } from "../lib/cn";
 interface Result {
   src: string;
   name: string;
+  kind: GenerationKind;
 }
 
 /** Sizes read better as aspect ratios in the picker — both pixel sizes (OpenAI,
@@ -60,10 +62,21 @@ function aspectLabel(size: string): string {
   return map[size] ?? size;
 }
 
+/** Keep one option per aspect-ratio label (drop 512² when 1024² already covers
+ *  1:1), preserving order. */
+function dedupeByLabel(options: string[]): string[] {
+  const seen = new Set<string>();
+  return options.filter((o) => {
+    const l = aspectLabel(o);
+    if (seen.has(l)) return false;
+    seen.add(l);
+    return true;
+  });
+}
+
 export function StudioView() {
   const t = useT();
   const connections = useStore((s) => s.connections);
-  const models = useStore((s) => s.models);
   const activeConnectionId = useStore((s) => s.activeConnectionId);
   const activeModel = useStore((s) => s.activeModel);
   const setActive = useStore((s) => s.setActive);
@@ -81,7 +94,9 @@ export function StudioView() {
   const [params, setParams] = useState<Record<string, unknown>>({});
 
   const conn = connections.find((c) => c.id === activeConnectionId);
-  const provider = conn ? providerForBaseUrl(conn.baseUrl) : undefined;
+  // The provider follows the modality tab, so one fal.ai key serves images and
+  // video from the same connection.
+  const provider = conn ? providerFor(conn.baseUrl, modality) : undefined;
   const ready = Boolean(conn && activeModel && provider?.available);
 
   // Generation connections: those pointing at an available generative provider.
@@ -89,13 +104,8 @@ export function StudioView() {
     () => connections.filter((c) => providerForBaseUrl(c.baseUrl)?.available),
     [connections],
   );
-  // Models to offer for the active connection: the provider's catalogue, plus
-  // whatever the connection reported.
-  const modelOptions = useMemo(() => {
-    const fromProvider = provider?.models ?? [];
-    const fromConn = (conn && models[conn.id]?.map((m) => m.id)) ?? [];
-    return Array.from(new Set([...fromProvider, ...fromConn]));
-  }, [provider, conn, models]);
+  // Models to offer for this modality: the provider's catalogue.
+  const modelOptions = useMemo(() => provider?.models ?? [], [provider]);
 
   // Reset the parameter values to the provider's defaults whenever the provider
   // changes, so the controls never carry stale keys from another model.
@@ -104,6 +114,16 @@ export function StudioView() {
     for (const p of provider?.params ?? []) if (p.default !== undefined) next[p.key] = p.default;
     setParams(next);
   }, [provider]);
+
+  // Keep the active model valid for the current modality: switching to Video
+  // must not leave an image model selected.
+  useEffect(() => {
+    if (!conn || !provider) return;
+    if (!activeModel || !provider.models.includes(activeModel)) {
+      setActive(conn.id, provider.models[0] ?? "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider, conn?.id]);
 
   const generate = async () => {
     const text = prompt.trim();
@@ -118,7 +138,7 @@ export function StudioView() {
       const brief = buildGenerationContext(sess);
       const full = brief ? `${brief}\n\n${text}` : text;
 
-      const res = await api.generate(conn, {
+      const req = {
         kind: provider.kind,
         model: activeModel,
         prompt: full,
@@ -128,10 +148,16 @@ export function StudioView() {
         authScheme: provider.authScheme,
         resultPath: provider.resultPath,
         modelInBody: provider.modelInPath ? false : undefined,
-      });
+      };
+      // Long jobs (video/audio) go through the polling command.
+      const res =
+        provider.strategy === "poll"
+          ? await api.generateAsync(conn, req)
+          : await api.generate(conn, req);
       const next: Result[] = res.assets.map((a, i) => ({
         src: a.url ?? (a.b64 ? `data:${a.mimeType ?? "image/png"};base64,${a.b64}` : ""),
         name: `${provider.name} · ${i + 1}`,
+        kind: provider.kind,
       }));
       if (!next.length) setError(t("genEmpty"));
       setResults((r) => [...next, ...r]);
@@ -148,6 +174,8 @@ export function StudioView() {
     { id: "video", icon: Clapperboard, label: t("studioVideo") },
     { id: "audio", icon: Music, label: t("studioAudio") },
   ];
+
+  const shown = results.filter((r) => r.kind === modality);
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-[var(--color-bg)]">
@@ -179,24 +207,29 @@ export function StudioView() {
       <div className="flex min-h-0 flex-1">
         {/* Canvas */}
         <div className="relative min-w-0 flex-1 overflow-auto">
-          {modality !== "image" ? (
+          {!provider ? (
             <Centered>
-              <div className="empty-title">
-                {t(modality === "video" ? "studioVideo" : "studioAudio")}
-              </div>
-              <p className="empty-text">{t("studioSoon")}</p>
+              <div className="empty-title">{tabs.find((x) => x.id === modality)?.label}</div>
+              <p className="empty-text">
+                {genConns.length ? t("studioSoon") : t("studioConnect")}
+              </p>
             </Centered>
-          ) : results.length > 0 ? (
+          ) : shown.length > 0 ? (
             <div className="grid grid-cols-2 gap-3 p-4 lg:grid-cols-3">
-              {results.map((r, i) => (
+              {shown.map((r, i) => (
                 <div
                   key={i}
-                  className="aspect-square overflow-hidden rounded-[var(--r-lg)] border border-[var(--color-border)] bg-[var(--color-surface)]"
+                  className={cn(
+                    "overflow-hidden rounded-[var(--r-lg)] border border-[var(--color-border)] bg-[var(--color-surface)]",
+                    r.kind === "image" && "aspect-square",
+                  )}
                 >
-                  {r.src ? (
-                    <img src={r.src} alt={r.name} className="h-full w-full object-cover" />
+                  {r.kind === "video" ? (
+                    <video src={r.src} controls className="h-full w-full" />
+                  ) : r.kind === "audio" ? (
+                    <audio src={r.src} controls className="w-full p-3" />
                   ) : (
-                    <div className="empty-text p-6">{t("genEmpty")}</div>
+                    <img src={r.src} alt={r.name} className="h-full w-full object-cover" />
                   )}
                 </div>
               ))}
@@ -232,7 +265,7 @@ export function StudioView() {
                 }}
                 rows={1}
                 placeholder={t("studioPromptPlaceholder")}
-                disabled={!ready || busy || modality !== "image"}
+                disabled={!ready || busy}
                 className="max-h-32 min-h-[32px] flex-1 resize-none bg-transparent py-1.5 text-[length:var(--fs-base)] outline-none placeholder:text-[var(--color-text-mute)]"
               />
               <button
@@ -243,7 +276,7 @@ export function StudioView() {
                     : "bg-[var(--color-surface-3)] text-[var(--color-text-mute)]",
                 )}
                 onClick={() => void generate()}
-                disabled={!prompt.trim() || !ready || busy || modality !== "image"}
+                disabled={!prompt.trim() || !ready || busy}
                 title={t("sendMessage")}
               >
                 {busy ? <Loader2 size={15} className="animate-spin" /> : <ArrowUp size={15} />}
@@ -253,14 +286,17 @@ export function StudioView() {
         </div>
 
         {/* Settings column */}
-        {modality === "image" && (
+        {provider && (
           <aside className="w-[210px] shrink-0 overflow-auto border-l border-[var(--color-border)] bg-[var(--color-surface)] p-3">
             <Section icon={Cpu} title={t("studioModel")}>
               {genConns.length > 1 && (
                 <StudioSelect
                   value={conn?.id ?? ""}
                   onChange={(id) => {
-                    const p = providerForBaseUrl(connections.find((c) => c.id === id)?.baseUrl ?? "");
+                    const p = providerFor(
+                      connections.find((c) => c.id === id)?.baseUrl ?? "",
+                      modality,
+                    );
                     setActive(id, p?.models[0] ?? "");
                   }}
                   options={genConns.map((c) => ({ value: c.id, label: c.name }))}
@@ -276,9 +312,12 @@ export function StudioView() {
 
             {(provider?.params ?? []).map((p) => (
               <Section key={p.key} icon={SlidersHorizontal} title={t(p.label)}>
-                {p.type === "select" && p.key === "size" ? (
+                {p.type === "select" &&
+                ["size", "image_size", "aspect_ratio"].includes(p.key) ? (
                   <div className="flex flex-wrap gap-1.5">
-                    {(p.options ?? []).map((opt) => (
+                    {/* One chip per aspect ratio — several raw sizes can share a
+                        ratio (1024² and 512² are both 1:1). */}
+                    {dedupeByLabel(p.options ?? []).map((opt) => (
                       <button
                         key={opt}
                         className="toggle-pill h-7 px-2.5 text-[length:var(--fs-xs)]"

@@ -164,6 +164,37 @@ export const GEN_PROVIDERS: GenerationProvider[] = [
     ],
   },
 
+  {
+    id: "fal-video",
+    name: "fal.ai",
+    kind: "video",
+    available: true,
+    baseUrl: "https://fal.run",
+    authType: "bearer",
+    authScheme: "key",
+    modelInPath: true,
+    endpoint: "",
+    method: "POST",
+    strategy: "poll",
+    responseFormat: null,
+    resultPath: "video",
+    models: [
+      "fal-ai/veo3",
+      "fal-ai/kling-video/v2/master/text-to-video",
+      "fal-ai/bytedance/seedance/v1/pro/text-to-video",
+      "fal-ai/minimax/hailuo-02/standard/text-to-video",
+    ],
+    params: [
+      {
+        key: "aspect_ratio",
+        label: "genParamSize",
+        type: "select",
+        options: ["16:9", "9:16", "1:1"],
+        default: "16:9",
+      },
+    ],
+  },
+
   // ---- coming soon (listed for discovery, no live calls) ----
   { id: "midjourney", name: "Midjourney", kind: "image", available: false, baseUrl: "", authType: "bearer", endpoint: "", method: "POST", models: [], params: [] },
   { id: "ideogram", name: "Ideogram", kind: "image", available: false, baseUrl: "", authType: "bearer", endpoint: "", method: "POST", models: [], params: [] },
@@ -180,11 +211,25 @@ export const GEN_PROVIDERS: GenerationProvider[] = [
 ];
 
 export const GEN_BY_ID = new Map(GEN_PROVIDERS.map((p) => [p.id, p]));
-export const GEN_BY_BASE_URL = new Map(GEN_PROVIDERS.map((p) => [p.baseUrl, p]));
 
-/** Resolve the catalog entry a generative connection points at. Generation
- *  connections are regular `Connection`s with a fixed baseUrl, so baseUrl is
- *  the stable join key. */
+const norm = (u: string) => u.trim().replace(/\/+$/, "");
+
+/** Any available catalog entry for a connection's baseUrl — used to tell a
+ *  generation connection from a text one. One aggregator (fal.ai) serves several
+ *  modalities under one baseUrl, so this returns the first available match. */
 export function providerForBaseUrl(baseUrl: string): GenerationProvider | undefined {
-  return GEN_BY_BASE_URL.get(baseUrl.trim().replace(/\/+$/, ""));
+  const b = norm(baseUrl);
+  return GEN_PROVIDERS.find((p) => p.available && norm(p.baseUrl) === b);
+}
+
+/** The provider for a specific modality on a connection — the studio picks this
+ *  by (baseUrl, modality) so one fal.ai key covers image and video. */
+export function providerFor(
+  baseUrl: string,
+  kind: GenerationKind,
+): GenerationProvider | undefined {
+  const b = norm(baseUrl);
+  return GEN_PROVIDERS.find(
+    (p) => p.available && p.kind === kind && norm(p.baseUrl) === b,
+  );
 }

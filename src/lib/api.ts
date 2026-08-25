@@ -70,6 +70,18 @@ export const api = {
       modelInBody: req.modelInBody ?? null,
     }),
 
+  /** Long-running generation (video/audio) via fal.ai's queue: submit, poll,
+   *  fetch. Resolves when the job finishes. */
+  generateAsync: (connection: Connection, req: GenerationRequest) =>
+    invoke<GenerationResult>("generate_async", {
+      connection: toRustConn(connection),
+      kind: req.kind,
+      model: req.model,
+      prompt: req.prompt,
+      params: req.params,
+      resultPath: req.resultPath ?? null,
+    }),
+
   /** Single-shot non-streaming completion (router / summarizer). */
   complete: (
     connection: Connection,

@@ -36,6 +36,7 @@ pub fn run() {
             commands::list_models,
             commands::complete,
             commands::generate,
+            commands::generate_async,
             commands::chat_stream,
             commands::cancel_stream,
             commands::list_sessions,

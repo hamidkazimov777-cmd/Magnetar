@@ -350,6 +350,134 @@ pub async fn generate(
     Ok(GenerationResult { kind, assets })
 }
 
+/// Pull produced assets out of a response JSON. Handles the shapes providers
+/// actually return: an array at `result_path` (images/data), or a single media
+/// object with a `url` (fal.ai video/audio return `{ "video": { "url": … } }`).
+fn extract_assets(v: &serde_json::Value, result_path: &str) -> Vec<GenerationAsset> {
+    let asset_from = |item: &serde_json::Value| -> Option<GenerationAsset> {
+        let url = item.get("url").and_then(|x| x.as_str()).map(String::from);
+        let b64 = item
+            .get("b64_json")
+            .and_then(|x| x.as_str())
+            .map(String::from);
+        let mime_type = item
+            .get("content_type")
+            .or_else(|| item.get("mime_type"))
+            .and_then(|x| x.as_str())
+            .map(String::from);
+        if url.is_none() && b64.is_none() {
+            return None;
+        }
+        Some(GenerationAsset { url, b64, mime_type })
+    };
+
+    // Try, in order: the named path (array or single object), then the common
+    // fallbacks.
+    for key in [result_path, "images", "data", "video", "audio", "image"] {
+        if let Some(node) = v.get(key) {
+            if let Some(arr) = node.as_array() {
+                let out: Vec<_> = arr.iter().filter_map(asset_from).collect();
+                if !out.is_empty() {
+                    return out;
+                }
+            } else if let Some(a) = asset_from(node) {
+                return vec![a];
+            }
+        }
+    }
+    Vec::new()
+}
+
+/// Long-running generation (video / audio) via fal.ai's queue: submit the job,
+/// poll its status until it completes, then fetch the result. Blocking on the
+/// Rust async side, so the UI thread is never held.
+#[tauri::command]
+pub async fn generate_async(
+    connection: Connection,
+    kind: String,
+    model: String,
+    prompt: String,
+    params: Option<serde_json::Value>,
+    result_path: Option<String>,
+) -> Result<GenerationResult, String> {
+    let key = resolve_key(&connection).await?;
+    let auth = format!("Key {key}");
+    // fal.ai's synchronous host is fal.run; its queue is queue.fal.run.
+    let base = connection.base_url.replace("fal.run", "queue.fal.run");
+    let submit_url = format!("{}/{}", base.trim_end_matches('/'), model);
+
+    let mut body = serde_json::json!({ "prompt": prompt });
+    if let Some(serde_json::Value::Object(map)) = params {
+        for (k, v) in map {
+            body[k] = v;
+        }
+    }
+
+    let client = reqwest::Client::new();
+    let sub: serde_json::Value = client
+        .post(&submit_url)
+        .header("Authorization", &auth)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("network error: {e}"))?
+        .error_for_status()
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let status_url = sub
+        .get("status_url")
+        .and_then(|x| x.as_str())
+        .ok_or("no status_url in submit response")?
+        .to_string();
+    let response_url = sub
+        .get("response_url")
+        .and_then(|x| x.as_str())
+        .ok_or("no response_url in submit response")?
+        .to_string();
+
+    // Poll up to ~5 minutes; video can genuinely take that long.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(300);
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        if std::time::Instant::now() > deadline {
+            return Err("generation timed out".to_string());
+        }
+        let st: serde_json::Value = client
+            .get(&status_url)
+            .header("Authorization", &auth)
+            .send()
+            .await
+            .map_err(|e| format!("network error: {e}"))?
+            .json()
+            .await
+            .map_err(|e| e.to_string())?;
+        match st.get("status").and_then(|x| x.as_str()) {
+            Some("COMPLETED") => break,
+            Some("IN_QUEUE") | Some("IN_PROGRESS") | None => continue,
+            Some(other) => return Err(format!("generation {other}")),
+        }
+    }
+
+    let result: serde_json::Value = client
+        .get(&response_url)
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .map_err(|e| format!("network error: {e}"))?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let assets = extract_assets(&result, result_path.as_deref().unwrap_or("video"));
+    if assets.is_empty() {
+        return Err("provider returned no assets".to_string());
+    }
+    Ok(GenerationResult { kind, assets })
+}
+
 #[tauri::command]
 pub async fn agent_step(
     connection: Connection,
