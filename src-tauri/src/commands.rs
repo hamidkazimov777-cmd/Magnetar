@@ -223,22 +223,29 @@ pub fn has_api_key(connection_id: String) -> Result<bool, String> {
 
 // ---- Provider calls --------------------------------------------------------
 
-fn resolve_key(conn: &Connection) -> Result<String, String> {
-    keychain::get_key(&conn.id)?
-        .filter(|k| !k.is_empty())
-        .ok_or_else(|| "No API key saved for this connection".to_string())
+/// Resolve the saved API key off the main thread: `get_key` does file I/O and,
+/// on first sight, a one-time Keychain read — blocking work that must not run
+/// inside an async command on the runtime's worker.
+async fn resolve_key(conn: &Connection) -> Result<String, String> {
+    let id = conn.id.clone();
+    blocking(move || {
+        keychain::get_key(&id)?
+            .filter(|k| !k.is_empty())
+            .ok_or_else(|| "No API key saved for this connection".to_string())
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn list_models(connection: Connection) -> Result<Vec<ModelInfo>, String> {
-    let key = resolve_key(&connection)?;
+    let key = resolve_key(&connection).await?;
     let provider = build_provider(&connection, key).map_err(|e| e.to_string())?;
     provider.list_models().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn complete(connection: Connection, params: ChatParams) -> Result<String, String> {
-    let key = resolve_key(&connection)?;
+    let key = resolve_key(&connection).await?;
     let provider = build_provider(&connection, key).map_err(|e| e.to_string())?;
     provider.complete(params).await.map_err(|e| e.to_string())
 }
@@ -272,7 +279,7 @@ pub async fn generate(
     endpoint: String,
     params: Option<serde_json::Value>,
 ) -> Result<GenerationResult, String> {
-    let key = resolve_key(&connection)?;
+    let key = resolve_key(&connection).await?;
     let url = connection.endpoint(&endpoint);
 
     let mut body = serde_json::json!({
@@ -338,7 +345,7 @@ pub async fn agent_step(
     messages: Vec<serde_json::Value>,
     tools: Vec<ToolDef>,
 ) -> Result<AgentStep, String> {
-    let key = resolve_key(&connection)?;
+    let key = resolve_key(&connection).await?;
     let provider = build_provider(&connection, key).map_err(|e| e.to_string())?;
     provider
         .agent_step(model, messages, tools)
@@ -357,7 +364,7 @@ pub async fn agent_step_stream(
     request_id: String,
     on_event: Channel<StreamEvent>,
 ) -> Result<AgentStep, String> {
-    let key = resolve_key(&connection)?;
+    let key = resolve_key(&connection).await?;
     let provider = build_provider(&connection, key).map_err(|e| e.to_string())?;
 
     let cancel = Arc::new(AtomicBool::new(false));
@@ -522,7 +529,7 @@ pub async fn chat_stream(
     request_id: String,
     on_event: Channel<StreamEvent>,
 ) -> Result<(), String> {
-    let key = resolve_key(&connection)?;
+    let key = resolve_key(&connection).await?;
     let provider = build_provider(&connection, key).map_err(|e| e.to_string())?;
 
     let cancel = Arc::new(AtomicBool::new(false));
