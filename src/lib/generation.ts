@@ -233,3 +233,17 @@ export function providerFor(
     (p) => p.available && p.kind === kind && norm(p.baseUrl) === b,
   );
 }
+
+/** Provider chips for Settings — one per available baseUrl (fal.ai serves
+ *  several modalities under one key, so it must appear once), followed by the
+ *  "coming soon" entries. */
+export const GEN_PROVIDER_CHIPS: GenerationProvider[] = (() => {
+  const seen = new Set<string>();
+  return GEN_PROVIDERS.filter((p) => {
+    if (!p.available) return true;
+    const b = norm(p.baseUrl);
+    if (seen.has(b)) return false;
+    seen.add(b);
+    return true;
+  });
+})();

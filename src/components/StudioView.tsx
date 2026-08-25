@@ -115,15 +115,24 @@ export function StudioView() {
     setParams(next);
   }, [provider]);
 
-  // Keep the active model valid for the current modality: switching to Video
-  // must not leave an image model selected.
+  // Keep the studio pointed at a generative connection with a valid model for
+  // the current modality. This heals two cases: on restart the active
+  // connection is often a text one (models looked "gone"), and switching to
+  // Video must not leave an image model selected.
   useEffect(() => {
-    if (!conn || !provider) return;
-    if (!activeModel || !provider.models.includes(activeModel)) {
-      setActive(conn.id, provider.models[0] ?? "");
-    }
+    if (!genConns.length) return;
+    const target =
+      conn && providerFor(conn.baseUrl, modality)
+        ? conn
+        : (genConns.find((x) => providerFor(x.baseUrl, modality)) ?? genConns[0]);
+    const p = providerFor(target.baseUrl, modality);
+    const needFix =
+      target.id !== activeConnectionId ||
+      !activeModel ||
+      !(p?.models.includes(activeModel) ?? false);
+    if (needFix) setActive(target.id, p?.models[0] ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider, conn?.id]);
+  }, [genConns, conn?.id, modality]);
 
   const generate = async () => {
     const text = prompt.trim();
@@ -419,7 +428,7 @@ function StudioSelect({
         <ChevronDown size={13} className="shrink-0 text-[var(--color-text-mute)]" />
       </button>
       {open && (
-        <div className="anim-in absolute inset-x-0 top-full z-30 mt-1 max-h-64 overflow-auto rounded-[var(--r-md)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-1 shadow-[var(--e-3)]">
+        <div className="anim-in absolute right-0 top-full z-30 mt-1 max-h-64 w-max min-w-full max-w-[340px] overflow-auto rounded-[var(--r-md)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-1 shadow-[var(--e-3)]">
           {options.length === 0 && (
             <div className="px-2 py-1.5 text-[length:var(--fs-xs)] text-[var(--color-text-mute)]">
               {placeholder ?? "—"}
@@ -432,11 +441,13 @@ function StudioSelect({
                 onChange(o.value);
                 setOpen(false);
               }}
-              className="flex w-full items-center gap-2 rounded-[var(--r-sm)] px-2 py-1.5 text-left text-[length:var(--fs-sm)] hover:bg-[var(--color-surface-2)]"
+              className="flex w-full items-start gap-2 rounded-[var(--r-sm)] px-2 py-1.5 text-left text-[length:var(--fs-sm)] hover:bg-[var(--color-surface-2)]"
             >
-              <span className="min-w-0 flex-1 truncate">{o.label}</span>
+              {/* Full name — fal ids like …/kling-video/v2/master must be
+                  readable to tell v2.0 from v2.5. */}
+              <span className="min-w-0 flex-1 break-all">{o.label}</span>
               {o.value === value && (
-                <Check size={12} className="shrink-0 text-[var(--color-ai)]" />
+                <Check size={12} className="mt-0.5 shrink-0 text-[var(--color-ai)]" />
               )}
             </button>
           ))}

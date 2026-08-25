@@ -9,7 +9,7 @@ import {
   OPENAI_COMPAT_PRESETS,
   type ProviderKind,
 } from "../lib/types";
-import { GEN_PROVIDERS, GEN_BY_ID, providerForBaseUrl } from "../lib/generation";
+import { GEN_PROVIDERS, GEN_PROVIDER_CHIPS, GEN_BY_ID, providerForBaseUrl } from "../lib/generation";
 import { useT, LANGS } from "../lib/i18n";
 import { cn } from "../lib/cn";
 import { SelfTest } from "./SelfTest";
@@ -557,7 +557,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
 
               {/* Generative providers, all from the shared catalogue. */}
               <div className="flex flex-wrap gap-1.5">
-                {GEN_PROVIDERS.map((p) => (
+                {GEN_PROVIDER_CHIPS.map((p) => (
                   <button
                     key={p.id}
                     disabled={!p.available}
