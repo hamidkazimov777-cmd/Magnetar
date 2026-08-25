@@ -11,6 +11,7 @@
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
+use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::Mutex;
 use tauri::ipc::Channel;
@@ -68,16 +69,45 @@ fn read_message<R: BufRead>(reader: &mut R) -> Option<String> {
     Some(String::from_utf8_lossy(&body).into_owned())
 }
 
-/// Find an executable by name on `PATH`. Returns the first match so the
-/// frontend can tell "installed" from "not installed" before trying to spawn.
+/// Where to look for server binaries: everything on `PATH`, then the standard
+/// toolchain locations.
+///
+/// A macOS app launched from Finder or `open` inherits launchd's minimal PATH
+/// (`/usr/bin:/bin:/usr/sbin:/sbin`), not the login shell's — so a server put
+/// there by rustup, Homebrew, pipx or go is invisible unless we look where it
+/// actually lives. We use this list both to find a server and to build the
+/// child's own PATH, so the server can in turn find its toolchain (rust-analyzer
+/// shells out to cargo).
+fn search_dirs() -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if let Some(path) = std::env::var_os("PATH") {
+        dirs.extend(std::env::split_paths(&path));
+    }
+    for e in ["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin"] {
+        dirs.push(PathBuf::from(e));
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = PathBuf::from(home);
+        for sub in [".cargo/bin", ".local/bin", "go/bin"] {
+            dirs.push(home.join(sub));
+        }
+    }
+    // Dedup, keeping first occurrence so real PATH order still wins.
+    let mut seen = std::collections::HashSet::new();
+    dirs.retain(|d| seen.insert(d.clone()));
+    dirs
+}
+
+/// Find an executable by name, searching PATH plus the toolchain locations.
+/// Returns the first match so the frontend can tell "installed" from "not
+/// installed" before trying to spawn.
 pub fn which(bin: &str) -> Option<String> {
-    // A path with a separator is not a PATH lookup — take it as given.
+    // A path with a separator is not a lookup — take it as given.
     if bin.contains('/') {
         let p = std::path::Path::new(bin);
         return p.is_file().then(|| bin.to_string());
     }
-    let path = std::env::var_os("PATH")?;
-    for dir in std::env::split_paths(&path) {
+    for dir in search_dirs() {
         let cand = dir.join(bin);
         if cand.is_file() {
             return Some(cand.to_string_lossy().into_owned());
@@ -101,6 +131,12 @@ pub fn spawn(
         .stderr(Stdio::piped());
     if let Some(dir) = cwd.filter(|d| !d.is_empty()) {
         command.current_dir(dir);
+    }
+    // Give the server the same augmented PATH we found it on, so it can locate
+    // its own toolchain (rust-analyzer → cargo/rustc) even under launchd's
+    // minimal PATH.
+    if let Ok(path) = std::env::join_paths(search_dirs()) {
+        command.env("PATH", path);
     }
 
     let mut child = command
@@ -225,5 +261,18 @@ mod tests {
         // `sh` is on PATH on every unix host the app runs on.
         assert!(which("sh").is_some());
         assert!(which("magnetar-no-such-binary-xyz").is_none());
+    }
+
+    #[test]
+    fn search_dirs_include_toolchain_locations() {
+        // A GUI app gets launchd's minimal PATH, so we must also look where
+        // rustup/Homebrew/pipx put things — otherwise an installed server is
+        // invisible. ~/.cargo/bin is where rust-analyzer lives.
+        let dirs = search_dirs();
+        if let Some(home) = std::env::var_os("HOME") {
+            let cargo = std::path::PathBuf::from(home).join(".cargo/bin");
+            assert!(dirs.contains(&cargo), "search dirs must include ~/.cargo/bin");
+        }
+        assert!(dirs.contains(&std::path::PathBuf::from("/opt/homebrew/bin")));
     }
 }
