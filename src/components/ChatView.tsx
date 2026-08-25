@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Sparkles,
+  Clapperboard,
   ArrowUpRight,
   Bot,
   TriangleAlert,
@@ -500,7 +501,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
               onClick={() => switchTrack("generation")}
               title={t("trackGenerationHint")}
             >
-              <Sparkles size={13} />
+              <Clapperboard size={13} />
               {t("trackGeneration")}
             </button>
           </div>
