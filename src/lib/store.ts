@@ -345,6 +345,11 @@ interface State {
   lastError?: { message: string; sessionId: string };
   setLastError: (e: { message: string; sessionId: string } | undefined) => void;
 
+  /** Startup failure: saved data could not be read. Shown once as a dismissible
+   *  banner; the app still starts empty instead of blocking. */
+  startupError?: string;
+  setStartupError: (msg: string | undefined) => void;
+
   /** Per-model health learned from real calls: models a token cannot use are
    *  marked so the picker can warn instead of failing again. */
   modelStatus: Record<string, "ok" | "denied">;
@@ -567,8 +572,8 @@ export const useStore = create<State>()(
               hydrated: true,
             };
           });
-        } catch {
-          set({ hydrated: true });
+        } catch (e) {
+          set({ hydrated: true, startupError: String(e) });
         }
       },
 
@@ -1215,6 +1220,8 @@ export const useStore = create<State>()(
         }),
 
       setLastError: (e) => set({ lastError: e }),
+
+      setStartupError: (msg) => set({ startupError: msg }),
 
       modelStatus: {},
       modelTools: {},

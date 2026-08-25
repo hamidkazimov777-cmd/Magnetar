@@ -17,6 +17,7 @@ type Dict = Record<string, string>;
 const ru: Dict = {
   // --- Brand ---------------------------------------------------------------
   appTagline: "Твой командный центр ИИ",
+  startupErrorTitle: "Не удалось загрузить сохранённые данные",
 
   // --- Generic verbs / shared labels --------------------------------------
   cancel: "Отмена",
@@ -636,6 +637,7 @@ const ru: Dict = {
    ========================================================================== */
 const en: Dict = {
   appTagline: "Your AI command center",
+  startupErrorTitle: "Couldn't load saved data",
 
   cancel: "Cancel",
   close: "Close",
@@ -1223,6 +1225,7 @@ const en: Dict = {
    ========================================================================== */
 const es: Dict = {
   appTagline: "Tu centro de mando de IA",
+  startupErrorTitle: "No se pudieron cargar los datos guardados",
 
   cancel: "Cancelar",
   close: "Cerrar",
