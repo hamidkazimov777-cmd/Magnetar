@@ -26,7 +26,7 @@ export async function buildOutgoing(
   let sendFrom = 0;
   const parts: string[] = [BASE_SYSTEM];
 
-  if (session.projectId) {
+  if (session.seesProject !== false && session.projectId) {
     const p = useStore.getState().projects.find((x) => x.id === session.projectId);
     if (p) {
       parts.push(`\n## Project Context: ${p.name}`);

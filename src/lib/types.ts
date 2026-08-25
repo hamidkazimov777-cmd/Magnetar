@@ -98,6 +98,9 @@ export interface Session {
    *  its own model, so switching tracks switches models with nothing to
    *  remember. */
   track?: Track;
+  /** Whether this conversation sees the project (memory, workspace root,
+   *  facts, decisions). Defaults to `true`; each chat keeps its own choice. */
+  seesProject?: boolean;
   projectId?: string;
   createdAt: number;
   updatedAt: number;

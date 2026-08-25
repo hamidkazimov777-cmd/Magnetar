@@ -428,6 +428,18 @@ export function buildProjectMemory(
   query = "",
 ): string {
   const st = useStore.getState();
+
+  // A "no project" conversation acts like a plain ChatGPT: the user explicitly
+  // hid the project, so send no memory, no root, no facts. Keep a one-line
+  // notice so an agent with tools does not go hunting for a project on disk.
+  if (session?.seesProject === false) {
+    return (
+      `\n## Project context hidden\n` +
+      `The user chose to hide the project for this conversation. Do not read project memory, ` +
+      `list the workspace, or scan the filesystem; answer as a general assistant from the message alone.`
+    );
+  }
+
   const parts: string[] = [];
 
   // The open folder must reach the agent even when the project brain is empty —

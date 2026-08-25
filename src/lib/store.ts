@@ -110,6 +110,7 @@ function metaOf(s: Session): SessionMetaRow {
     summaryUpToId: s.summaryUpToId ?? null,
     projectId: s.projectId ?? null,
     track: s.track ?? null,
+    seesProject: s.seesProject ?? null,
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
   };
@@ -130,6 +131,9 @@ interface State {
   activeTrack: Track;
   /** Move to a track, adopting (or starting) that track's conversation. */
   switchTrack: (track: Track) => void;
+  /** Toggle whether the active conversation sees the project (memory, root,
+   *  facts, decisions). Per-session — each chat keeps its own choice. */
+  toggleProjectContext: () => void;
   workspaceRoot?: string;
   setWorkspaceRoot: (path: string | undefined) => void;
   /** Most-recently opened folders, newest first (for the welcome screen). */
@@ -535,6 +539,8 @@ export const useStore = create<State>()(
                 // Conversations that predate tracks are agent chats: that is
                 // all Magnetar had, and every one of them was tool-enabled.
                 track: (m.track as Session["track"]) ?? "agent",
+                // Pre-flag chats keep seeing the project (old behaviour).
+                seesProject: m.seesProject ?? true,
                 createdAt: m.createdAt,
                 updatedAt: m.updatedAt,
                 messages: rows.map((r) => ({
@@ -926,6 +932,21 @@ export const useStore = create<State>()(
           return;
         }
         get().newSession(track);
+      },
+
+      toggleProjectContext: () => {
+        const st = get();
+        const sess = st.sessions.find((x) => x.id === st.activeSessionId);
+        if (!sess) return;
+        const next = {
+          ...sess,
+          seesProject: !(sess.seesProject ?? true),
+          updatedAt: now(),
+        };
+        set((s) => ({
+          sessions: s.sessions.map((x) => (x.id === next.id ? next : x)),
+        }));
+        persistMeta(next);
       },
 
       deleteSession: (id) => {

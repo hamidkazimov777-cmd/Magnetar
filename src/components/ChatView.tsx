@@ -9,6 +9,7 @@ import {
   PanelRightClose,
   MessagesSquare,
   Eye,
+  EyeOff,
   Loader2,
   Square,
   FolderPlus,
@@ -52,6 +53,10 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
   const setAdaptive = useStore((s) => s.setAdaptive);
   const activeTrack = useStore((s) => s.activeTrack);
   const switchTrack = useStore((s) => s.switchTrack);
+  const toggleProjectContext = useStore((s) => s.toggleProjectContext);
+  const seesProject = useStore(
+    (s) => s.sessions.find((x) => x.id === s.activeSessionId)?.seesProject ?? true,
+  );
   const activeConnectionId = useStore((s) => s.activeConnectionId);
   const activeModel = useStore((s) => s.activeModel);
   const activeSessionId = useStore((s) => s.activeSessionId);
@@ -522,6 +527,17 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
             aria-label={t("adaptive")}
           >
             <Sparkles size={13} />
+          </button>
+        </Hint>
+        <Hint text={t("hintSeesProject")} side="bottom">
+          <button
+            className="toggle-pill shrink-0 px-2"
+            data-on={seesProject}
+            onClick={toggleProjectContext}
+            title={seesProject ? t("seesProject") : t("hidesProject")}
+            aria-label={seesProject ? t("seesProject") : t("hidesProject")}
+          >
+            {seesProject ? <Eye size={13} /> : <EyeOff size={13} />}
           </button>
         </Hint>
       </div>

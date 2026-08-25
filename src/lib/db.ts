@@ -10,6 +10,7 @@ export interface SessionMetaRow {
   summaryUpToId: string | null;
   projectId: string | null;
   track: string | null;
+  seesProject: boolean | null;
   createdAt: number;
   updatedAt: number;
 }
