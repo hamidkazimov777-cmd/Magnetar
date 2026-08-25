@@ -5,6 +5,7 @@ import { api } from "../../lib/api";
 import { useStore, type EditorTab } from "../../lib/store";
 import { syncCheckMarkers } from "../../lib/markers";
 import * as lsp from "../../lib/lspManager";
+import { registerLspProviders } from "../../lib/lspEditor";
 import { useT } from "../../lib/i18n";
 import { cn } from "../../lib/cn";
 import { EmptyState } from "../ui/EmptyState";
@@ -140,6 +141,8 @@ export function EditorArea() {
       monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyS,
       () => void save(),
     );
+    // Wire language-server features (hover, …) to the editor. Idempotent.
+    registerLspProviders(monacoInstance);
   };
 
   // Errors from the project's own checks belong under the code, not only in a

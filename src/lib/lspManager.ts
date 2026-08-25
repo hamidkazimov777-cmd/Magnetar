@@ -54,13 +54,28 @@ const uid = () =>
   (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)) as string;
 
 /** Absolute path → file URI, percent-encoding each segment but keeping slashes. */
-function pathToUri(p: string): string {
+export function pathToUri(p: string): string {
   return "file://" + p.split("/").map(encodeURIComponent).join("/");
 }
 
 function configFor(path: string): ServerConfig | undefined {
   const lang = languageForPath(path);
   return lang ? SERVERS[lang] : undefined;
+}
+
+/** The ready client serving a path's language, or null if there is none.
+ *  Editor features (hover, definition) ask through this. */
+export function clientForPath(path: string): LspClient | null {
+  const config = configFor(path);
+  if (!config) return null;
+  const server = servers.get(config.languageId);
+  return server ? server.client : null;
+}
+
+/** The Monaco languages that have a server configured, for provider
+ *  registration. */
+export function supportedLanguages(): string[] {
+  return Object.keys(SERVERS);
 }
 
 /** Get (or start) the server for a language, or null if its binary is missing.
