@@ -301,6 +301,10 @@ export function EditorArea() {
               renderLineHighlight: "all",
               scrollBeyondLastLine: false,
               automaticLayout: true,
+              // Render hover/suggestion/context-menu widgets over the whole
+              // window instead of clipping them to the editor — otherwise a
+              // narrow editor (wide chat panel) cuts the hover tooltip in half.
+              fixedOverflowWidgets: true,
               padding: { top: 12, bottom: 12 },
               bracketPairColorization: { enabled: true },
               guides: { indentation: true, bracketPairs: true },
