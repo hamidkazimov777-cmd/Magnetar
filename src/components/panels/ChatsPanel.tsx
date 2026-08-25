@@ -6,6 +6,7 @@ import { MessageSquare, Plus, Search, Trash2, Pencil, Check, X,
 import { useStore, NEW_CHAT_TITLE } from "../../lib/store";
 import { useT } from "../../lib/i18n";
 import { EmptyState } from "../ui/EmptyState";
+import { ListSkeleton } from "../ui/Skeleton";
 import type { Session } from "../../lib/types";
 
 const DAY = 86_400_000;
@@ -36,6 +37,7 @@ function groupSessions(sessions: Session[]) {
 export function ChatsPanel() {
   const t = useT();
   const sessions = useStore((s) => s.sessions);
+  const hydrated = useStore((s) => s.hydrated);
   const activeSessionId = useStore((s) => s.activeSessionId);
   const newSession = useStore((s) => s.newSession);
   const selectSession = useStore((s) => s.selectSession);
@@ -112,7 +114,9 @@ export function ChatsPanel() {
       )}
 
       <div className="min-h-0 flex-1 overflow-auto px-2 pb-2">
-        {sessions.length === 0 ? (
+        {!hydrated && sessions.length === 0 ? (
+          <ListSkeleton rows={7} />
+        ) : sessions.length === 0 ? (
           <EmptyState
             icon={MessageSquare}
             title={t("noChats")}

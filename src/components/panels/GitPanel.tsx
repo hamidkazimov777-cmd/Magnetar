@@ -18,6 +18,7 @@ import { useStore } from "../../lib/store";
 import { useT } from "../../lib/i18n";
 import { cn } from "../../lib/cn";
 import { EmptyState } from "../ui/EmptyState";
+import { ListSkeleton } from "../ui/Skeleton";
 import { pickWorkspaceFolder } from "./ExplorerPanel";
 
 interface Entry {
@@ -42,6 +43,7 @@ export function GitPanel() {
   const [msg, setMsg] = useState("");
   const [notRepo, setNotRepo] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -95,6 +97,7 @@ export function GitPanel() {
       setError(String(e));
     } finally {
       setBusy(false);
+      setLoaded(true);
     }
   }, [root]);
 
@@ -231,6 +234,10 @@ export function GitPanel() {
           <div className="alert my-2 text-[length:var(--fs-xs)]">{error}</div>
         )}
 
+        {!loaded ? (
+          <ListSkeleton rows={6} />
+        ) : (
+          <>
         <Group title={t("gitStaged")} count={staged.length}>
           {staged.map((e) => (
             <Row
@@ -299,6 +306,8 @@ export function GitPanel() {
                 {l}
               </div>
             ))}
+          </>
+        )}
           </>
         )}
       </div>
