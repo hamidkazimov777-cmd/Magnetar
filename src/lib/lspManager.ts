@@ -49,6 +49,11 @@ const versions = new Map<string, number>();
 const open = new Set<string>();
 /** Debounce timers per path, so a burst of keystrokes is one didChange. */
 const changeTimers = new Map<string, ReturnType<typeof setTimeout>>();
+/** How many times a language's server has been auto-restarted since it last
+ *  came up cleanly — a loop guard so a server that crashes on start does not
+ *  respawn forever. Reset on a successful initialize. */
+const restartCounts = new Map<string, number>();
+const MAX_RESTARTS = 3;
 
 const uid = () =>
   (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)) as string;
@@ -187,11 +192,21 @@ async function ensureServer(config: ServerConfig): Promise<Server | null> {
       void applyDiagnostics(p.uri, p.diagnostics ?? []);
     });
 
-    // A crashed or stopped server clears its slot so the next open respawns it.
+    // A crashed or stopped server clears its slot; if documents are still open,
+    // restart it (with backoff and a loop cap) and reopen them so features
+    // recover without the user reopening files.
     client.onExit = () => {
-      if (servers.get(config.languageId) === entry) {
-        servers.delete(config.languageId);
-        for (const p of [...open]) if (configFor(p) === config) open.delete(p);
+      if (servers.get(config.languageId) !== entry) return;
+      servers.delete(config.languageId);
+      const affected = [...open].filter((p) => configFor(p) === config);
+      for (const p of affected) {
+        open.delete(p);
+        versions.delete(p);
+      }
+      const count = (restartCounts.get(config.languageId) ?? 0) + 1;
+      if (affected.length && count <= MAX_RESTARTS) {
+        restartCounts.set(config.languageId, count);
+        setTimeout(() => void restart(affected), 1000 * count);
       }
     };
 
@@ -209,6 +224,8 @@ async function ensureServer(config: ServerConfig): Promise<Server | null> {
       },
     });
     client.notify("initialized", {});
+    // A clean start clears the restart loop guard.
+    restartCounts.delete(config.languageId);
     resolveReady();
     return entry;
   } catch {
@@ -265,6 +282,21 @@ export function didChange(path: string, text: string): void {
       });
     }, 250),
   );
+}
+
+/** Reopen documents after a server restart, reading their current content from
+ *  disk (the freshest we have without the editor's buffer). didOpen respawns
+ *  the server since the slot was cleared on exit. */
+async function restart(paths: string[]): Promise<void> {
+  const { api } = await import("./api");
+  for (const p of paths) {
+    try {
+      const text = await api.editorReadFile(p);
+      await didOpen(p, text);
+    } catch {
+      /* a file we cannot read is skipped */
+    }
+  }
 }
 
 /** The document closed. */

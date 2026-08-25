@@ -39,17 +39,44 @@ export class LspClient {
     );
   }
 
-  /** Send a request and resolve with its result (or reject with its error). */
-  request<T = unknown>(method: string, params?: unknown): Promise<T> {
+  /** Send a request and resolve with its result (or reject with its error).
+   *
+   *  Two resilience guards: a timeout so a hung server never leaves an editor
+   *  feature waiting forever, and an optional cancellation token (Monaco hands
+   *  one to every provider) so a superseded request — you moved the cursor, the
+   *  old hover no longer matters — is dropped and `$/cancelRequest` is sent. */
+  request<T = unknown>(
+    method: string,
+    params?: unknown,
+    opts: { token?: { isCancellationRequested: boolean; onCancellationRequested: (cb: () => void) => void }; timeoutMs?: number } = {},
+  ): Promise<T> {
     if (this.exited) return Promise.reject(new Error("language server exited"));
     const id = this.seq++;
     const payload = JSON.stringify({ jsonrpc: "2.0", id, method, params });
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
-      api.lspSend(this.id, payload).catch((e) => {
+      const done = (fn: () => void) => {
+        clearTimeout(timer);
         this.pending.delete(id);
-        reject(e);
+        fn();
+      };
+      const timer = setTimeout(
+        () => done(() => reject(new Error(`language server timed out on ${method}`))),
+        opts.timeoutMs ?? 15000,
+      );
+      this.pending.set(id, {
+        resolve: (v) => done(() => (resolve as (x: unknown) => void)(v)),
+        reject: (e) => done(() => reject(e)),
       });
+      if (opts.token?.isCancellationRequested) {
+        done(() => reject(new Error("cancelled")));
+        return;
+      }
+      opts.token?.onCancellationRequested(() => {
+        if (!this.pending.has(id)) return;
+        this.notify("$/cancelRequest", { id });
+        done(() => reject(new Error("cancelled")));
+      });
+      api.lspSend(this.id, payload).catch((e) => done(() => reject(e)));
     });
   }
 

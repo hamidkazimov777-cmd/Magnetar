@@ -228,7 +228,7 @@ export function registerLspProviders(m: typeof import("monaco-editor")): void {
   registered = true;
 
   m.languages.registerHoverProvider(supportedLanguages(), {
-    async provideHover(model, position) {
+    async provideHover(model, position, token) {
       const path = modelPath(model);
       const client = clientForPath(path);
       if (!client) return null;
@@ -239,6 +239,7 @@ export function registerLspProviders(m: typeof import("monaco-editor")): void {
             textDocument: { uri: pathToUri(path) },
             position: toLspPosition(position),
           },
+          { token, timeoutMs: 8000 },
         );
         if (!result || !result.contents) return null;
         return {
@@ -256,7 +257,7 @@ export function registerLspProviders(m: typeof import("monaco-editor")): void {
     // Rust and friends complete after member/path punctuation as well as while
     // typing an identifier (which Monaco triggers on its own).
     triggerCharacters: [".", ":", "(", "<", '"', "'", "/", "@"],
-    async provideCompletionItems(model, position) {
+    async provideCompletionItems(model, position, _context, token) {
       const path = modelPath(model);
       const client = clientForPath(path);
       if (!client) return { suggestions: [] };
@@ -270,10 +271,14 @@ export function registerLspProviders(m: typeof import("monaco-editor")): void {
         endColumn: word.endColumn,
       };
       try {
-        const res = await client.request<CompletionResult>("textDocument/completion", {
-          textDocument: { uri: pathToUri(path) },
-          position: toLspPosition(position),
-        });
+        const res = await client.request<CompletionResult>(
+          "textDocument/completion",
+          {
+            textDocument: { uri: pathToUri(path) },
+            position: toLspPosition(position),
+          },
+          { token, timeoutMs: 8000 },
+        );
         const items = !res ? [] : Array.isArray(res) ? res : res.items;
         return {
           suggestions: items.map((it) => toMonacoCompletion(it, kinds, fallbackRange, m)),
@@ -285,15 +290,19 @@ export function registerLspProviders(m: typeof import("monaco-editor")): void {
   });
 
   m.languages.registerDefinitionProvider(supportedLanguages(), {
-    async provideDefinition(model, position) {
+    async provideDefinition(model, position, token) {
       const path = modelPath(model);
       const client = clientForPath(path);
       if (!client) return null;
       try {
-        const res = await client.request<DefinitionResult>("textDocument/definition", {
-          textDocument: { uri: pathToUri(path) },
-          position: toLspPosition(position),
-        });
+        const res = await client.request<DefinitionResult>(
+          "textDocument/definition",
+          {
+            textDocument: { uri: pathToUri(path) },
+            position: toLspPosition(position),
+          },
+          { token },
+        );
         return definitionsToMonaco(res, m);
       } catch {
         return null;
@@ -302,16 +311,20 @@ export function registerLspProviders(m: typeof import("monaco-editor")): void {
   });
 
   m.languages.registerReferenceProvider(supportedLanguages(), {
-    async provideReferences(model, position, context) {
+    async provideReferences(model, position, context, token) {
       const path = modelPath(model);
       const client = clientForPath(path);
       if (!client) return [];
       try {
-        const res = await client.request<LspLocation[] | null>("textDocument/references", {
-          textDocument: { uri: pathToUri(path) },
-          position: toLspPosition(position),
-          context: { includeDeclaration: context.includeDeclaration },
-        });
+        const res = await client.request<LspLocation[] | null>(
+          "textDocument/references",
+          {
+            textDocument: { uri: pathToUri(path) },
+            position: toLspPosition(position),
+            context: { includeDeclaration: context.includeDeclaration },
+          },
+          { token },
+        );
         return definitionsToMonaco(res, m);
       } catch {
         return [];
