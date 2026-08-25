@@ -207,6 +207,10 @@ async function ensureServer(config: ServerConfig): Promise<Server | null> {
 export async function didOpen(path: string, text: string): Promise<void> {
   const config = configFor(path);
   if (!config || open.has(path)) return;
+  // Wipe any stale squiggles from a previous session of this file (e.g. it was
+  // closed unsaved with an error); the server republishes fresh ones for the
+  // text we send below.
+  void clearDiagnostics(path);
   const server = await ensureServer(config);
   if (!server) return;
   await server.ready;
