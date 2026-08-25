@@ -1,5 +1,5 @@
 import { LspClient } from "./lsp";
-import { languageForPath } from "./monaco";
+import { languageForPath, loadMonaco } from "./monaco";
 import { useStore } from "./store";
 
 /* ==========================================================================
@@ -58,6 +58,63 @@ export function pathToUri(p: string): string {
   return "file://" + p.split("/").map(encodeURIComponent).join("/");
 }
 
+/** file URI → absolute path (inverse of pathToUri). */
+function uriToPath(uri: string): string {
+  return decodeURIComponent(uri.replace(/^file:\/\//, ""));
+}
+
+/** Marker owner for language-server diagnostics — kept separate from the
+ *  project-check markers so the two never overwrite each other. */
+const DIAG_OWNER = "lsp";
+
+interface LspDiagnostic {
+  range: { start: { line: number; character: number }; end: { line: number; character: number } };
+  severity?: number; // 1 error, 2 warning, 3 info, 4 hint
+  message: string;
+  source?: string;
+  code?: string | number | { value: string | number };
+}
+
+/** publishDiagnostics → Monaco markers (the squiggles under the code). Only
+ *  files currently open in the editor have a model to mark; diagnostics for
+ *  others are ignored until they are opened. */
+async function applyDiagnostics(uri: string, diagnostics: LspDiagnostic[]): Promise<void> {
+  const m = await loadMonaco();
+  const path = uriToPath(uri);
+  const model = m.editor.getModels().find((md) => md.uri.path === path);
+  if (!model) return;
+  const sev = (s: number) =>
+    s === 1
+      ? m.MarkerSeverity.Error
+      : s === 2
+        ? m.MarkerSeverity.Warning
+        : s === 3
+          ? m.MarkerSeverity.Info
+          : m.MarkerSeverity.Hint;
+  m.editor.setModelMarkers(
+    model,
+    DIAG_OWNER,
+    diagnostics.map((d) => ({
+      severity: sev(d.severity ?? 1),
+      startLineNumber: d.range.start.line + 1,
+      startColumn: d.range.start.character + 1,
+      endLineNumber: d.range.end.line + 1,
+      endColumn: d.range.end.character + 1,
+      message: d.message,
+      source: d.source,
+      code:
+        typeof d.code === "object" && d.code ? String(d.code.value) : d.code?.toString(),
+    })),
+  );
+}
+
+/** Drop any language-server markers for a path (on close). */
+async function clearDiagnostics(path: string): Promise<void> {
+  const m = await loadMonaco();
+  const model = m.editor.getModels().find((md) => md.uri.path === path);
+  if (model) m.editor.setModelMarkers(model, DIAG_OWNER, []);
+}
+
 function configFor(path: string): ServerConfig | undefined {
   const lang = languageForPath(path);
   return lang ? SERVERS[lang] : undefined;
@@ -105,6 +162,13 @@ async function ensureServer(config: ServerConfig): Promise<Server | null> {
     const client = new LspClient(uid(), found, config.args, root);
     entry = { client, config, ready };
     servers.set(config.languageId, entry);
+
+    // Live diagnostics: the server pushes these as it reparses, we turn them
+    // into editor squiggles.
+    client.onNotification("textDocument/publishDiagnostics", (params) => {
+      const p = params as { uri: string; diagnostics?: LspDiagnostic[] };
+      void applyDiagnostics(p.uri, p.diagnostics ?? []);
+    });
 
     // A crashed or stopped server clears its slot so the next open respawns it.
     client.onExit = () => {
@@ -193,6 +257,7 @@ export function didClose(path: string): void {
     clearTimeout(timer);
     changeTimers.delete(path);
   }
+  void clearDiagnostics(path);
   if (!config) return;
   const server = servers.get(config.languageId);
   server?.client.notify("textDocument/didClose", {
