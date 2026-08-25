@@ -3639,3 +3639,32 @@ LSP для Rust/Python (п.5) или Agent Manager (п.6) — по выбору 
 
 Следующий пункт гигиены: `user_version`-миграции БД (`db.rs`) либо перевод
 `resolve_key` на `spawn_blocking` (`commands.rs`).
+
+### Запись 77 — 2026-08-25 — Kimi Code — Гигиена: resolve_key в spawn_blocking
+
+#### Что сделано
+
+Второй пункт гигиены: чтение ключа провайдера больше не блокирует поток
+async-рантайма. `resolve_key` (в `commands.rs`) теперь `async fn` и прогоняет
+`keychain::get_key` через уже существующий хелпер `blocking` →
+`tauri::async_runtime::spawn_blocking`. Все 6 вызовов
+(`list_models`, `complete`, `generate`, `agent_step`, `agent_step_stream`,
+`chat_stream`) переведены на `resolve_key(&connection).await?`.
+
+Мотивация: `get_key` делает файловый I/O (`secrets.json`) и, при первом взгляде,
+однократное чтение Keychain — то же блокирующее I/O, которое P0.2 убрал из
+файловых команд, но которое осталось в provider-вызовах.
+
+#### Файлы
+
+- `src-tauri/src/commands.rs` — `resolve_key` async + `blocking`; 6 call-сайтов.
+
+#### Проверки
+
+`cargo check` — чисто. `cargo test` — 9/9. `npm run tauri build` — проходит
+(app + dmg). Коммит `6de0db5`.
+
+#### Следующий шаг
+
+Следующий пункт гигиены: `user_version`-миграции БД (`db.rs`) либо ErrorBoundary
+на верхнеуровневые окна (`App.tsx`).
