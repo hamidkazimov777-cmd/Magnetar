@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Image as ImageIcon,
   Clapperboard,
@@ -12,6 +12,8 @@ import {
   SlidersHorizontal,
   Minus,
   Plus,
+  ChevronDown,
+  Check,
 } from "lucide-react";
 import { useStore } from "../lib/store";
 import { useT } from "../lib/i18n";
@@ -328,6 +330,8 @@ function Section({
   );
 }
 
+/** A dropdown in the app's own style — the native <select> read as a stray
+ *  macOS control against the monochrome chrome. */
 function StudioSelect({
   value,
   onChange,
@@ -339,19 +343,56 @@ function StudioSelect({
   options: { value: string; label: string }[];
   placeholder?: string;
 }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  const current = options.find((o) => o.value === value);
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="mb-1.5 w-full truncate rounded-[var(--r-md)] border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-[length:var(--fs-sm)] text-[var(--color-text)] outline-none"
-    >
-      {placeholder && <option value="">{placeholder}</option>}
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
+    <div ref={ref} className="relative mb-1.5">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-1.5 rounded-[var(--r-md)] border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-[length:var(--fs-sm)] text-[var(--color-text)] transition-colors hover:border-[var(--color-border-strong)]"
+      >
+        <span className="min-w-0 flex-1 truncate text-left">
+          {current?.label ?? (
+            <span className="text-[var(--color-text-mute)]">{placeholder ?? "—"}</span>
+          )}
+        </span>
+        <ChevronDown size={13} className="shrink-0 text-[var(--color-text-mute)]" />
+      </button>
+      {open && (
+        <div className="anim-in absolute inset-x-0 top-full z-30 mt-1 max-h-64 overflow-auto rounded-[var(--r-md)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-1 shadow-[var(--e-3)]">
+          {options.length === 0 && (
+            <div className="px-2 py-1.5 text-[length:var(--fs-xs)] text-[var(--color-text-mute)]">
+              {placeholder ?? "—"}
+            </div>
+          )}
+          {options.map((o) => (
+            <button
+              key={o.value}
+              onClick={() => {
+                onChange(o.value);
+                setOpen(false);
+              }}
+              className="flex w-full items-center gap-2 rounded-[var(--r-sm)] px-2 py-1.5 text-left text-[length:var(--fs-sm)] hover:bg-[var(--color-surface-2)]"
+            >
+              <span className="min-w-0 flex-1 truncate">{o.label}</span>
+              {o.value === value && (
+                <Check size={12} className="shrink-0 text-[var(--color-ai)]" />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
