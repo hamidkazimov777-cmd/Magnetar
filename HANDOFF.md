@@ -3604,3 +3604,38 @@ GigaChat из-за лимита freemium «1 запрос за раз») ост�
 
 План A/B/C/D/E закрыт. Вернуться к бэклогу раздела 12 `NEXT_TASK_FILES.md`:
 LSP для Rust/Python (п.5) или Agent Manager (п.6) — по выбору пользователя.
+
+### Запись 76 — 2026-08-25 — Kimi Code — Гигиена: ошибка hydrate() видимой
+
+#### Что сделано
+
+Первый пункт дорожной карты «Гигиена» (после закрытия аудита P0–P2 и фичи
+«Генерация»): сбой чтения сохранённых данных при старте больше не сбрасывается
+молча.
+
+- **Store.** Новое поле `startupError?: string` + экшен `setStartupError`
+  (рядом с `lastError`). В `catch` блока `hydrate` теперь
+  `set({ hydrated: true, startupError: String(e) })` — приложение по-прежнему
+  стартует «пустым» (не блокируем запуск), но причина сохраняется.
+- **UI.** `App.tsx` подписан на `startupError` и рендерит dismiss-баннер
+  (класс `alert`, фиксирован сверху, виден и на WelcomeView, и в Workspace):
+  заголовок из i18n + техническая причина + кнопка закрытия →
+  `setStartupError(undefined)`.
+- **i18n.** Ключ `startupErrorTitle` (ru/en/es).
+
+#### Файлы
+
+- `src/lib/store.ts` — `startupError`/`setStartupError`, `hydrate` catch.
+- `src/App.tsx` — импорт `X`/`useT`, селекторы, баннер.
+- `src/lib/i18n.ts` — 1 ключ × ru/en/es.
+
+#### Проверки
+
+`npx tsc --noEmit` — чисто. i18n-скрипт — пусто. `cargo test` — 9/9.
+`npm run build` — проходит. `npm run tauri build` — проходит (app + dmg).
+Коммит `293251d`.
+
+#### Следующий шаг
+
+Следующий пункт гигиены: `user_version`-миграции БД (`db.rs`) либо перевод
+`resolve_key` на `spawn_blocking` (`commands.rs`).
