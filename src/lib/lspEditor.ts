@@ -105,6 +105,85 @@ function hoverMarkdown(contents: HoverResult["contents"]): monaco.IMarkdownStrin
   return [{ value: one(contents) }];
 }
 
+type LspTextEdit = { range: LspRange; newText: string };
+interface LspCompletionItem {
+  label: string;
+  kind?: number;
+  detail?: string;
+  documentation?: string | MarkupContent;
+  sortText?: string;
+  filterText?: string;
+  insertText?: string;
+  insertTextFormat?: number; // 2 = snippet
+  textEdit?: LspTextEdit | { insert: LspRange; replace: LspRange; newText: string };
+  additionalTextEdits?: LspTextEdit[];
+  preselect?: boolean;
+}
+type CompletionResult =
+  | LspCompletionItem[]
+  | { isIncomplete: boolean; items: LspCompletionItem[] }
+  | null;
+
+/** LSP CompletionItemKind (1–25) → Monaco kind, by name so the enums line up
+ *  regardless of their numeric values. */
+function completionKindMap(
+  m: typeof import("monaco-editor"),
+): Record<number, monaco.languages.CompletionItemKind> {
+  const K = m.languages.CompletionItemKind;
+  return {
+    1: K.Text, 2: K.Method, 3: K.Function, 4: K.Constructor, 5: K.Field,
+    6: K.Variable, 7: K.Class, 8: K.Interface, 9: K.Module, 10: K.Property,
+    11: K.Unit, 12: K.Value, 13: K.Enum, 14: K.Keyword, 15: K.Snippet,
+    16: K.Color, 17: K.File, 18: K.Reference, 19: K.Folder, 20: K.EnumMember,
+    21: K.Constant, 22: K.Struct, 23: K.Event, 24: K.Operator, 25: K.TypeParameter,
+  };
+}
+
+/** One LSP completion item → Monaco. Honours an explicit textEdit range when
+ *  the server sends one (needed for correct replacement and for insert-vs-replace
+ *  edits), falls back to the identifier under the cursor otherwise, and carries
+ *  additionalTextEdits through so auto-imports land with the completion. */
+function toMonacoCompletion(
+  it: LspCompletionItem,
+  kinds: Record<number, monaco.languages.CompletionItemKind>,
+  fallbackRange: monaco.IRange,
+  m: typeof import("monaco-editor"),
+): monaco.languages.CompletionItem {
+  const te = it.textEdit;
+  let range: monaco.languages.CompletionItem["range"] = fallbackRange;
+  let insertText = it.insertText ?? it.label;
+  if (te) {
+    insertText = te.newText;
+    range =
+      "range" in te
+        ? toMonacoRange(te.range)
+        : { insert: toMonacoRange(te.insert), replace: toMonacoRange(te.replace) };
+  }
+  const doc =
+    typeof it.documentation === "object" && it.documentation
+      ? ({ value: it.documentation.value } as monaco.IMarkdownString)
+      : it.documentation;
+  return {
+    label: it.label,
+    kind: kinds[it.kind ?? 1] ?? m.languages.CompletionItemKind.Text,
+    insertText,
+    insertTextRules:
+      it.insertTextFormat === 2
+        ? m.languages.CompletionItemInsertTextRule.InsertAsSnippet
+        : undefined,
+    range,
+    detail: it.detail,
+    documentation: doc,
+    sortText: it.sortText,
+    filterText: it.filterText,
+    preselect: it.preselect,
+    additionalTextEdits: it.additionalTextEdits?.map((e) => ({
+      range: toMonacoRange(e.range),
+      text: e.newText,
+    })),
+  };
+}
+
 let registered = false;
 
 /** Register LSP-backed editor providers once. Safe to call on every editor
@@ -133,6 +212,39 @@ export function registerLspProviders(m: typeof import("monaco-editor")): void {
         };
       } catch {
         return null; // a stale or failed request must not break hovering
+      }
+    },
+  });
+
+  const kinds = completionKindMap(m);
+  m.languages.registerCompletionItemProvider(supportedLanguages(), {
+    // Rust and friends complete after member/path punctuation as well as while
+    // typing an identifier (which Monaco triggers on its own).
+    triggerCharacters: [".", ":", "(", "<", '"', "'", "/", "@"],
+    async provideCompletionItems(model, position) {
+      const path = modelPath(model);
+      const client = clientForPath(path);
+      if (!client) return { suggestions: [] };
+      // The range Monaco replaces: the identifier fragment under the cursor,
+      // unless the server hands back an explicit textEdit range per item.
+      const word = model.getWordUntilPosition(position);
+      const fallbackRange: monaco.IRange = {
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: word.startColumn,
+        endColumn: word.endColumn,
+      };
+      try {
+        const res = await client.request<CompletionResult>("textDocument/completion", {
+          textDocument: { uri: pathToUri(path) },
+          position: toLspPosition(position),
+        });
+        const items = !res ? [] : Array.isArray(res) ? res : res.items;
+        return {
+          suggestions: items.map((it) => toMonacoCompletion(it, kinds, fallbackRange, m)),
+        };
+      } catch {
+        return { suggestions: [] };
       }
     },
   });
