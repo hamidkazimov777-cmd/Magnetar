@@ -66,6 +66,36 @@ interface LspLocationLink {
 }
 type DefinitionResult = LspLocation | LspLocationLink | Array<LspLocation | LspLocationLink> | null;
 
+interface LspTextEditR {
+  range: LspRange;
+  newText: string;
+}
+interface LspWorkspaceEdit {
+  changes?: Record<string, LspTextEditR[]>;
+  documentChanges?: Array<{ textDocument: { uri: string }; edits: LspTextEditR[] }>;
+}
+
+/** LSP rename result (changes or documentChanges) → a Monaco workspace edit. */
+function workspaceEditToMonaco(
+  res: LspWorkspaceEdit | null,
+  m: typeof import("monaco-editor"),
+): monaco.languages.WorkspaceEdit {
+  const edits: monaco.languages.IWorkspaceTextEdit[] = [];
+  const add = (uri: string, tes: LspTextEditR[]) => {
+    const resource = m.Uri.parse(uriToPath(uri));
+    for (const te of tes)
+      edits.push({
+        resource,
+        textEdit: { range: toMonacoRange(te.range), text: te.newText },
+        versionId: undefined,
+      });
+  };
+  if (res?.documentChanges)
+    for (const dc of res.documentChanges) add(dc.textDocument.uri, dc.edits);
+  else if (res?.changes) for (const [uri, tes] of Object.entries(res.changes)) add(uri, tes);
+  return { edits };
+}
+
 /** LSP definition result (several legal shapes) → Monaco locations. The target
  *  uri is rebuilt with Uri.parse(path) so it matches how the editor's own tab
  *  models are keyed — same file resolves to the same uri, cross-file differs. */
@@ -262,6 +292,42 @@ export function registerLspProviders(m: typeof import("monaco-editor")): void {
         return definitionsToMonaco(res, m);
       } catch {
         return null;
+      }
+    },
+  });
+
+  m.languages.registerReferenceProvider(supportedLanguages(), {
+    async provideReferences(model, position, context) {
+      const path = modelPath(model);
+      const client = clientForPath(path);
+      if (!client) return [];
+      try {
+        const res = await client.request<LspLocation[] | null>("textDocument/references", {
+          textDocument: { uri: pathToUri(path) },
+          position: toLspPosition(position),
+          context: { includeDeclaration: context.includeDeclaration },
+        });
+        return definitionsToMonaco(res, m);
+      } catch {
+        return [];
+      }
+    },
+  });
+
+  m.languages.registerRenameProvider(supportedLanguages(), {
+    async provideRenameEdits(model, position, newName) {
+      const path = modelPath(model);
+      const client = clientForPath(path);
+      if (!client) return { edits: [] };
+      try {
+        const res = await client.request<LspWorkspaceEdit | null>("textDocument/rename", {
+          textDocument: { uri: pathToUri(path) },
+          position: toLspPosition(position),
+          newName,
+        });
+        return workspaceEditToMonaco(res, m);
+      } catch (e) {
+        return { edits: [], rejectReason: String(e) };
       }
     },
   });
