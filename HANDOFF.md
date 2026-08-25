@@ -3707,3 +3707,43 @@ async-рантайма. `resolve_key` (в `commands.rs`) теперь `async fn`
 
 Следующий пункт гигиены: ErrorBoundary на верхнеуровневые окна (`App.tsx`)
 либо скелетоны/пустые состояния.
+
+### Запись 79 — 2026-08-25 — Opus 4.8 — Гигиена: ErrorBoundary на верхнеуровневые окна
+
+#### Что сделано
+
+Четвёртый пункт гигиены: верхнеуровневые окна в `App.tsx` вынесены под
+собственные `ErrorBoundary`. Раньше граница была только внутри `Workspace.tsx`
+(4 внутренние поверхности) — падение рендера в `WelcomeView`, `CommandPalette`,
+`SettingsDialog`, `GuideDialog` или `Splash` валило всё окно белым экраном.
+
+Теперь каждая из шести поверхностей обёрнута отдельно, с surface-подписью:
+
+- `WelcomeView` → `welcomeTitle`
+- `Workspace` → `workspace` (внешняя граница поверх внутренних 4-х: ловит
+  падение самого шелла — топбар/статусбар вне внутренних границ)
+- `CommandPalette` → `commandPalette`
+- `SettingsDialog` → `settingsTitle`
+- `GuideDialog` → `guide`
+- `Splash` → литерал `"Magnetar"`
+
+Баннер `startupError` не оборачивался (тривиальный, сам про ошибки).
+`ErrorBoundary` ловит только ошибки рендера/жизненного цикла — не async и не
+обработчики событий (как и внутренние границы в Workspace).
+
+#### Файлы
+
+- `src/App.tsx` — импорт `ErrorBoundary`, шесть обёрток.
+- `src/lib/i18n.ts` — новые ключи `welcomeTitle` + `commandPalette` (ru/en/es).
+
+#### Проверки
+
+`npx tsc --noEmit` — чисто. `npm run build` — проходит. Проверка полноты i18n
+(раздел 8) — `MISSING: [] [] []`, `DIFF: [] []`. Rust не тронут (cargo/tauri
+build пропущены). Коммит `072548e`.
+
+#### Следующий шаг
+
+Последний пункт гигиены: скелетоны / «загрузка vs пусто» —
+`GitPanel`/`ChangesPanel`/`ChatsPanel` без скелетонов, местами ad-hoc пустые
+состояния.
