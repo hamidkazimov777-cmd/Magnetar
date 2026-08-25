@@ -3,6 +3,7 @@ mod commands;
 mod db;
 mod index;
 mod keychain;
+mod lsp;
 mod providers;
 mod pty;
 mod tools;
@@ -64,6 +65,10 @@ pub fn run() {
             commands::pty_write,
             commands::pty_resize,
             commands::pty_kill,
+            commands::lsp_which,
+            commands::lsp_spawn,
+            commands::lsp_send,
+            commands::lsp_kill,
             commands::list_connections,
             commands::save_connection,
             commands::delete_connection,

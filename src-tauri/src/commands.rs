@@ -523,6 +523,32 @@ pub fn pty_kill(id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn lsp_which(bin: String) -> Option<String> {
+    crate::lsp::which(&bin)
+}
+
+#[tauri::command]
+pub fn lsp_spawn(
+    id: String,
+    cmd: String,
+    args: Vec<String>,
+    cwd: Option<String>,
+    on_msg: Channel<String>,
+) -> Result<(), String> {
+    crate::lsp::spawn(id, cmd, args, cwd, on_msg)
+}
+
+#[tauri::command]
+pub fn lsp_send(id: String, message: String) -> Result<(), String> {
+    crate::lsp::send(&id, &message)
+}
+
+#[tauri::command]
+pub fn lsp_kill(id: String) -> Result<(), String> {
+    crate::lsp::kill(&id)
+}
+
+#[tauri::command]
 pub async fn chat_stream(
     connection: Connection,
     params: ChatParams,
