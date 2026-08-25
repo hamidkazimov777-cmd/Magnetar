@@ -3553,3 +3553,54 @@ GigaChat из-за лимита freemium «1 запрос за раз») ост�
 
 Пункт E: система Proposal (`<proposal>…</proposal>` → «Добавить в память /
 Отклонить» → запись Proposal + ревью агентом).
+
+### Запись 75 — 2026-08-25 — Kimi Code — Генерация E: система Proposal
+
+#### Что сделано
+
+Пункт E плана фичи «Генерация»: модель помечает сообщение тегом
+`<proposal>…</proposal>`, под ним появляются кнопки «Добавить в память проекта /
+Отклонить». Принять → факт памяти + запись `Proposal` + фоновое ревью агентом;
+отклонить → запись `Proposal` со статусом rejected (маркер «уже решено», чтобы
+кнопки не вернулись). Кнопки показываются на любом assistant-сообщении с тегом
+при открытом проекте.
+
+- **Тип и персист.** `Proposal` (id, projectId, messageId, text, status
+  accepted|rejected, review?, createdAt, reviewedAt?) в `types.ts`; таблица
+  `proposals` + индекс `idx_proposals_project` (`db.rs`); struct + `list_proposals`
+  /`save_proposal` (`workspace.rs`, `commands.rs`, `lib.rs`).
+- **Frontend-слой.** `listProposals`/`saveProposal` (`db.ts`), состояние
+  `proposals` + `loadProposals`/`saveProposal` (`store.ts`).
+- **`lib/proposal.ts`** (новый): `extractProposal` (regex), `stripProposalTags`,
+  `ensureProposals`, `acceptProposal` (факт `architecture`/`user`/`unverified` +
+  `saveFacts` + `saveProposal` + `logMemory` + `reviewProposal`), `rejectProposal`,
+  `reviewProposal` (совещательное ревью через `cheapModel()`, generative-связи
+  пропускаются, вердикт в `review`).
+- **UI.** `Message.tsx` стрипает тег из рендера/копирования/«в агента»; под
+  assistant-сообщением с тегом — кнопки или статус (+ текст ревью). Проект
+  определяется стабильным derived-селектором (без подписки на весь `sessions`
+  массив — не ломает мемоизацию).
+- **Загрузка.** `ensureProposals` вызывается в `App.tsx` при открытии проекта
+  рядом с facts/decisions/divergences.
+- **i18n.** Ключи `addToMemory`/`reject`/`proposalAccepted`/`proposalRejected`
+  (ru/en/es).
+
+#### Файлы
+
+- `src-tauri/src/{db,workspace,commands,lib}.rs` — таблица + команды.
+- `src/lib/{types,db,store}.ts` — тип, wire, состояние.
+- `src/lib/proposal.ts` — новый: extract/accept/reject/review/ensure.
+- `src/components/Message.tsx` — кнопки + стрип тега.
+- `src/App.tsx` — вызов `ensureProposals`.
+- `src/lib/i18n.ts` — 4 ключа × ru/en/es.
+
+#### Проверки
+
+`npx tsc --noEmit` — чисто. i18n-скрипт — пусто. `cargo check` — чисто,
+`cargo test` — 9/9. `npm run build` — проходит. `npm run tauri build` — проходит
+(app + dmg). Коммит `2bfb4d5`.
+
+#### Следующий шаг
+
+План A/B/C/D/E закрыт. Вернуться к бэклогу раздела 12 `NEXT_TASK_FILES.md`:
+LSP для Rust/Python (п.5) или Agent Manager (п.6) — по выбору пользователя.
