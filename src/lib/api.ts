@@ -278,4 +278,28 @@ export const api = {
   ptyResize: (id: string, cols: number, rows: number) =>
     invoke<void>("pty_resize", { id, cols, rows }),
   ptyKill: (id: string) => invoke<void>("pty_kill", { id }),
+
+  /** Resolve a language-server binary on PATH, or null if it isn't installed. */
+  lspWhich: (bin: string) => invoke<string | null>("lsp_which", { bin }),
+  /** Start a language server; every message it emits arrives via onMsg. */
+  lspSpawn: (
+    id: string,
+    cmd: string,
+    args: string[],
+    cwd: string | undefined,
+    onMsg: (message: string) => void,
+  ) => {
+    const channel = new Channel<string>();
+    channel.onmessage = onMsg;
+    return invoke<void>("lsp_spawn", {
+      id,
+      cmd,
+      args,
+      cwd: cwd ?? null,
+      onMsg: channel,
+    });
+  },
+  lspSend: (id: string, message: string) =>
+    invoke<void>("lsp_send", { id, message }),
+  lspKill: (id: string) => invoke<void>("lsp_kill", { id }),
 };
