@@ -65,6 +65,9 @@ export const api = {
       prompt: req.prompt,
       endpoint: req.endpoint,
       params: req.params,
+      authScheme: req.authScheme ?? null,
+      resultPath: req.resultPath ?? null,
+      modelInBody: req.modelInBody ?? null,
     }),
 
   /** Single-shot non-streaming completion (router / summarizer). */

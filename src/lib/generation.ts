@@ -38,6 +38,10 @@ export interface GenerationProvider {
   responseFormat?: string | null;
   /** Where output assets live in the response JSON. Default "data". */
   resultPath?: string;
+  /** "key" → `Authorization: Key <k>` (fal.ai); default bearer. */
+  authScheme?: "bearer" | "key";
+  /** Some providers (fal.ai) put the model in the URL path, not the body. */
+  modelInPath?: boolean;
   models: string[];
   params: GenerationParamDef[];
 }
@@ -49,6 +53,9 @@ export interface GenerationRequest {
   prompt: string;
   endpoint: string;
   params: Record<string, unknown>;
+  authScheme?: "bearer" | "key";
+  resultPath?: string;
+  modelInBody?: boolean;
 }
 
 /** One produced asset (a URL or inline base64). */
@@ -113,6 +120,47 @@ export const GEN_PROVIDERS: GenerationProvider[] = [
         default: "1024x1024",
       },
       { key: "n", label: "genParamCount", type: "number", min: 1, max: 4, default: 1 },
+    ],
+  },
+
+  // ---- fal.ai · one key, many models (image; video/audio via polling later) ----
+  {
+    id: "fal-image",
+    name: "fal.ai",
+    kind: "image",
+    available: true,
+    baseUrl: "https://fal.run",
+    authType: "bearer",
+    authScheme: "key",
+    modelInPath: true,
+    endpoint: "",
+    method: "POST",
+    strategy: "direct",
+    responseFormat: null,
+    resultPath: "images",
+    models: [
+      "fal-ai/flux/schnell",
+      "fal-ai/flux/dev",
+      "fal-ai/flux-pro/v1.1",
+      "fal-ai/nano-banana",
+      "fal-ai/recraft-v3",
+    ],
+    params: [
+      {
+        key: "image_size",
+        label: "genParamSize",
+        type: "select",
+        options: [
+          "square_hd",
+          "square",
+          "landscape_16_9",
+          "portrait_16_9",
+          "landscape_4_3",
+          "portrait_4_3",
+        ],
+        default: "landscape_16_9",
+      },
+      { key: "num_images", label: "genParamCount", type: "number", min: 1, max: 4, default: 1 },
     ],
   },
 

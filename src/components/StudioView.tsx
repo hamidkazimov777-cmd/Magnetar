@@ -40,7 +40,8 @@ interface Result {
   name: string;
 }
 
-/** Common image sizes read better as aspect ratios in the picker. */
+/** Sizes read better as aspect ratios in the picker — both pixel sizes (OpenAI,
+ *  Together) and fal.ai's named sizes. */
 function aspectLabel(size: string): string {
   const map: Record<string, string> = {
     "1024x1024": "1:1",
@@ -49,6 +50,12 @@ function aspectLabel(size: string): string {
     "1024x1792": "9:16",
     "1024x768": "4:3",
     "768x1024": "3:4",
+    square_hd: "1:1",
+    square: "1:1",
+    landscape_16_9: "16:9",
+    portrait_16_9: "9:16",
+    landscape_4_3: "4:3",
+    portrait_4_3: "3:4",
   };
   return map[size] ?? size;
 }
@@ -115,8 +122,12 @@ export function StudioView() {
         kind: provider.kind,
         model: activeModel,
         prompt: full,
-        endpoint: provider.endpoint,
+        // fal.ai puts the model in the URL path; others use a fixed endpoint.
+        endpoint: provider.modelInPath ? activeModel : provider.endpoint,
         params: body,
+        authScheme: provider.authScheme,
+        resultPath: provider.resultPath,
+        modelInBody: provider.modelInPath ? false : undefined,
       });
       const next: Result[] = res.assets.map((a, i) => ({
         src: a.url ?? (a.b64 ? `data:${a.mimeType ?? "image/png"};base64,${a.b64}` : ""),

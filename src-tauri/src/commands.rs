@@ -278,24 +278,36 @@ pub async fn generate(
     prompt: String,
     endpoint: String,
     params: Option<serde_json::Value>,
+    // Provider-shape knobs (default = OpenAI-compatible):
+    //   auth_scheme:   "key" sends `Authorization: Key <k>` (fal.ai); else Bearer.
+    //   result_path:   where the assets array lives in the response (default "data";
+    //                  fal.ai uses "images").
+    //   model_in_body: false omits "model" from the body — for providers that put
+    //                  the model in the URL path (fal.ai).
+    auth_scheme: Option<String>,
+    result_path: Option<String>,
+    model_in_body: Option<bool>,
 ) -> Result<GenerationResult, String> {
     let key = resolve_key(&connection).await?;
     let url = connection.endpoint(&endpoint);
 
-    let mut body = serde_json::json!({
-        "model": model,
-        "prompt": prompt,
-    });
+    let mut body = serde_json::json!({ "prompt": prompt });
+    if model_in_body != Some(false) {
+        body["model"] = serde_json::json!(model);
+    }
     if let Some(serde_json::Value::Object(map)) = params {
         for (k, v) in map {
             body[k] = v;
         }
     }
 
-    let resp = reqwest::Client::new()
-        .post(&url)
-        .bearer_auth(&key)
-        .json(&body)
+    let req = reqwest::Client::new().post(&url).json(&body);
+    let req = if auth_scheme.as_deref() == Some("key") {
+        req.header("Authorization", format!("Key {key}"))
+    } else {
+        req.bearer_auth(&key)
+    };
+    let resp = req
         .send()
         .await
         .map_err(|e| format!("network error: {e}"))?;
@@ -308,7 +320,7 @@ pub async fn generate(
 
     let v: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
     let arr = v
-        .get("data")
+        .get(result_path.as_deref().unwrap_or("data"))
         .and_then(|d| d.as_array())
         .cloned()
         .unwrap_or_default();
