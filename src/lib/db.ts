@@ -72,6 +72,11 @@ export const db = {
   saveDivergence: (divergence: import("./types").Divergence) =>
     invoke<void>("save_divergence", { divergence }),
 
+  listProposals: (projectId: string) =>
+    invoke<import("./types").Proposal[]>("list_proposals", { projectId }),
+  saveProposal: (proposal: import("./types").Proposal) =>
+    invoke<void>("save_proposal", { proposal }),
+
   listTasks: (projectId: string) => invoke<import("./types").Task[]>("list_tasks", { projectId }),
   saveTask: (task: import("./types").Task) => invoke<void>("save_task", { task }),
   deleteTask: (id: string) => invoke<void>("delete_task", { id }),

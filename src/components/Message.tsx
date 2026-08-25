@@ -8,6 +8,7 @@ import { useStore } from "../lib/store";
 import { useT } from "../lib/i18n";
 import { AgentTrace } from "./AgentTrace";
 import { ReasoningBlock, TurnStats } from "./ReasoningBlock";
+import { acceptProposal, extractProposal, rejectProposal, stripProposalTags } from "../lib/proposal";
 import type { ChatMessage } from "../lib/types";
 
 /** A code block with a copy button, used inside the markdown renderer. */
@@ -53,10 +54,24 @@ export const Message = memo(function Message({
   const [draft, setDraft] = useState(message.content);
   const trace = useStore((s) => s.agentTrace[message.id]);
   const inChatTrack = useStore((s) => s.activeTrack === "chat");
+  // The project this message belongs to, and whether it carries a proposal. The
+  // derived string selector keeps the memoized Message from re-rendering on
+  // every append — it only fires when the project actually changes.
+  const projectId = useStore(
+    (s) =>
+      s.sessions.find((x) => x.id === s.activeSessionId)?.projectId ??
+      s.activeProjectId,
+  );
+  const proposals = useStore((s) => (projectId ? s.proposals[projectId] : undefined));
+  const proposal = !isUser && message.content ? extractProposal(message.content) : null;
+  const proposalRecord = proposal && projectId
+    ? proposals?.find((p) => p.messageId === message.id)
+    : undefined;
+  const renderedContent = isUser ? message.content : stripProposalTags(message.content);
 
   const copyAll = async () => {
     try {
-      await navigator.clipboard.writeText(message.content);
+      await navigator.clipboard.writeText(renderedContent);
       setCopied(true);
       setTimeout(() => setCopied(false), 1200);
     } catch {
@@ -162,7 +177,7 @@ export const Message = memo(function Message({
               rehypePlugins={[rehypeHighlight]}
               components={{ pre: Pre }}
             >
-              {message.content}
+              {renderedContent}
             </ReactMarkdown>
           ) : isPending ? (
             <span className="inline-flex gap-1 text-[var(--color-text-dim)]">
@@ -204,7 +219,7 @@ export const Message = memo(function Message({
                 onClick={() => {
                   const st = useStore.getState();
                   st.switchTrack("agent");
-                  st.requestPrompt(message.content);
+                  st.requestPrompt(renderedContent);
                 }}
                 className="flex items-center gap-1 text-[length:var(--fs-xs)] text-[var(--color-ai)] hover:opacity-80"
                 title={t("sendToAgentHint")}
@@ -219,6 +234,40 @@ export const Message = memo(function Message({
               </span>
             )}
             <TurnStats message={message} />
+          </div>
+        )}
+
+        {proposal && projectId && (
+          <div className="mt-2">
+            {proposalRecord ? (
+              <div className="flex flex-col gap-1 text-[length:var(--fs-xs)]">
+                <span className="text-[var(--color-text-mute)]">
+                  {proposalRecord.status === "accepted"
+                    ? t("proposalAccepted")
+                    : t("proposalRejected")}
+                </span>
+                {proposalRecord.review && (
+                  <span className="whitespace-pre-wrap text-[var(--color-text-dim)]">
+                    {proposalRecord.review}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => acceptProposal(message.id, proposal, projectId)}
+                  className="btn btn-sm btn-primary"
+                >
+                  {t("addToMemory")}
+                </button>
+                <button
+                  onClick={() => rejectProposal(message.id, proposal, projectId)}
+                  className="btn btn-sm btn-ghost"
+                >
+                  {t("reject")}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

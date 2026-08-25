@@ -79,6 +79,8 @@ pub fn run() {
             commands::delete_decision,
             commands::list_divergences,
             commands::save_divergence,
+            commands::list_proposals,
+            commands::save_proposal,
             commands::list_tasks,
             commands::save_task,
             commands::delete_task,

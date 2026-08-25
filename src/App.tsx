@@ -12,6 +12,7 @@ import { ensureProjectFacts } from "./lib/facts";
 import { verifyProjectFacts } from "./lib/verify";
 import { ensureProjectDecisions } from "./lib/decisions";
 import { ensureDivergences } from "./lib/divergence";
+import { ensureProposals } from "./lib/proposal";
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -44,6 +45,7 @@ export default function App() {
       await ensureProjectFacts(activeProjectId);
       await ensureProjectDecisions(activeProjectId);
       await ensureDivergences(activeProjectId);
+      await ensureProposals(activeProjectId);
       // Cheap verification (file greps, no model, no build) runs on open, so
       // memory that has quietly gone out of date says so before it is used.
       const st = useStore.getState();

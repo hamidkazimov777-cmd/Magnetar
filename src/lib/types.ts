@@ -215,6 +215,26 @@ export interface Divergence {
   resolvedAt?: number;
 }
 
+/** A model proposal the user can fold into project memory.
+ *
+ *  The model marks a message with `<proposal>…</proposal>`; the user then either
+ *  adds it to memory (which stores a fact + this record, then asks an agent to
+ *  review it) or rejects it. The record doubles as the "already handled" marker
+ *  so the buttons do not reappear. */
+export interface Proposal {
+  id: string;
+  projectId: string;
+  /** The assistant message this proposal came from. */
+  messageId: string;
+  text: string;
+  /** The user's decision: accepted into memory, or rejected. */
+  status: "accepted" | "rejected";
+  /** The agent's verdict after review — fits, or conflicts and why. */
+  review?: string;
+  createdAt: number;
+  reviewedAt?: number;
+}
+
 /** A helper agent's run, as the panel shows it. Transient: this is process,
  *  not canon, so it is never persisted. */
 export interface SubagentRun {

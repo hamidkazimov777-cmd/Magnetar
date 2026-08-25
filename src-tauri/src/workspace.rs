@@ -444,6 +444,74 @@ pub fn save_divergence(d: Divergence) -> Result<(), String> {
     })
 }
 
+// --- Proposals ---
+//
+// A model suggestion the user chose to fold into memory (or reject). Accepted
+// ones are reviewed by an agent, which writes a verdict — fits, or conflicts
+// and why.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Proposal {
+    pub id: String,
+    pub project_id: String,
+    pub message_id: String,
+    pub text: String,
+    /// accepted | rejected — the user's decision.
+    pub status: String,
+    /// The agent's verdict after review.
+    pub review: Option<String>,
+    pub created_at: i64,
+    pub reviewed_at: Option<i64>,
+}
+
+pub fn list_proposals(project_id: &str) -> Result<Vec<Proposal>, String> {
+    with_conn(|c| {
+        let mut stmt = c
+            .prepare(
+                "SELECT id, project_id, message_id, text, status, review, created_at, reviewed_at \
+                 FROM proposals \
+                 WHERE project_id = ?1 \
+                 ORDER BY created_at DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![project_id], |r| {
+                Ok(Proposal {
+                    id: r.get(0)?,
+                    project_id: r.get(1)?,
+                    message_id: r.get(2)?,
+                    text: r.get(3)?,
+                    status: r.get(4)?,
+                    review: r.get(5)?,
+                    created_at: r.get(6)?,
+                    reviewed_at: r.get(7)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    })
+}
+
+pub fn save_proposal(p: Proposal) -> Result<(), String> {
+    with_conn(|c| {
+        c.execute(
+            "INSERT INTO proposals \
+               (id, project_id, message_id, text, status, review, created_at, reviewed_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) \
+             ON CONFLICT(id) DO UPDATE SET \
+               status=excluded.status, review=excluded.review, \
+               reviewed_at=excluded.reviewed_at",
+            params![
+                p.id, p.project_id, p.message_id, p.text, p.status, p.review, p.created_at,
+                p.reviewed_at
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+}
+
 // --- Tasks ---
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

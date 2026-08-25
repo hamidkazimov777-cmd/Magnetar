@@ -167,6 +167,21 @@ pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
         );
         CREATE INDEX IF NOT EXISTS idx_divergences_project ON divergences(project_id);
 
+        -- Proposals: model suggestions the user can fold into project memory.
+        -- The record is also the "already handled" marker for the message that
+        -- produced it, so the accept/reject buttons do not reappear.
+        CREATE TABLE IF NOT EXISTS proposals (
+            id          TEXT PRIMARY KEY,
+            project_id  TEXT NOT NULL,
+            message_id  TEXT NOT NULL,
+            text        TEXT NOT NULL,
+            status      TEXT NOT NULL,
+            review      TEXT,
+            created_at  INTEGER NOT NULL,
+            reviewed_at INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_proposals_project ON proposals(project_id);
+
         -- Provider connections (durable — не в хрупком localStorage). Ключи
         -- по-прежнему в Keychain по connection id; здесь только метаданные.
         CREATE TABLE IF NOT EXISTS connections (

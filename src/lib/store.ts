@@ -228,6 +228,11 @@ interface State {
   saveDecision: (d: import("./types").Decision) => void;
   deleteDecision: (projectId: string, id: string) => void;
 
+  /** Model proposals the user accepted/rejected, keyed by project. */
+  proposals: Record<string, import("./types").Proposal[]>;
+  loadProposals: (projectId: string) => Promise<void>;
+  saveProposal: (p: import("./types").Proposal) => void;
+
   /** Audit trail of every background write to project memory. */
   memoryLog: import("./types").MemoryEvent[];
   logMemory: (
@@ -695,6 +700,37 @@ export const useStore = create<State>()(
             [projectId]: (s.decisions[projectId] ?? []).filter((x) => x.id !== id),
           },
         }));
+      },
+
+      proposals: {},
+
+      loadProposals: async (projectId) => {
+        try {
+          const rows = await db.listProposals(projectId);
+          set((s) => ({ proposals: { ...s.proposals, [projectId]: rows } }));
+        } catch (e) {
+          get().logMemory({
+            kind: "audit",
+            status: "error",
+            detail: `proposals: ${String(e).slice(0, 160)}`,
+            projectId,
+          });
+        }
+      },
+
+      saveProposal: (p) => {
+        void db.saveProposal(p).catch(() => {});
+        set((s) => {
+          const list = s.proposals[p.projectId] ?? [];
+          const at = list.findIndex((x) => x.id === p.id);
+          return {
+            proposals: {
+              ...s.proposals,
+              [p.projectId]:
+                at < 0 ? [p, ...list] : list.map((x) => (x.id === p.id ? p : x)),
+            },
+          };
+        });
       },
 
       loadProjects: async () => {
