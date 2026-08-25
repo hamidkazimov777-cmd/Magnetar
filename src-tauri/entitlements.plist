@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- The embedded WKWebView needs JIT and writable executable memory. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <!-- The app launches arbitrary tools (rust-analyzer, git, the user's shell)
+         and loads their libraries, so hardened runtime must not enforce library
+         validation. This is why Magnetar ships via Developer ID, not the App
+         Store: the sandbox the store requires is incompatible with running
+         whatever the user's project needs. -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+</dict>
+</plist>
