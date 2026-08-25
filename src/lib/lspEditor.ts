@@ -1,5 +1,6 @@
 import type * as monaco from "monaco-editor";
 import { clientForPath, pathToUri, supportedLanguages } from "./lspManager";
+import { useStore } from "./store";
 
 /* ==========================================================================
    LSP EDITOR FEATURES
@@ -75,25 +76,29 @@ interface LspWorkspaceEdit {
   documentChanges?: Array<{ textDocument: { uri: string }; edits: LspTextEditR[] }>;
 }
 
-/** LSP rename result (changes or documentChanges) → a Monaco workspace edit. */
-function workspaceEditToMonaco(
-  res: LspWorkspaceEdit | null,
-  m: typeof import("monaco-editor"),
-): monaco.languages.WorkspaceEdit {
-  const edits: monaco.languages.IWorkspaceTextEdit[] = [];
-  const add = (uri: string, tes: LspTextEditR[]) => {
-    const resource = m.Uri.parse(uriToPath(uri));
-    for (const te of tes)
-      edits.push({
-        resource,
-        textEdit: { range: toMonacoRange(te.range), text: te.newText },
-        versionId: undefined,
-      });
-  };
+/** LSP rename result → one map of fs path → text edits, folding away the two
+ *  legal shapes (changes / documentChanges). */
+function renameGroups(res: LspWorkspaceEdit | null): Map<string, LspTextEditR[]> {
+  const groups = new Map<string, LspTextEditR[]>();
+  const add = (uri: string, tes: LspTextEditR[]) => groups.set(uriToPath(uri), tes);
   if (res?.documentChanges)
     for (const dc of res.documentChanges) add(dc.textDocument.uri, dc.edits);
   else if (res?.changes) for (const [uri, tes] of Object.entries(res.changes)) add(uri, tes);
-  return { edits };
+  return groups;
+}
+
+/** Apply LSP text edits to a string. Edits are applied from the end backwards
+ *  so earlier offsets stay valid; positions are UTF-16 code units, which is
+ *  exactly how a JS string indexes. */
+function applyLspEdits(text: string, edits: LspTextEditR[]): string {
+  const lineStarts = [0];
+  for (let i = 0; i < text.length; i++) if (text[i] === "\n") lineStarts.push(i + 1);
+  const off = (p: { line: number; character: number }) =>
+    (lineStarts[p.line] ?? text.length) + p.character;
+  const sorted = [...edits].sort((a, b) => off(b.range.start) - off(a.range.start));
+  let out = text;
+  for (const e of sorted) out = out.slice(0, off(e.range.start)) + e.newText + out.slice(off(e.range.end));
+  return out;
 }
 
 /** LSP definition result (several legal shapes) → Monaco locations. The target
@@ -319,16 +324,50 @@ export function registerLspProviders(m: typeof import("monaco-editor")): void {
       const path = modelPath(model);
       const client = clientForPath(path);
       if (!client) return { edits: [] };
+      let res: LspWorkspaceEdit | null;
       try {
-        const res = await client.request<LspWorkspaceEdit | null>("textDocument/rename", {
+        res = await client.request<LspWorkspaceEdit | null>("textDocument/rename", {
           textDocument: { uri: pathToUri(path) },
           position: toLspPosition(position),
           newName,
         });
-        return workspaceEditToMonaco(res, m);
       } catch (e) {
         return { edits: [], rejectReason: String(e) };
       }
+      const groups = renameGroups(res);
+      // A file open in the editor is renamed live through Monaco (marking it
+      // unsaved, as a rename should); a file that isn't open has no model, so
+      // Monaco's bulk edit would silently skip it — apply those on disk here so
+      // a project-wide rename actually reaches every file.
+      const models = m.editor.getModels();
+      const monacoEdits: monaco.languages.IWorkspaceTextEdit[] = [];
+      const diskWrites: Array<{ p: string; tes: LspTextEditR[] }> = [];
+      for (const [p, tes] of groups) {
+        const md = models.find((x) => x.uri.path === p);
+        if (md)
+          for (const te of tes)
+            monacoEdits.push({
+              resource: md.uri,
+              textEdit: { range: toMonacoRange(te.range), text: te.newText },
+              versionId: undefined,
+            });
+        else diskWrites.push({ p, tes });
+      }
+      if (diskWrites.length) {
+        const { api } = await import("./api");
+        await Promise.all(
+          diskWrites.map(async ({ p, tes }) => {
+            try {
+              const content = await api.editorReadFile(p);
+              await api.toolWriteFile(p, applyLspEdits(content, tes));
+            } catch {
+              /* a file we cannot read or write is left untouched */
+            }
+          }),
+        );
+        useStore.getState().refreshExplorer();
+      }
+      return { edits: monacoEdits };
     },
   });
 }
