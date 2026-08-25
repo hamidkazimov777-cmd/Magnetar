@@ -14,7 +14,6 @@ use futures_util::StreamExt;
 use once_cell::sync::Lazy;
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::sync::Mutex as StdMutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::ipc::Channel;
 use tokio::sync::Mutex as AsyncMutex;
@@ -33,8 +32,10 @@ const BUNDLED_CA: &[u8] = include_bytes!("../../certs/russian_trusted_ca.pem");
 static GIGA_LOCK: Lazy<AsyncMutex<()>> = Lazy::new(|| AsyncMutex::new(()));
 
 /// Global token cache keyed by the Basic auth key: (access_token, expires_at_ms).
-static TOKENS: Lazy<StdMutex<HashMap<String, (String, u64)>>> =
-    Lazy::new(|| StdMutex::new(HashMap::new()));
+/// Async mutex on purpose: this is touched only from async paths, and a
+/// blocking `std::sync::Mutex` would stall a Tokio worker thread on contention.
+static TOKENS: Lazy<AsyncMutex<HashMap<String, (String, u64)>>> =
+    Lazy::new(|| AsyncMutex::new(HashMap::new()));
 
 fn now_ms() -> u64 {
     SystemTime::now()
@@ -88,8 +89,9 @@ impl GigaChat {
         // Reuse a cached token while it has >60s left.
         if let Some((tok, exp)) = TOKENS
             .lock()
-            .ok()
-            .and_then(|m| m.get(&self.auth_key).cloned())
+            .await
+            .get(&self.auth_key)
+            .cloned()
         {
             if exp > now_ms() + 60_000 {
                 return Ok(tok);
@@ -129,9 +131,10 @@ impl GigaChat {
             .and_then(|e| e.as_u64())
             .unwrap_or_else(|| now_ms() + 25 * 60_000);
 
-        if let Ok(mut m) = TOKENS.lock() {
-            m.insert(self.auth_key.clone(), (token.clone(), exp));
-        }
+        TOKENS
+            .lock()
+            .await
+            .insert(self.auth_key.clone(), (token.clone(), exp));
         Ok(token)
     }
 
