@@ -22,7 +22,7 @@ import { useStore } from "../lib/store";
 import { buildCatalog, recommend, type Recommendation } from "../lib/adaptive";
 import { buildOutgoing, maybeSummarize } from "../lib/handoff";
 import { runAgent, AGENT_SYSTEM } from "../lib/agent";
-import { buildProjectMemory } from "../lib/memory";
+import { buildProjectMemory, buildGenerationContext } from "../lib/memory";
 import type { AskRequest } from "../lib/agent";
 import { buildMentionContext, expandSlash } from "../lib/mentions";
 import { providerForBaseUrl } from "../lib/generation";
@@ -322,12 +322,19 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     for (const p of provider.params) if (p.default !== undefined) params[p.key] = p.default;
     if (provider.responseFormat) params.response_format = provider.responseFormat;
 
+    // When this chat sees the project, steer generation with a one-line project
+    // descriptor — enough to place the request ("a hero image for my app")
+    // without burying the visual prompt in memory.
+    const sess = useStore.getState().sessions.find((s) => s.id === sessionId);
+    const brief = buildGenerationContext(sess);
+    const prompt = brief ? `${brief}\n\n${text}` : text;
+
     setStreaming(true);
     try {
       const result = await api.generate(connection, {
         kind: provider.kind,
         model,
-        prompt: text,
+        prompt,
         endpoint: provider.endpoint,
         params,
       });
