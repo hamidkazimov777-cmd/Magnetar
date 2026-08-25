@@ -3793,3 +3793,74 @@ Rust не тронут. Коммит `ff4882c`.
 
 **Этап «Гигиена» полностью закрыт** (5/5). Дальше по дорожной карте — этап 2:
 **Субагенты** (`RELEASE_PLAN.md`, этап 2) — дифференциатор. Затем LSP (этап 3).
+
+### Запись 81 — 2026-08-25 — Opus 4.8 — Этап 2 уже готов; LSP этап 3.1 «Мост»
+
+#### Расхождение карты и кода (важно)
+
+При заходе на «этап 2: Субагенты» выяснилось, что **он уже полностью
+реализован** — коммитами `3be93b0` (оркестрация), `8222dfa` (safety корня),
+`f2ac0f0` (bench-пикер), `d3218bd`, `45ae3e0`, `4971b81`, ещё до аудита и фичи
+«Генерация». Все 7 пунктов плана в коде: инструмент `delegate`
+([agent.ts:442](src/lib/agent.ts:442)), аренда файлов
+([leases.ts](src/lib/leases.ts)), отчёты `renderReports`
+([subagents.ts](src/lib/subagents.ts)), общий бюджет `TEAM_STEP_BUDGET`, панель
+дорожек [SubagentTracks.tsx](src/components/SubagentTracks.tsx), пул + лимит
+параллельности, i18n ru/en/es. Дорожная карта называла этап «следующим для
+постройки» — устаревшая запись. Hamid подтвердил: строить заново не надо,
+двигаться на этап 3 (LSP). Доки поправлены.
+
+#### Что сделано — этап 3.1 «Мост» (целиком)
+
+Языковой мост LSP: менеджер процессов на Rust + JSON-RPC клиент на фронте +
+синхронизация документов со вкладками. Три безопасных коммита.
+
+- **3.1a — Rust (`src-tauri/src/lsp.rs`, `7a96173`).** Зеркало
+  [pty.rs](src-tauri/src/pty.rs): реестр серверов `Lazy<Mutex<HashMap>>`,
+  `spawn(id, cmd, args, cwd, on_msg: Channel<String>)` — дочерний процесс с
+  piped stdio, поток-читатель парсит LSP-кадры (`Content-Length`) и шлёт JSON
+  во фронт; stderr дренируется (иначе полный pipe-буфер заблокирует сервер); на
+  выходе — синтетическая нотификация `magnetar/serverExited` и reap. `send`
+  обрамляет и пишет в stdin, `kill` — terminate+reap, `which` ищет бинарник в
+  `PATH` (бинарники не бандлим). Чистые `encode`/`read_message` покрыты 6
+  тестами. Команды `lsp_which/spawn/send/kill` в lib.rs. cargo test 19/19.
+- **3.1b — Фронт (`src/lib/lsp.ts` + `api.ts`, `1ca09fc`).** `LspClient` —
+  минимальный JSON-RPC 2.0: корреляция ответов по id, роутинг нотификаций и
+  server→client запросов (на неизвестный метод отвечает method-not-found, чтобы
+  сервер не завис), отмена всех in-flight по `serverExited`. Детект ответа —
+  по наличию ключа, не значения (null-result «определение не найдено» тоже
+  резолвится). api: `lspWhich/lspSpawn/lspSend/lspKill` (аргумент `on_msg` →
+  camelCase `onMsg`, как `on_data`→`onData` у pty).
+- **3.1c — Жизненный цикл (`src/lib/lspManager.ts` + EditorArea, `2feb683`).**
+  Один сервер на язык, поднимается по требованию из PATH-бинарника, рукопожатие
+  `initialize`/`initialized`, потом `didOpen`/`didChange`(debounce 250ms,
+  full-text)/`didClose` по мере жизни вкладок. Упавший сервер чистит слот →
+  следующий open перезапускает; отсутствующий бинарник кэшируется (не дёргаем
+  `which` на каждый кейстрок). **Узкий охват намеренно: только rust/python/go.**
+  TS/JS/JSON/CSS/HTML остаются на воркерах Monaco до этапа 3.4 (замена
+  TS-воркера) — чтобы один файл не обслуживали два языковых сервиса.
+  EditorArea зовёт `lsp.didOpen/didChange/didClose` best-effort (в вебе без
+  Tauri `which` бросает → язык кэшируется «недоступен», редактор не страдает).
+
+#### Файлы
+
+- Rust: `src-tauri/src/lsp.rs` (новый), `commands.rs`, `lib.rs`.
+- Фронт: `src/lib/lsp.ts` (новый), `src/lib/lspManager.ts` (новый),
+  `src/lib/api.ts`, `src/components/editor/EditorArea.tsx`.
+
+#### Проверки
+
+`cargo check`/`cargo test` 19/19, `npx tsc --noEmit` чисто, `npm run build`
+проходит, `npm run tauri build` — app + dmg собраны. rust-analyzer установлен
+(`~/.cargo/bin/rust-analyzer`), так что критерий 3.1 достижим. **Не сделано:**
+живой end-to-end smoke-тест (запустить app, открыть `.rs`, убедиться что
+процесс rust-analyzer поднялся и принял документ) — требует GUI, вручную.
+
+#### Следующий шаг
+
+Этап **3.2 «Функции в редакторе»**: начать с перехода-к-определению + hover.
+Подписать в Monaco провайдеры (`registerDefinitionProvider`,
+`registerHoverProvider`), которые вызывают `LspClient.request(
+'textDocument/definition' | 'textDocument/hover')` и конвертируют LSP-позиции
+↔ Monaco. Понадобится геттер клиента по пути в `lspManager` (сейчас клиенты
+живут в приватной Map — добавить `clientForPath(path)`).
