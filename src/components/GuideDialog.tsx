@@ -70,7 +70,7 @@ const GUIDE: Record<Lang, { heading: string; intro: string; sections: Section[] 
       {
         title: "7. Модели",
         items: [
-          "Переключатель моделей — в шапке панели агента. Фиолетовая точка отмечает активную модель: это единственное место в интерфейсе, где цвет означает «здесь работает ИИ».",
+          "Переключатель моделей — в шапке панели агента. Яркая точка отмечает активную модель — сигнал «здесь работает ИИ».",
           "Адаптивный режим сам подбирает модель под сложность запроса.",
           "Фоновую работу (аудит, резюме, решения, граф) выполняет отдельная дешёвая модель. Её можно закрепить в Настройках → Память проекта — так надёжнее, чем автоподбор.",
         ],
@@ -154,7 +154,7 @@ const GUIDE: Record<Lang, { heading: string; intro: string; sections: Section[] 
       {
         title: "7. Models",
         items: [
-          "The model switcher is in the agent panel header. A violet dot marks the active model — the one place colour means \u201cAI is working here\u201d.",
+          "The model switcher is in the agent panel header. A bright dot marks the active model — the signal \u201cAI is working here\u201d.",
           "Adaptive mode routes each request to a model that fits it.",
           "Background work (audit, summaries, decisions, graph) runs on a separate cheap model. Pin it in Settings → Project memory; that beats the automatic pick.",
         ],
@@ -238,7 +238,7 @@ const GUIDE: Record<Lang, { heading: string; intro: string; sections: Section[] 
       {
         title: "7. Modelos",
         items: [
-          "El selector está en la cabecera del panel del agente. Un punto violeta marca el modelo activo.",
+          "El selector está en la cabecera del panel del agente. Un punto brillante marca el modelo activo.",
           "El modo adaptativo enruta cada petición a un modelo adecuado.",
           "El trabajo en segundo plano usa un modelo barato aparte. Fíjalo en Ajustes → Memoria del proyecto.",
         ],

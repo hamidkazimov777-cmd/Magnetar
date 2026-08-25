@@ -12,10 +12,10 @@
      5. Surfaces     — splash, chat markdown
 
    Colour rules:
-     • Neutral graphite is the interface accent. Nothing in the chrome is
-       tinted for decoration.
-     • Violet (--color-ai) is reserved for AI state: the active model, agent
-       status, AI-authored content. Never for navigation, buttons or borders.
+     • Fully monochrome: black / graphite / gray. Nothing in the chrome is
+       tinted for decoration — no brand hue at all.
+     • --color-ai marks AI state (active model, agent status, AI-authored
+       content) by being the STRONGEST foreground, not by colour. Never a hue.
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
@@ -42,10 +42,11 @@
   --color-accent-soft: #e5e7eb;
   --color-accent-fg: #ffffff;
 
-  /* AI only: active model, agent mode, model-authored output. */
-  --color-ai: #6d28d9;
-  --color-ai-strong: #5b21b6;
-  --color-ai-soft: #f1ecfd;
+  /* AI state: active model, agent mode, model-authored output. Monochrome —
+     AI reads as the strongest foreground, not a hue. No violet anywhere. */
+  --color-ai: #111827;
+  --color-ai-strong: #000000;
+  --color-ai-soft: #e5e7eb;
 
   /* Semantic */
   --color-success: #047857;
@@ -91,9 +92,9 @@
   --color-accent-soft: #2f3540;
   --color-accent-fg: #0f1115;
 
-  --color-ai: #a78bfa;
-  --color-ai-strong: #c4b5fd;
-  --color-ai-soft: #241f3d;
+  --color-ai: #f9fafb;
+  --color-ai-strong: #ffffff;
+  --color-ai-soft: #2f3540;
 
   --color-success: #34d399;
   --color-warning: #fbbf24;

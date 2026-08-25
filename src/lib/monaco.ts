@@ -85,7 +85,7 @@ export function loadMonaco(): Promise<typeof import("monaco-editor")> {
       inherit: true,
       rules: [
         { token: "comment", foreground: "6b7280", fontStyle: "italic" },
-        { token: "keyword", foreground: "a78bfa" },
+        { token: "keyword", foreground: "5eead4" },
         { token: "string", foreground: "34d399" },
         { token: "number", foreground: "fbbf24" },
         { token: "type", foreground: "60a5fa" },
@@ -128,7 +128,7 @@ export function loadMonaco(): Promise<typeof import("monaco-editor")> {
       inherit: true,
       rules: [
         { token: "comment", foreground: "9ca3af", fontStyle: "italic" },
-        { token: "keyword", foreground: "6d28d9" },
+        { token: "keyword", foreground: "0d9488" },
         { token: "string", foreground: "047857" },
         { token: "number", foreground: "b45309" },
         { token: "type", foreground: "1d4ed8" },
