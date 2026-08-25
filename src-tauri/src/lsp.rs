@@ -129,7 +129,7 @@ pub fn spawn(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    if let Some(dir) = cwd.filter(|d| !d.is_empty()) {
+    if let Some(dir) = cwd.as_ref().filter(|d| !d.is_empty()) {
         command.current_dir(dir);
     }
     // Give the server the same augmented PATH we found it on, so it can locate
