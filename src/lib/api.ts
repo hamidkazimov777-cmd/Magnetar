@@ -1,6 +1,6 @@
 import { invoke as tauriInvoke, Channel } from "@tauri-apps/api/core";
 import type { ChatMessage, Connection, ModelInfo, StreamEvent } from "./types";
-import type { GenProvider, GeneratedImage } from "./generative";
+import type { GenerationRequest, GenerationResult } from "./generation";
 
 /** True when we are running inside the Tauri shell (not a plain browser tab). */
 export const HAS_BACKEND =
@@ -53,29 +53,18 @@ export const api = {
   listModels: (connection: Connection) =>
     invoke<ModelInfo[]>("list_models", { connection: toRustConn(connection) }),
 
-  /** Generate images through an OpenAI-compatible `images/generations`
-   *  endpoint. Separate from `complete`/`chat_stream`: the payload shape and
-   *  response (base64 or URLs) have nothing in common with chat. */
-  generateImage: (
-    provider: GenProvider,
-    model: string,
-    prompt: string,
-    n: number,
-    size: string,
-  ) =>
-    invoke<GeneratedImage[]>("generate_image", {
-      connection: {
-        id: provider.id,
-        kind: "openai_compat",
-        base_url: provider.baseUrl,
-        scope: null,
-        ca_path: null,
-      },
-      model,
-      prompt,
-      n,
-      size,
-      responseFormat: provider.responseFormat ?? null,
+  /** Universal generative call: POST `{base}/{endpoint}` with
+   *  `{model, prompt, ...params}` and return the produced assets. Nothing here
+   *  is image-specific — `image` is just a provider whose endpoint happens to
+   *  be `images/generations`. */
+  generate: (connection: Connection, req: GenerationRequest) =>
+    invoke<GenerationResult>("generate", {
+      connection: toRustConn(connection),
+      kind: req.kind,
+      model: req.model,
+      prompt: req.prompt,
+      endpoint: req.endpoint,
+      params: req.params,
     }),
 
   /** Single-shot non-streaming completion (router / summarizer). */

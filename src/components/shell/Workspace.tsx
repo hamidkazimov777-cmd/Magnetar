@@ -17,7 +17,6 @@ import { RoadmapView } from "../RoadmapView";
 import { KnowledgeGraphView } from "../KnowledgeGraphView";
 import { TimelineView } from "../TimelineView";
 import { SubscriptionsView } from "../SubscriptionsView";
-import { GenerationView } from "../GenerationView";
 import { useStore } from "../../lib/store";
 import { useT } from "../../lib/i18n";
 import { cn } from "../../lib/cn";
@@ -97,7 +96,6 @@ export function Workspace({
                 {centerView === "knowledge" && <KnowledgeGraphView />}
                 {centerView === "timeline" && <TimelineView />}
                 {centerView === "subscriptions" && <SubscriptionsView />}
-                {centerView === "generation" && <GenerationView />}
               </ErrorBoundary>
             </div>
 

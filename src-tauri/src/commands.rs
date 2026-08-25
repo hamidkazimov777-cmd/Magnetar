@@ -233,40 +233,46 @@ pub async fn complete(connection: Connection, params: ChatParams) -> Result<Stri
     provider.complete(params).await.map_err(|e| e.to_string())
 }
 
-/// One image generation request to an OpenAI-compatible `images/generations`
-/// endpoint. Kept outside the `Provider` trait on purpose: the response (a
-/// `data[]` of base64 or URLs) shares nothing with chat, and forcing it into
-/// the chat adapter would drag response parsing into every adapter.
+/// One universal generative call: POST `{base}/{endpoint}` with
+/// `{model, prompt, ...params}` and collect the returned assets. Nothing here is
+/// image-specific — `image` is just a provider whose endpoint happens to be
+/// `images/generations`; a video or audio provider is a different catalog entry
+/// with a different endpoint and the same request/result shapes.
 #[derive(serde::Serialize)]
-pub struct GeneratedImage {
+#[serde(rename_all = "camelCase")]
+pub struct GenerationResult {
+    pub kind: String,
+    pub assets: Vec<GenerationAsset>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerationAsset {
     pub url: Option<String>,
     pub b64: Option<String>,
+    pub mime_type: Option<String>,
 }
 
 #[tauri::command]
-pub async fn generate_image(
+pub async fn generate(
     connection: Connection,
+    kind: String,
     model: String,
     prompt: String,
-    n: Option<u32>,
-    size: Option<String>,
-    response_format: Option<String>,
-) -> Result<Vec<GeneratedImage>, String> {
+    endpoint: String,
+    params: Option<serde_json::Value>,
+) -> Result<GenerationResult, String> {
     let key = resolve_key(&connection)?;
-    let url = connection.endpoint("images/generations");
+    let url = connection.endpoint(&endpoint);
 
     let mut body = serde_json::json!({
         "model": model,
         "prompt": prompt,
     });
-    if let Some(n) = n {
-        body["n"] = serde_json::json!(n);
-    }
-    if let Some(size) = size {
-        body["size"] = serde_json::json!(size);
-    }
-    if let Some(rf) = response_format {
-        body["response_format"] = serde_json::json!(rf);
+    if let Some(serde_json::Value::Object(map)) = params {
+        for (k, v) in map {
+            body[k] = v;
+        }
     }
 
     let resp = reqwest::Client::new()
@@ -290,7 +296,7 @@ pub async fn generate_image(
         .cloned()
         .unwrap_or_default();
 
-    let images: Vec<GeneratedImage> = arr
+    let assets: Vec<GenerationAsset> = arr
         .iter()
         .filter_map(|item| {
             let url = item.get("url").and_then(|x| x.as_str()).map(String::from);
@@ -298,17 +304,21 @@ pub async fn generate_image(
                 .get("b64_json")
                 .and_then(|x| x.as_str())
                 .map(String::from);
+            let mime_type = item
+                .get("mime_type")
+                .and_then(|x| x.as_str())
+                .map(String::from);
             if url.is_none() && b64.is_none() {
                 return None;
             }
-            Some(GeneratedImage { url, b64 })
+            Some(GenerationAsset { url, b64, mime_type })
         })
         .collect();
 
-    if images.is_empty() {
-        return Err("provider returned no images".to_string());
+    if assets.is_empty() {
+        return Err("provider returned no assets".to_string());
     }
-    Ok(images)
+    Ok(GenerationResult { kind, assets })
 }
 
 #[tauri::command]
