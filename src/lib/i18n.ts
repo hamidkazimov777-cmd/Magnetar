@@ -250,6 +250,9 @@ const ru: Dict = {
   studioEmptyHint: "Опишите кадр или приложите изображение. Результаты появятся здесь.",
   studioConnect: "Подключите генеративную модель, чтобы начать.",
   studioSoon: "Скоро",
+  studioModel: "Модель",
+  genParamSize: "Формат",
+  genParamCount: "Количество",
 
   // --- Command palette -----------------------------------------------------
   cmdPlaceholder: "Введите команду или откройте раздел…",
@@ -869,6 +872,9 @@ const en: Dict = {
   studioEmptyHint: "Describe a frame or attach an image. Results appear here.",
   studioConnect: "Connect a generative model to start.",
   studioSoon: "Soon",
+  studioModel: "Model",
+  genParamSize: "Format",
+  genParamCount: "Count",
 
   cmdPlaceholder: "Type a command or jump to a section…",
   cmdFilePlaceholder: "Go to file…",
@@ -1469,6 +1475,9 @@ const es: Dict = {
   studioEmptyHint: "Describe un cuadro o adjunta una imagen. Los resultados aparecen aquí.",
   studioConnect: "Conecta un modelo generativo para empezar.",
   studioSoon: "Pronto",
+  studioModel: "Modelo",
+  genParamSize: "Formato",
+  genParamCount: "Cantidad",
 
   cmdPlaceholder: "Escribe un comando o salta a una sección…",
   cmdFilePlaceholder: "Ir al archivo…",
