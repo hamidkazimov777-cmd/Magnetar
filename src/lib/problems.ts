@@ -20,6 +20,20 @@ export interface Problem {
   code?: string;
 }
 
+/** A live language-server diagnostic. Like a Problem but with an end position
+ *  (Monaco already has the file via the model, so no `file` here — the store
+ *  keys these by path). */
+export interface Diag {
+  line: number;
+  column: number;
+  endLine: number;
+  endColumn: number;
+  severity: "error" | "warning" | "info";
+  message: string;
+  source?: string;
+  code?: string;
+}
+
 export interface Check {
   id: string;
   label: string;

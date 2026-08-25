@@ -148,17 +148,23 @@ export function StatusBar({ onOpenSettings }: { onOpenSettings: () => void }) {
 function ProblemsItem() {
   const t = useT();
   const runs = useStore((s) => s.checkRuns);
+  const lspDiagnostics = useStore((s) => s.lspDiagnostics);
   const setSidePanel = useStore((s) => s.setSidePanel);
 
-  const all = Object.values(runs).flatMap((r) => r.problems);
+  // The counter is the whole picture: on-demand project checks plus the live
+  // language-server diagnostics.
+  const all = [
+    ...Object.values(runs).flatMap((r) => r.problems),
+    ...Object.values(lspDiagnostics).flat(),
+  ];
   const errors = all.filter((p) => p.severity === "error").length;
   const warnings = all.length - errors;
-  const ran = Object.keys(runs).length > 0;
+  const show = Object.keys(runs).length > 0 || Object.keys(lspDiagnostics).length > 0;
 
   return (
     <Item
       icon={Zap}
-      label={ran ? `${errors} · ${warnings}` : t("problemsTitle")}
+      label={show ? `${errors} · ${warnings}` : t("problemsTitle")}
       title={t("problemsTitle")}
       onClick={() => setSidePanel("problems")}
       tone={errors > 0 ? "danger" : undefined}

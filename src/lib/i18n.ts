@@ -242,6 +242,7 @@ const ru: Dict = {
   welcomeTitle: "Приветствие",
   commandPalette: "Командная палитра",
   moreActions: "Ещё",
+  problemsLive: "Языковой сервер",
 
   // --- Command palette -----------------------------------------------------
   cmdPlaceholder: "Введите команду или откройте раздел…",
@@ -853,6 +854,7 @@ const en: Dict = {
   welcomeTitle: "Welcome",
   commandPalette: "Command palette",
   moreActions: "More",
+  problemsLive: "Language server",
 
   cmdPlaceholder: "Type a command or jump to a section…",
   cmdFilePlaceholder: "Go to file…",
@@ -1445,6 +1447,7 @@ const es: Dict = {
   welcomeTitle: "Bienvenida",
   commandPalette: "Paleta de comandos",
   moreActions: "Más",
+  problemsLive: "Servidor de lenguaje",
 
   cmdPlaceholder: "Escribe un comando o salta a una sección…",
   cmdFilePlaceholder: "Ir al archivo…",

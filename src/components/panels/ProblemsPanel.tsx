@@ -35,6 +35,11 @@ export function ProblemsPanel() {
   const revealInFile = useStore((s) => s.revealInFile);
   const runs = useStore((s) => s.checkRuns);
   const setRun = useStore((s) => s.setCheckRun);
+  const lspDiagnostics = useStore((s) => s.lspDiagnostics);
+  const lspEntries = useMemo(
+    () => Object.entries(lspDiagnostics).filter(([, d]) => d.length),
+    [lspDiagnostics],
+  );
 
   const [checks, setChecks] = useState<Check[]>([]);
   const [loading, setLoading] = useState(false);
@@ -227,6 +232,49 @@ export function ProblemsPanel() {
       <p className="section-hint px-3 pt-2">{t("problemsWhat")}</p>
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto px-1 pb-3">
+        {/* Live language-server diagnostics — updated as you type, no run
+            needed — sit above the on-demand project checks. */}
+        {lspEntries.length > 0 && (
+          <div className="mb-2 pt-1">
+            <div className="section-label flex items-center gap-1.5">
+              <Zap size={11} /> {t("problemsLive")}
+            </div>
+            {lspEntries.map(([file, diags]) => (
+              <div key={file} className="pl-3">
+                <div className="truncate px-2 py-0.5 text-[length:var(--fs-2xs)] text-[var(--color-text-mute)]">
+                  {file.split(/[/\\]/).pop()}
+                </div>
+                {diags.map((d, i) => (
+                  <button
+                    key={i}
+                    className="row items-start"
+                    onClick={() => revealInFile(file, d.line, d.column)}
+                    title={`${file}:${d.line}`}
+                  >
+                    {d.severity === "error" ? (
+                      <AlertCircle size={12} className="mt-0.5 shrink-0 text-[var(--color-danger)]" />
+                    ) : d.severity === "warning" ? (
+                      <AlertTriangle size={12} className="mt-0.5 shrink-0 text-[var(--color-warning)]" />
+                    ) : (
+                      <AlertCircle size={12} className="mt-0.5 shrink-0 text-[var(--color-info)]" />
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[length:var(--fs-sm)] leading-snug">
+                        {d.message}
+                      </span>
+                      <span className="block truncate text-[length:var(--fs-2xs)] text-[var(--color-text-mute)]">
+                        {d.line}:{d.column}
+                        {d.code ? ` · ${d.code}` : ""}
+                        {d.source ? ` · ${d.source}` : ""}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+
         {loading && (
           <div className="flex items-center gap-2 px-3 py-2 text-[length:var(--fs-xs)] text-[var(--color-text-mute)]">
             <Loader2 size={12} className="animate-spin" />

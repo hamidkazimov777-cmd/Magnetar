@@ -106,10 +106,27 @@ async function applyDiagnostics(uri: string, diagnostics: LspDiagnostic[]): Prom
         typeof d.code === "object" && d.code ? String(d.code.value) : d.code?.toString(),
     })),
   );
+  // Mirror into the store so the Problems panel and status bar can show them.
+  const sevName = (s: number): "error" | "warning" | "info" =>
+    s === 1 ? "error" : s === 2 ? "warning" : "info";
+  useStore.getState().setLspDiagnostics(
+    path,
+    diagnostics.map((d) => ({
+      line: d.range.start.line + 1,
+      column: d.range.start.character + 1,
+      endLine: d.range.end.line + 1,
+      endColumn: d.range.end.character + 1,
+      severity: sevName(d.severity ?? 1),
+      message: d.message,
+      source: d.source,
+      code: typeof d.code === "object" && d.code ? String(d.code.value) : d.code?.toString(),
+    })),
+  );
 }
 
 /** Drop any language-server markers for a path (on close). */
 async function clearDiagnostics(path: string): Promise<void> {
+  useStore.getState().setLspDiagnostics(path, []);
   const m = await loadMonaco();
   const model = m.editor.getModels().find((md) => md.uri.path === path);
   if (model) m.editor.setModelMarkers(model, DIAG_OWNER, []);

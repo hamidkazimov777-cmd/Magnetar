@@ -250,6 +250,11 @@ interface State {
   checkRuns: Record<string, import("./problems").CheckRun>;
   setCheckRun: (id: string, run: import("./problems").CheckRun) => void;
 
+  /** Live language-server diagnostics, keyed by absolute file path. Only files
+   *  that currently have diagnostics are present. */
+  lspDiagnostics: Record<string, import("./problems").Diag[]>;
+  setLspDiagnostics: (path: string, diags: import("./problems").Diag[]) => void;
+
   /** State of the code-search index for the open folder. */
   indexState: { status: "unknown" | "building" | "ready" | "error"; files?: number; at?: number };
   setIndexState: (s: State["indexState"]) => void;
@@ -808,6 +813,15 @@ export const useStore = create<State>()(
       checkRuns: {},
       setCheckRun: (id, run) =>
         set((s) => ({ checkRuns: { ...s.checkRuns, [id]: run } })),
+
+      lspDiagnostics: {},
+      setLspDiagnostics: (path, diags) =>
+        set((s) => {
+          const next = { ...s.lspDiagnostics };
+          if (diags.length) next[path] = diags;
+          else delete next[path];
+          return { lspDiagnostics: next };
+        }),
 
       indexState: { status: "unknown" },
       setIndexState: (indexState) => set({ indexState }),
