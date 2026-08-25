@@ -23,7 +23,8 @@ export type CenterView =
   | "roadmap"
   | "knowledge"
   | "timeline"
-  | "subscriptions";
+  | "subscriptions"
+  | "generation";
 
 /** An open editor tab. Tabs live in the store so the agent and Source Control
  *  can open things too. `kind: "diff"` renders a git diff instead of an editor. */

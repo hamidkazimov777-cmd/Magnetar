@@ -233,6 +233,84 @@ pub async fn complete(connection: Connection, params: ChatParams) -> Result<Stri
     provider.complete(params).await.map_err(|e| e.to_string())
 }
 
+/// One image generation request to an OpenAI-compatible `images/generations`
+/// endpoint. Kept outside the `Provider` trait on purpose: the response (a
+/// `data[]` of base64 or URLs) shares nothing with chat, and forcing it into
+/// the chat adapter would drag response parsing into every adapter.
+#[derive(serde::Serialize)]
+pub struct GeneratedImage {
+    pub url: Option<String>,
+    pub b64: Option<String>,
+}
+
+#[tauri::command]
+pub async fn generate_image(
+    connection: Connection,
+    model: String,
+    prompt: String,
+    n: Option<u32>,
+    size: Option<String>,
+    response_format: Option<String>,
+) -> Result<Vec<GeneratedImage>, String> {
+    let key = resolve_key(&connection)?;
+    let url = connection.endpoint("images/generations");
+
+    let mut body = serde_json::json!({
+        "model": model,
+        "prompt": prompt,
+    });
+    if let Some(n) = n {
+        body["n"] = serde_json::json!(n);
+    }
+    if let Some(size) = size {
+        body["size"] = serde_json::json!(size);
+    }
+    if let Some(rf) = response_format {
+        body["response_format"] = serde_json::json!(rf);
+    }
+
+    let resp = reqwest::Client::new()
+        .post(&url)
+        .bearer_auth(&key)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("network error: {e}"))?;
+
+    if !resp.status().is_success() {
+        let code = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("{code}: {text}"));
+    }
+
+    let v: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let arr = v
+        .get("data")
+        .and_then(|d| d.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    let images: Vec<GeneratedImage> = arr
+        .iter()
+        .filter_map(|item| {
+            let url = item.get("url").and_then(|x| x.as_str()).map(String::from);
+            let b64 = item
+                .get("b64_json")
+                .and_then(|x| x.as_str())
+                .map(String::from);
+            if url.is_none() && b64.is_none() {
+                return None;
+            }
+            Some(GeneratedImage { url, b64 })
+        })
+        .collect();
+
+    if images.is_empty() {
+        return Err("provider returned no images".to_string());
+    }
+    Ok(images)
+}
+
 #[tauri::command]
 pub async fn agent_step(
     connection: Connection,

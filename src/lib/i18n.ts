@@ -583,6 +583,40 @@ const ru: Dict = {
   subsPastePlaceholder: "Вставьте сюда ответ из ChatGPT/Claude/Gemini…",
   subsImport: "Добавить в канон",
   subsImported: "Добавлено",
+
+  // --- AI Generation Hub ----------------------------------------------------
+  genHub: "Генерация",
+  hintGenHub: "Генерация контента — изображения, видео, аудио, голос",
+  genTitle: "AI Generation Hub",
+  genIntro:
+    "Генерация изображений, видео, аудио и голоса через подключённых провайдеров.",
+  genCatImage: "Изображения",
+  genCatVideo: "Видео",
+  genCatAudio: "Аудио",
+  genCatVoice: "Голос",
+  genConnect: "Подключить",
+  genConnected: "Подключено",
+  genSoon: "Скоро",
+  genSoonHint:
+    "Остальные провайдеры появятся позже. Сейчас доступна генерация изображений через OpenAI-совместимые API.",
+  genApiKey: "API-ключ",
+  genCheck: "Проверить",
+  genChecking: "Проверка…",
+  genCheckOk: "Подключение работает",
+  genCheckFail: "Не удалось подключиться",
+  genConnectHint:
+    "Base URL и настройки подставляются автоматически — нужен только API-ключ.",
+  genBaseUrl: "Base URL",
+  genModel: "Модель",
+  genPrompt: "Промпт",
+  genPromptPlaceholder: "Опишите, что нужно сгенерировать…",
+  genSize: "Размер",
+  genCount: "Количество",
+  genGenerate: "Сгенерировать",
+  genGenerating: "Генерация…",
+  genResult: "Результат",
+  genDownload: "Скачать",
+  genError: "Ошибка",
 };
 
 /* ==========================================================================
@@ -1125,6 +1159,39 @@ const en: Dict = {
   subsPastePlaceholder: "Paste the reply from ChatGPT/Claude/Gemini here…",
   subsImport: "Add to canon",
   subsImported: "Added",
+
+  // --- AI Generation Hub ----------------------------------------------------
+  genHub: "Generation",
+  hintGenHub: "Content generation — images, video, audio, voice",
+  genTitle: "AI Generation Hub",
+  genIntro: "Generate images, video, audio and voice through connected providers.",
+  genCatImage: "Images",
+  genCatVideo: "Video",
+  genCatAudio: "Audio",
+  genCatVoice: "Voice",
+  genConnect: "Connect",
+  genConnected: "Connected",
+  genSoon: "Soon",
+  genSoonHint:
+    "The rest of the providers are coming later. Image generation via OpenAI-compatible APIs is available now.",
+  genApiKey: "API key",
+  genCheck: "Verify",
+  genChecking: "Checking…",
+  genCheckOk: "Connection works",
+  genCheckFail: "Connection failed",
+  genConnectHint:
+    "Base URL and settings are filled in automatically — you only need the API key.",
+  genBaseUrl: "Base URL",
+  genModel: "Model",
+  genPrompt: "Prompt",
+  genPromptPlaceholder: "Describe what to generate…",
+  genSize: "Size",
+  genCount: "Count",
+  genGenerate: "Generate",
+  genGenerating: "Generating…",
+  genResult: "Result",
+  genDownload: "Download",
+  genError: "Error",
 };
 
 /* ==========================================================================
@@ -1669,6 +1736,40 @@ const es: Dict = {
   subsPastePlaceholder: "Pega aquí la respuesta de ChatGPT/Claude/Gemini…",
   subsImport: "Añadir al canon",
   subsImported: "Añadido",
+
+  // --- AI Generation Hub ----------------------------------------------------
+  genHub: "Generación",
+  hintGenHub: "Generación de contenido — imágenes, vídeo, audio, voz",
+  genTitle: "AI Generation Hub",
+  genIntro:
+    "Genera imágenes, vídeo, audio y voz mediante proveedores conectados.",
+  genCatImage: "Imágenes",
+  genCatVideo: "Vídeo",
+  genCatAudio: "Audio",
+  genCatVoice: "Voz",
+  genConnect: "Conectar",
+  genConnected: "Conectado",
+  genSoon: "Próximamente",
+  genSoonHint:
+    "El resto de proveedores llegarán más tarde. La generación de imágenes vía APIs compatibles con OpenAI ya está disponible.",
+  genApiKey: "Clave API",
+  genCheck: "Comprobar",
+  genChecking: "Comprobando…",
+  genCheckOk: "La conexión funciona",
+  genCheckFail: "La conexión falló",
+  genConnectHint:
+    "La URL base y los ajustes se rellenan automáticamente — solo necesitas la clave API.",
+  genBaseUrl: "URL base",
+  genModel: "Modelo",
+  genPrompt: "Prompt",
+  genPromptPlaceholder: "Describe qué generar…",
+  genSize: "Tamaño",
+  genCount: "Cantidad",
+  genGenerate: "Generar",
+  genGenerating: "Generando…",
+  genResult: "Resultado",
+  genDownload: "Descargar",
+  genError: "Error",
 };
 
 const DICTS: Record<Lang, Dict> = { ru, en, es };

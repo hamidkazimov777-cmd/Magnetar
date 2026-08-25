@@ -34,6 +34,7 @@ pub fn run() {
             commands::has_api_key,
             commands::list_models,
             commands::complete,
+            commands::generate_image,
             commands::chat_stream,
             commands::cancel_stream,
             commands::list_sessions,

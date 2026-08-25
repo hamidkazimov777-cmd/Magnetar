@@ -7,6 +7,7 @@ import {
   BrainCircuit,
   History,
   Zap,
+  Sparkles,
   KeyRound,
   Settings,
   BookOpen,
@@ -130,6 +131,14 @@ export function ActivityBar({
             label={t("subscriptions")}
             active={centerView === "subscriptions"}
             onClick={() => setCenterView("subscriptions")}
+          />
+        </Hint>
+        <Hint text={t("hintGenHub")}>
+          <RailButton
+            icon={Sparkles}
+            label={t("genHub")}
+            active={centerView === "generation"}
+            onClick={() => setCenterView("generation")}
           />
         </Hint>
         <ThemeMenu />

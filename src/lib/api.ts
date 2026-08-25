@@ -1,5 +1,6 @@
 import { invoke as tauriInvoke, Channel } from "@tauri-apps/api/core";
 import type { ChatMessage, Connection, ModelInfo, StreamEvent } from "./types";
+import type { GenProvider, GeneratedImage } from "./generative";
 
 /** True when we are running inside the Tauri shell (not a plain browser tab). */
 export const HAS_BACKEND =
@@ -51,6 +52,31 @@ export const api = {
 
   listModels: (connection: Connection) =>
     invoke<ModelInfo[]>("list_models", { connection: toRustConn(connection) }),
+
+  /** Generate images through an OpenAI-compatible `images/generations`
+   *  endpoint. Separate from `complete`/`chat_stream`: the payload shape and
+   *  response (base64 or URLs) have nothing in common with chat. */
+  generateImage: (
+    provider: GenProvider,
+    model: string,
+    prompt: string,
+    n: number,
+    size: string,
+  ) =>
+    invoke<GeneratedImage[]>("generate_image", {
+      connection: {
+        id: provider.id,
+        kind: "openai_compat",
+        base_url: provider.baseUrl,
+        scope: null,
+        ca_path: null,
+      },
+      model,
+      prompt,
+      n,
+      size,
+      responseFormat: provider.responseFormat ?? null,
+    }),
 
   /** Single-shot non-streaming completion (router / summarizer). */
   complete: (
