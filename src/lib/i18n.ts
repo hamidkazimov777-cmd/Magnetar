@@ -239,6 +239,8 @@ const ru: Dict = {
   subscriptions: "Подписки",
   settingsKeys: "Настройки и ключи",
   guide: "Руководство",
+  welcomeTitle: "Приветствие",
+  commandPalette: "Командная палитра",
 
   // --- Command palette -----------------------------------------------------
   cmdPlaceholder: "Введите команду или откройте раздел…",
@@ -847,6 +849,8 @@ const en: Dict = {
   subscriptions: "Subscriptions",
   settingsKeys: "Settings & keys",
   guide: "User guide",
+  welcomeTitle: "Welcome",
+  commandPalette: "Command palette",
 
   cmdPlaceholder: "Type a command or jump to a section…",
   cmdFilePlaceholder: "Go to file…",
@@ -1436,6 +1440,8 @@ const es: Dict = {
   subscriptions: "Suscripciones",
   settingsKeys: "Ajustes y claves",
   guide: "Guía de uso",
+  welcomeTitle: "Bienvenida",
+  commandPalette: "Paleta de comandos",
 
   cmdPlaceholder: "Escribe un comando o salta a una sección…",
   cmdFilePlaceholder: "Ir al archivo…",

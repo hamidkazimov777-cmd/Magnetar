@@ -6,6 +6,7 @@ import { WelcomeView } from "./components/WelcomeView";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { GuideDialog } from "./components/GuideDialog";
 import { Splash } from "./components/Splash";
+import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { useStore } from "./lib/store";
 import { useT } from "./lib/i18n";
 import { api } from "./lib/api";
@@ -133,28 +134,46 @@ export default function App() {
       )}
 
       {showWelcome ? (
-        <WelcomeView
-          onOpenSettings={() => setSettingsOpen(true)}
-          onFinish={() => setOnboarded(true)}
-        />
+        <ErrorBoundary surface={t("welcomeTitle")}>
+          <WelcomeView
+            onOpenSettings={() => setSettingsOpen(true)}
+            onFinish={() => setOnboarded(true)}
+          />
+        </ErrorBoundary>
       ) : (
-        <Workspace
+        <ErrorBoundary surface={t("workspace")}>
+          <Workspace
+            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenGuide={() => setGuideOpen(true)}
+          />
+        </ErrorBoundary>
+      )}
+
+      <ErrorBoundary surface={t("commandPalette")}>
+        <CommandPalette
+          open={palette !== null}
+          mode={palette ?? "commands"}
+          onClose={() => setPalette(null)}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenGuide={() => setGuideOpen(true)}
         />
+      </ErrorBoundary>
+
+      {settingsOpen && (
+        <ErrorBoundary surface={t("settingsTitle")}>
+          <SettingsDialog onClose={() => setSettingsOpen(false)} />
+        </ErrorBoundary>
       )}
-
-      <CommandPalette
-        open={palette !== null}
-        mode={palette ?? "commands"}
-        onClose={() => setPalette(null)}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onOpenGuide={() => setGuideOpen(true)}
-      />
-
-      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
-      {guideOpen && <GuideDialog onClose={() => setGuideOpen(false)} />}
-      {showSplash && <Splash onDone={() => setShowSplash(false)} />}
+      {guideOpen && (
+        <ErrorBoundary surface={t("guide")}>
+          <GuideDialog onClose={() => setGuideOpen(false)} />
+        </ErrorBoundary>
+      )}
+      {showSplash && (
+        <ErrorBoundary surface="Magnetar">
+          <Splash onDone={() => setShowSplash(false)} />
+        </ErrorBoundary>
+      )}
     </>
   );
 }
