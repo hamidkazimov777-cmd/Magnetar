@@ -3316,3 +3316,85 @@ P2.12 аудита: кэширование схем инструментов (`s
 
 Вернуться к аудиту производительности: **P2.12** — кэширование схем инструментов
 (`src/lib/agent.ts`).
+
+### Запись 69 — 2026-08-25 — Kimi Code — Универсальный генеративный слой (вместо AI Generation Hub)
+
+#### Что сделано
+
+По решению пользователя «AI Generation Hub» (Запись 68) удалён — генерация
+должна существовать только как третий режим чата, а не как отдельная страница.
+Первым шагом заложен универсальный слой, не привязанный к изображениям.
+
+- `src/lib/generation.ts` (новый) — типы `GenerationKind = image|video|audio|voice`,
+  `GenerationProvider` / `GenerationRequest` / `GenerationResult` /
+  `GenerationAsset`, каталог `GEN_PROVIDERS` (рабочие: OpenAI Images, Together AI;
+  ~12 «Скоро»), хелперы `GEN_BY_ID` / `GEN_BY_BASE_URL` / `providerForBaseUrl`.
+- Удалены `src/lib/generative.ts` и `src/components/GenerationView.tsx`.
+- `src/lib/api.ts` — метод `generateImage` заменён на универсальный `generate`
+  (kind / model / prompt / endpoint / params).
+- `src-tauri/src/commands.rs` — `generate_image` / `GeneratedImage` заменены на
+  `GenerationResult` / `GenerationAsset` + команда `generate` (POST
+  `{base}/{endpoint}`, body `{model,prompt}+params`, парсинг `data[]` на
+  `url` / `b64_json` / `mime_type`).
+- `src-tauri/src/lib.rs` — регистрация `commands::generate`.
+- Убраны: `CenterView."generation"` (`store.ts`), рендер `GenerationView`
+  (`Workspace.tsx`), иконка Sparkles (`ActivityBar.tsx`).
+
+#### Проверки
+
+`npx tsc --noEmit` — чисто. `cargo check` — чисто. `cargo test` — 9/9.
+`npm run build` / `npm run tauri build` — проходит (app + dmg). Коммит `2a335c2`.
+
+#### Следующий шаг
+
+Трек «Генерация»: `Track`/`activeTrack` в сторе, три вкладки чата,
+`runGeneration`, фильтрация связей в `ModelSwitcher`.
+
+### Запись 70 — 2026-08-25 — Kimi Code — Трек «Генерация» (activeTrack, три режима чата)
+
+#### Что сделано
+
+Третий режим чата «Генерация» рядом с «Обсуждение» и «Агент». Дорожка
+универсальная — любой `GenerationKind`; сейчас работают image-провайдеры.
+
+- `src/lib/types.ts` — `Track = "chat" | "agent" | "generation"`; `ProviderKind`
+  дополнен `"generative"`; `Session.track` теперь `Track`.
+- `src-tauri/src/providers/mod.rs` — `ProviderKind::Generative` мапится на
+  `openai_compat`-адаптер (для `list_models`/«Проверить» и ключей).
+- `src/lib/store.ts` — булев `agentMode` заменён на `activeTrack: Track`;
+  `switchTrack(track)` на три дорожки; `newSession(track)` для generative-сессии
+  подставляет generative-связь и первую модель каталога; `selectSession` не тянет
+  текстовую модель в generative-трек; добавлен `setMessageAttachments`
+  (вложения сгенерированных файлов, in-memory, как вставленные картинки).
+- `ChatView.tsx` — три вкладки, ветка `runGeneration` (каталог → `api.generate` →
+  assets → вложения сообщения). Адаптивный роутер в generative-треке не зовётся.
+- `ModelSwitcher.tsx` — фильтр связей по треку (generative ↔ не-generative);
+  модели generative-трека берутся из каталога, без `/models`.
+- Все читатели `agentMode` переведены на `activeTrack`: `Message`, `ChatsPanel`
+  (бейдж трека + Sparkles), `StatusBar` (цикл дорожек), `CommandPalette`,
+  `SubagentTracks`, `exportMemory`, `agent.ts`, `WelcomeView`, `ExplorerPanel`.
+- `Message.tsx` — рендер image-вложений по `path` (url-вариант) без base64.
+- `src/lib/i18n.ts` — `trackGeneration`, `trackGenerationHint`,
+  `genProviderUnavailable`, `genEmpty` (ru/en/es).
+
+#### Эффект
+
+Три режима чата в одном проекте с общей памятью: «Обсуждение» (текст), «Агент»
+(инструменты), «Генерация» (генеративные модели). Каждый хранит свою модель и
+историю. Секция «Генеративные модели» в Settings — следующим шагом (C).
+
+#### Файлы
+
+15 файлов (см. diff `97bf3bf`).
+
+#### Проверки
+
+`npx tsc --noEmit` — чисто. `cargo check` — чисто. `cargo test` — 9/9.
+`npm run build` — проходит. `npm run tauri build` — проходит (app + dmg).
+Коммит `97bf3bf`.
+
+#### Следующий шаг
+
+Инкремент C: секция «Генеративные модели» в `SettingsDialog` — выбор провайдера
+из `GEN_PROVIDERS`, авто baseUrl/endpoint, ввод ключа, «Проверить»/«Сохранить»,
+фильтр `kind === "generative"`.
