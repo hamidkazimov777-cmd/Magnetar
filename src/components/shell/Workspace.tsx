@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { PanelRightOpen } from "lucide-react";
 import { ActivityBar } from "./ActivityBar";
 import { StatusBar } from "./StatusBar";
 import { TerminalPanel } from "./TerminalPanel";
@@ -43,13 +44,14 @@ export function Workspace({
   const centerView = useStore((s) => s.centerView);
   const terminalOpen = useStore((s) => s.terminalOpen);
   const agentPanelOpen = useStore((s) => s.agentPanelOpen);
+  const toggleAgentPanel = useStore((s) => s.toggleAgentPanel);
 
   const [sidebarW, setSidebarW] = useState(248);
   const [agentW, setAgentW] = useState(420);
   const [termH, setTermH] = useState(260);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[var(--color-bg)]">
+    <div className="relative flex h-screen w-screen overflow-hidden bg-[var(--color-bg)]">
       <ActivityBar onOpenSettings={onOpenSettings} onOpenGuide={onOpenGuide} />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -123,7 +125,7 @@ export function Workspace({
               />
               <aside
                 aria-label={t("agentPanel")}
-                className="flex shrink-0 flex-col border-l border-[var(--color-border)] bg-[var(--color-surface)]"
+                className="flex shrink-0 flex-col border-l border-[var(--color-border)] bg-[var(--color-surface)] @container/agent"
                 style={{ width: agentW }}
               >
                 <ErrorBoundary surface={t("agentPanel")}>
@@ -136,6 +138,20 @@ export function Workspace({
 
         <StatusBar onOpenSettings={onOpenSettings} />
       </div>
+
+      {/* When the agent panel is collapsed it takes its own reopen control with
+          it — this pull-tab on the right edge brings it back without hunting
+          through the chat list. */}
+      {!agentPanelOpen && (
+        <button
+          onClick={() => toggleAgentPanel(true)}
+          title={t("cmdToggleAgentPanel")}
+          aria-label={t("cmdToggleAgentPanel")}
+          className="absolute right-0 top-1/2 z-20 -translate-y-1/2 rounded-l-[var(--r-md)] border border-r-0 border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-3 text-[var(--color-text-dim)] shadow-md transition-colors hover:text-[var(--color-text)]"
+        >
+          <PanelRightOpen size={16} />
+        </button>
+      )}
     </div>
   );
 }
@@ -180,6 +196,9 @@ function Resizer({
       role="separator"
       aria-orientation={axis === "x" ? "vertical" : "horizontal"}
       onMouseDown={(e) => {
+        // Without this the drag starts a text selection in whatever it passes
+        // over — the transcript ends up highlighted every time you resize.
+        e.preventDefault();
         last.current = axis === "x" ? e.clientX : e.clientY;
         setDragging(true);
       }}

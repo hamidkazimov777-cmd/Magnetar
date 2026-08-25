@@ -461,14 +461,16 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
             Each mode keeps its own model; discussion talks, agent acts,
             generation makes images and audio. */}
         <Hint text={t("hintAgentToggle")} side="bottom">
-          <div className="segmented shrink-0">
+          {/* Labels fold away on a narrow panel so the segments (and the
+              controls after them) never get clipped; tooltips keep the names. */}
+          <div className="segmented min-w-0">
             <button
               data-on={activeTrack === "chat"}
               onClick={() => switchTrack("chat")}
               title={t("trackChatHint")}
             >
-              <MessagesSquare size={13} />
-              {t("trackChat")}
+              <MessagesSquare size={13} className="shrink-0" />
+              <span className="hidden @[400px]/agent:inline">{t("trackChat")}</span>
             </button>
             <button
               data-ai="true"
@@ -476,8 +478,8 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
               onClick={() => switchTrack("agent")}
               title={t("agentHint")}
             >
-              <Bot size={13} />
-              {t("agent")}
+              <Bot size={13} className="shrink-0" />
+              <span className="hidden @[400px]/agent:inline">{t("agent")}</span>
             </button>
             <button
               data-ai="true"
@@ -485,8 +487,8 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
               onClick={() => switchTrack("generation")}
               title={t("trackGenerationHint")}
             >
-              <Clapperboard size={13} />
-              {t("trackGeneration")}
+              <Clapperboard size={13} className="shrink-0" />
+              <span className="hidden @[400px]/agent:inline">{t("trackGeneration")}</span>
             </button>
           </div>
         </Hint>

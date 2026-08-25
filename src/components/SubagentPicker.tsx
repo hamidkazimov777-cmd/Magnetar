@@ -24,9 +24,29 @@ export function SubagentPicker() {
   // should not be one missing field away from taking itself down.
   const roster = useStore((s) => s.prefs.subagentRoster) ?? [];
   const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  // The outside-click guard lives on the wrapper (button + panel), not the
+  // panel alone: with it on the panel, clicking the button again fired a
+  // mousedown "outside" that closed the panel, then the click reopened it — so
+  // the toggle never closed. Covering the button too makes the second click a
+  // clean toggle-off, and closing on Escape keeps it from trapping the user.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
   return (
-    <div className="relative">
+    <div className="relative" ref={wrapRef}>
       <button
         className="toggle-pill shrink-0 px-2"
         data-ai="true"
@@ -60,22 +80,8 @@ function Panel({ onClose }: { onClose: () => void }) {
     connections[0]?.id ?? null,
   );
   const [loading, setLoading] = useState<string | null>(null);
-  const ref = useRef<HTMLDivElement>(null);
-
-  // Close on a click outside or on Escape: a popover that traps the user is
-  // worse than no popover.
-  useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) onClose();
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [onClose]);
+  // Outside-click and Escape are handled by the wrapper in SubagentPicker, so
+  // the toggle button is covered too and a second click cleanly closes it.
 
   const load = async (id: string) => {
     const conn = connections.find((c) => c.id === id);
@@ -118,7 +124,6 @@ function Panel({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      ref={ref}
       className="anim-in absolute right-0 top-[calc(100%+6px)] z-40 max-h-[70vh] w-[min(calc(100vw-2rem),26rem)] overflow-y-auto overflow-hidden rounded-[var(--r-lg)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] shadow-[var(--e-3)]"
     >
       <div className="border-b border-[var(--color-border)] px-3 py-2.5">
