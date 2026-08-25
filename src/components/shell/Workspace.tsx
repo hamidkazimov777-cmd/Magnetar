@@ -125,7 +125,11 @@ export function Workspace({
               />
               <aside
                 aria-label={t("agentPanel")}
-                className="flex shrink-0 flex-col border-l border-[var(--color-border)] bg-[var(--color-surface)] @container/agent"
+                // container-type (for the header's container query) establishes a
+                // stacking context, which trapped the helper popover below the
+                // z-10 resizer. relative z-20 lifts the panel — and everything
+                // that overflows out of it — back above the divider.
+                className="relative z-20 flex shrink-0 flex-col border-l border-[var(--color-border)] bg-[var(--color-surface)] @container/agent"
                 style={{ width: agentW }}
               >
                 <ErrorBoundary surface={t("agentPanel")}>
