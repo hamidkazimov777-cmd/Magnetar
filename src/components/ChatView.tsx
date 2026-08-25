@@ -470,7 +470,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
               title={t("trackChatHint")}
             >
               <MessagesSquare size={13} className="shrink-0" />
-              <span className="hidden @[400px]/agent:inline">{t("trackChat")}</span>
+              <span className="hidden @[520px]/agent:inline">{t("trackChat")}</span>
             </button>
             <button
               data-ai="true"
@@ -479,7 +479,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
               title={t("agentHint")}
             >
               <Bot size={13} className="shrink-0" />
-              <span className="hidden @[400px]/agent:inline">{t("agent")}</span>
+              <span className="hidden @[520px]/agent:inline">{t("agent")}</span>
             </button>
             <button
               data-ai="true"
@@ -488,7 +488,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
               title={t("trackGenerationHint")}
             >
               <Clapperboard size={13} className="shrink-0" />
-              <span className="hidden @[400px]/agent:inline">{t("trackGeneration")}</span>
+              <span className="hidden @[520px]/agent:inline">{t("trackGeneration")}</span>
             </button>
           </div>
         </Hint>
