@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Sparkles,
-  Clapperboard,
   ArrowUpRight,
   Bot,
   TriangleAlert,
@@ -53,7 +52,6 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
   const adaptive = useStore((s) => s.adaptive);
   const setAdaptive = useStore((s) => s.setAdaptive);
   const activeTrack = useStore((s) => s.activeTrack);
-  const switchTrack = useStore((s) => s.switchTrack);
   const toggleProjectContext = useStore((s) => s.toggleProjectContext);
   const seesProject = useStore(
     (s) => s.sessions.find((x) => x.id === s.activeSessionId)?.seesProject ?? true,
@@ -456,42 +454,16 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
         data-tauri-drag-region
         className="flex h-[var(--h-titlebar)] shrink-0 items-center gap-1.5 border-b border-[var(--color-border)] px-2"
       >
-        {/* One segmented control is the panel's identity: it both names the
-            active mode and switches it, so no separate icon+label is needed.
-            Each mode keeps its own model; discussion talks, agent acts,
-            generation makes images and audio. */}
-        <Hint text={t("hintAgentToggle")} side="bottom">
-          {/* Labels fold away on a narrow panel so the segments (and the
-              controls after them) never get clipped; tooltips keep the names. */}
-          <div className="segmented min-w-0">
-            <button
-              data-on={activeTrack === "chat"}
-              onClick={() => switchTrack("chat")}
-              title={t("trackChatHint")}
-            >
-              <MessagesSquare size={13} className="shrink-0" />
-              <span className="hidden @[520px]/agent:inline">{t("trackChat")}</span>
-            </button>
-            <button
-              data-ai="true"
-              data-on={activeTrack === "agent"}
-              onClick={() => switchTrack("agent")}
-              title={t("agentHint")}
-            >
-              <Bot size={13} className="shrink-0" />
-              <span className="hidden @[520px]/agent:inline">{t("agent")}</span>
-            </button>
-            <button
-              data-ai="true"
-              data-on={activeTrack === "generation"}
-              onClick={() => switchTrack("generation")}
-              title={t("trackGenerationHint")}
-            >
-              <Clapperboard size={13} className="shrink-0" />
-              <span className="hidden @[520px]/agent:inline">{t("trackGeneration")}</span>
-            </button>
-          </div>
-        </Hint>
+        {/* Identity of the panel. The mode switch itself lives in the left
+            rail now, so this is a label, not a control. */}
+        {activeTrack === "agent" ? (
+          <Bot size={15} className="shrink-0 text-[var(--color-ai)]" />
+        ) : (
+          <MessagesSquare size={15} className="shrink-0 text-[var(--color-text-dim)]" />
+        )}
+        <span className="shrink-0 text-[length:var(--fs-base)] font-semibold">
+          {activeTrack === "agent" ? t("agent") : t("trackChat")}
+        </span>
         <div className="flex-1" />
         <Hint text={t("hintNewChat")} side="left">
           <button className="icon-btn" title={t("newChat")} onClick={() => newSession()}>

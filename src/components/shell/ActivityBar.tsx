@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import {
   Files,
   MessageSquare,
+  MessagesSquare,
+  Bot,
+  Clapperboard,
   GitBranch,
   Search,
   BrainCircuit,
@@ -48,6 +51,8 @@ export function ActivityBar({
   const setSidePanel = useStore((s) => s.setSidePanel);
   const centerView = useStore((s) => s.centerView);
   const setCenterView = useStore((s) => s.setCenterView);
+  const activeTrack = useStore((s) => s.activeTrack);
+  const switchTrack = useStore((s) => s.switchTrack);
   const pendingChanges = useStore(
     (s) => s.changes.filter((c) => !c.reverted).length,
   );
@@ -105,6 +110,37 @@ export function ActivityBar({
       >
         <LogoMark size={22} />
       </div>
+
+      {/* The mode selector — the product's primary "what am I doing" switch —
+          lives at the top of the rail so it is always reachable, even when a
+          mode (generation) takes over the whole centre. */}
+      <RailGroup label={t("agentPanel")}>
+        <Hint text={t("trackChatHint")}>
+          <RailButton
+            icon={MessagesSquare}
+            label={t("trackChat")}
+            active={activeTrack === "chat"}
+            onClick={() => switchTrack("chat")}
+          />
+        </Hint>
+        <Hint text={t("agentHint")}>
+          <RailButton
+            icon={Bot}
+            label={t("agent")}
+            active={activeTrack === "agent"}
+            onClick={() => switchTrack("agent")}
+          />
+        </Hint>
+        <Hint text={t("trackGenerationHint")}>
+          <RailButton
+            icon={Clapperboard}
+            label={t("trackGeneration")}
+            active={activeTrack === "generation"}
+            onClick={() => switchTrack("generation")}
+          />
+        </Hint>
+      </RailGroup>
+      <RailRule />
 
       <HintsToggle />
       <RailRule />

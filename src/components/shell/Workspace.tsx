@@ -11,6 +11,7 @@ import { ChangesPanel } from "../panels/ChangesPanel";
 import { ProblemsPanel } from "../panels/ProblemsPanel";
 import { ProjectPanel } from "../panels/ProjectPanel";
 import { EditorArea } from "../editor/EditorArea";
+import { StudioView } from "../StudioView";
 import { ChatView } from "../ChatView";
 import { SettingsView } from "../SettingsView";
 import { ProjectsView } from "../ProjectsView";
@@ -45,6 +46,9 @@ export function Workspace({
   const terminalOpen = useStore((s) => s.terminalOpen);
   const agentPanelOpen = useStore((s) => s.agentPanelOpen);
   const toggleAgentPanel = useStore((s) => s.toggleAgentPanel);
+  const activeTrack = useStore((s) => s.activeTrack);
+  // Generation takes over the centre as a studio; the chat panel steps aside.
+  const showAgentPanel = agentPanelOpen && activeTrack !== "generation";
 
   const [sidebarW, setSidebarW] = useState(248);
   const [agentW, setAgentW] = useState(420);
@@ -92,6 +96,7 @@ export function Workspace({
             >
               <ErrorBoundary surface={t("workspace")}>
                 {centerView === "editor" && <EditorArea />}
+                {centerView === "studio" && <StudioView />}
                 {centerView === "settings" && <SettingsView />}
                 {centerView === "projects" && <ProjectsView />}
                 {centerView === "roadmap" && <RoadmapView />}
@@ -117,7 +122,7 @@ export function Workspace({
           </main>
 
           {/* Agent panel */}
-          {agentPanelOpen && (
+          {showAgentPanel && (
             <>
               <Resizer
                 axis="x"
@@ -146,7 +151,7 @@ export function Workspace({
       {/* When the agent panel is collapsed it takes its own reopen control with
           it — this pull-tab on the right edge brings it back without hunting
           through the chat list. */}
-      {!agentPanelOpen && (
+      {!agentPanelOpen && activeTrack !== "generation" && (
         <button
           onClick={() => toggleAgentPanel(true)}
           title={t("cmdToggleAgentPanel")}

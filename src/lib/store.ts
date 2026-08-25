@@ -19,6 +19,7 @@ export type SidePanel =
 /** What the center area renders: the code editor, or a full-width page. */
 export type CenterView =
   | "editor"
+  | "studio"
   | "settings"
   | "projects"
   | "roadmap"
@@ -969,6 +970,17 @@ export const useStore = create<State>()(
 
       switchTrack: (track) => {
         const st = get();
+        // The centre follows the mode: generation is a full-screen studio; the
+        // text tracks (discussion / agent) work over the editor. Leaving the
+        // studio returns to the editor; other center views (settings, projects)
+        // are left as-is.
+        const centerView: CenterView =
+          track === "generation"
+            ? "studio"
+            : st.centerView === "studio"
+              ? "editor"
+              : st.centerView;
+        set({ centerView });
         const current = st.sessions.find((x) => x.id === st.activeSessionId);
         if (current?.track === track) {
           set({ activeTrack: track });
