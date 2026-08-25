@@ -10,7 +10,6 @@ import {
   MessagesSquare,
   Eye,
   Folder,
-  FolderX,
   MoreHorizontal,
   Loader2,
   Square,
@@ -565,15 +564,18 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
           </Hint>
         )}
         <div className="flex-1" />
+        {/* A real switch with a constant label: the words name the capability,
+            the switch shows whether it's on — never ambiguous. */}
         <Hint text={t("hintSeesProject")} side="bottom">
           <button
-            className="toggle-pill shrink-0"
-            data-on={seesProject}
+            className="flex shrink-0 items-center gap-2 rounded-[var(--r-md)] px-2 py-1 text-[length:var(--fs-sm)] font-medium text-[var(--color-text-dim)] transition-colors hover:text-[var(--color-text)]"
             onClick={toggleProjectContext}
-            title={seesProject ? t("seesProject") : t("hidesProject")}
+            aria-label={t("seesProject")}
+            aria-pressed={seesProject}
           >
-            {seesProject ? <Folder size={13} /> : <FolderX size={13} />}
-            {t("projectContext")}
+            <Folder size={13} className="shrink-0" />
+            <span className="whitespace-nowrap">{t("seesProject")}</span>
+            <span className="switch" data-on={seesProject} />
           </button>
         </Hint>
       </div>

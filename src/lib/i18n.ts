@@ -241,7 +241,6 @@ const ru: Dict = {
   guide: "Руководство",
   welcomeTitle: "Приветствие",
   commandPalette: "Командная палитра",
-  projectContext: "Проект",
   moreActions: "Ещё",
 
   // --- Command palette -----------------------------------------------------
@@ -853,7 +852,6 @@ const en: Dict = {
   guide: "User guide",
   welcomeTitle: "Welcome",
   commandPalette: "Command palette",
-  projectContext: "Project",
   moreActions: "More",
 
   cmdPlaceholder: "Type a command or jump to a section…",
@@ -1446,7 +1444,6 @@ const es: Dict = {
   guide: "Guía de uso",
   welcomeTitle: "Bienvenida",
   commandPalette: "Paleta de comandos",
-  projectContext: "Proyecto",
   moreActions: "Más",
 
   cmdPlaceholder: "Escribe un comando o salta a una sección…",
