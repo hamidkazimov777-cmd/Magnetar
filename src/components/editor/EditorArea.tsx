@@ -5,7 +5,7 @@ import { api } from "../../lib/api";
 import { useStore, type EditorTab } from "../../lib/store";
 import { syncCheckMarkers } from "../../lib/markers";
 import * as lsp from "../../lib/lspManager";
-import { registerLspProviders } from "../../lib/lspEditor";
+import { registerLspProviders, installDefinitionOpener } from "../../lib/lspEditor";
 import { useT } from "../../lib/i18n";
 import { cn } from "../../lib/cn";
 import { EmptyState } from "../ui/EmptyState";
@@ -25,6 +25,8 @@ export function EditorArea() {
   const activeTabPath = useStore((s) => s.activeTabPath);
   const setActiveTab = useStore((s) => s.setActiveTab);
   const closeTab = useStore((s) => s.closeTab);
+  const openTab = useStore((s) => s.openTab);
+  const revealInFile = useStore((s) => s.revealInFile);
   const refreshExplorer = useStore((s) => s.refreshExplorer);
   const prefs = useStore((s) => s.prefs);
   const resolvedTheme = useResolvedTheme();
@@ -141,8 +143,10 @@ export function EditorArea() {
       monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyS,
       () => void save(),
     );
-    // Wire language-server features (hover, …) to the editor. Idempotent.
+    // Wire language-server features (hover, definition, …) to the editor.
+    // Idempotent — safe on every mount.
     registerLspProviders(monacoInstance);
+    installDefinitionOpener(editor, { openTab, revealInFile });
   };
 
   // Errors from the project's own checks belong under the code, not only in a

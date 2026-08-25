@@ -25,6 +25,11 @@ function modelPath(model: monaco.editor.ITextModel): string {
   return model.uri.path;
 }
 
+/** LSP file URI → filesystem path (the inverse of pathToUri). */
+function uriToPath(uri: string): string {
+  return decodeURIComponent(uri.replace(/^file:\/\//, ""));
+}
+
 interface LspRange {
   start: { line: number; character: number };
   end: { line: number; character: number };
@@ -48,6 +53,37 @@ interface MarkupContent {
 interface HoverResult {
   contents: MarkupContent | MarkedString | MarkedString[];
   range?: LspRange;
+}
+
+interface LspLocation {
+  uri: string;
+  range: LspRange;
+}
+interface LspLocationLink {
+  targetUri: string;
+  targetRange: LspRange;
+  targetSelectionRange?: LspRange;
+}
+type DefinitionResult = LspLocation | LspLocationLink | Array<LspLocation | LspLocationLink> | null;
+
+/** LSP definition result (several legal shapes) → Monaco locations. The target
+ *  uri is rebuilt with Uri.parse(path) so it matches how the editor's own tab
+ *  models are keyed — same file resolves to the same uri, cross-file differs. */
+function definitionsToMonaco(
+  res: DefinitionResult,
+  m: typeof import("monaco-editor"),
+): monaco.languages.Location[] {
+  if (!res) return [];
+  const list = Array.isArray(res) ? res : [res];
+  return list.map((loc) => {
+    if ("targetUri" in loc) {
+      return {
+        uri: m.Uri.parse(uriToPath(loc.targetUri)),
+        range: toMonacoRange(loc.targetSelectionRange ?? loc.targetRange),
+      };
+    }
+    return { uri: m.Uri.parse(uriToPath(loc.uri)), range: toMonacoRange(loc.range) };
+  });
 }
 
 /** Flatten LSP hover contents (several shapes are legal) into Monaco's list of
@@ -100,4 +136,54 @@ export function registerLspProviders(m: typeof import("monaco-editor")): void {
       }
     },
   });
+
+  m.languages.registerDefinitionProvider(supportedLanguages(), {
+    async provideDefinition(model, position) {
+      const path = modelPath(model);
+      const client = clientForPath(path);
+      if (!client) return null;
+      try {
+        const res = await client.request<DefinitionResult>("textDocument/definition", {
+          textDocument: { uri: pathToUri(path) },
+          position: toLspPosition(position),
+        });
+        return definitionsToMonaco(res, m);
+      } catch {
+        return null;
+      }
+    },
+  });
+}
+
+/** Route "go to definition" through our own tab system. A standalone Monaco
+ *  editor cannot open a *different* file on its own — its editor service does
+ *  nothing for a foreign uri, so ⌘-clicking a symbol defined elsewhere would
+ *  just sit there. We patch the one shared code-editor service to open the tab
+ *  and reveal the line instead. In-file jumps (same path) go through the same
+ *  path — openTab is idempotent — so behaviour is uniform. */
+export function installDefinitionOpener(
+  editor: monaco.editor.IStandaloneCodeEditor,
+  handlers: {
+    openTab: (tab: { path: string; name: string; kind: "file" }) => void;
+    revealInFile: (path: string, line: number, column?: number) => void;
+  },
+): void {
+  const svc = (editor as unknown as { _codeEditorService?: Record<string, unknown> })
+    ._codeEditorService;
+  if (!svc || svc.__magnetarPatched) return;
+  svc.__magnetarPatched = true;
+  svc.openCodeEditor = async (
+    input: {
+      resource: monaco.Uri;
+      options?: { selection?: monaco.IRange };
+    },
+    source: monaco.editor.ICodeEditor | null,
+  ) => {
+    const path = input.resource.path;
+    const name = path.split("/").pop() || path;
+    handlers.openTab({ path, name, kind: "file" });
+    const sel = input.options?.selection;
+    if (sel) handlers.revealInFile(path, sel.startLineNumber, sel.startColumn);
+    return source ?? editor;
+  };
 }
