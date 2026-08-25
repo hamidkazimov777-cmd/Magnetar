@@ -4011,3 +4011,41 @@ LSP **3.4** — либо доделать (TS-воркер + «сервер не
 Hamid хочет к релизу) перейти к этапу 4 «Обвязка публикации»
 (universal-сборка, `bundle.macOS`, entitlements, `release.sh`, версия, LICENSE).
 Rust-интеллект уже полный — 3.4 добавляет широту, не глубину.
+
+### Запись 85 — 2026-08-25 — Opus 4.8 — Этап 4: обвязка публикации (`0edbbf0`)
+
+Hamid выбрал идти к релизу, пропустив 3.4. Сделана вся обвязка публикации
+(Apple-аккаунт не нужен до самого последнего шага).
+
+- **`tauri.conf.json` → `bundle.macOS`**: `minimumSystemVersion: 10.15`,
+  `entitlements: entitlements.plist`. `signingIdentity` НЕ хардкодим — Tauri
+  берёт из env `APPLE_SIGNING_IDENTITY` в день релиза.
+- **`src-tauri/entitlements.plist`** (новый): hardened-runtime права —
+  `allow-jit` + `allow-unsigned-executable-memory` (WKWebView), 
+  `disable-library-validation` (запуск чужих тулов rust-analyzer/git/shell и
+  загрузка их библиотек). **Без sandbox** — поэтому Developer ID, не App Store.
+- **`scripts/release.sh`** (новый, +x): падает рано с внятным сообщением если
+  нет `APPLE_SIGNING_IDENTITY` или нотаризационных кредов (API-key trio или
+  Apple-ID trio); проверяет синхронность версий; требует оба rust-таргета;
+  затем `npx tauri build --target universal-apple-darwin` (Tauri сам подписывает
+  и нотаризует, если креды в env).
+- **`scripts/sync-version.sh`** (новый, +x): `<version>` проставляет во все три
+  файла, `--check` сверяет. Сейчас 0.1.0 везде.
+- **`LICENSE`** (новый): проприетарная, all rights reserved (можно сменить на
+  MIT/Apache для open-source).
+
+**Проверено локально (задача «entitlements/hardened runtime сегодня»):** подписал
+существующий `.app` локальным сертификатом «Magnetar Dev» с
+`--options runtime --entitlements entitlements.plist`. `codesign --verify
+--strict` — valid + satisfies DR; флаг `runtime` стоит; entitlements на месте;
+приложение запускается (процесс жив, лог чистый) — hardened runtime вебвью не
+ломает.
+
+#### Следующий шаг
+
+Остались только: **этап 5 «День релиза»** (нужен Apple Developer аккаунт $99/год,
+руками Hamid: Developer ID сертификат в Keychain + app-specific пароль/API-key,
+затем `APPLE_SIGNING_IDENTITY=… APPLE_ID=… APPLE_PASSWORD=… APPLE_TEAM_ID=…
+./scripts/release.sh`, проверка DMG на чистом профиле — открывается без
+Gatekeeper-предупреждений). И необязательный **LSP 3.4** (4 языка) — по желанию.
+Продукт функционально готов; публикация — только Apple-часть.
