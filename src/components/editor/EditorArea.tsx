@@ -114,6 +114,15 @@ export function EditorArea() {
         for (const p of closed) delete next[p];
         return next;
       });
+      // Dispose the Monaco model too. Without this, Monaco keeps the closed
+      // file's model with its unsaved edits, and reopening reuses that stale
+      // model instead of re-reading the (clean) file from disk.
+      void loadMonaco().then((m) => {
+        for (const p of closed) {
+          const model = m.editor.getModels().find((md) => md.uri.path === p);
+          if (model && model !== editorRef.current?.getModel()) model.dispose();
+        }
+      });
     }
   }, [tabs]);
 
