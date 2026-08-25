@@ -92,12 +92,29 @@ export function EditorArea() {
   // Forget buffers for tabs that were closed, so reopening re-reads from disk.
   useEffect(() => {
     const open = new Set(tabs.filter((x) => x.kind !== "diff").map((x) => x.path));
+    const closed: string[] = [];
     for (const p of Array.from(loadedRef.current))
       if (!open.has(p)) {
         loadedRef.current.delete(p);
         delete viewStates.current[p];
         lsp.didClose(p);
+        closed.push(p);
       }
+    // Also drop the in-memory buffer and the dirty flag for closed tabs —
+    // otherwise reopening a file discarded without saving still shows the
+    // unsaved dot even though it re-reads clean from disk.
+    if (closed.length) {
+      setBuffers((b) => {
+        const next = { ...b };
+        for (const p of closed) delete next[p];
+        return next;
+      });
+      setDirty((d) => {
+        const next = { ...d };
+        for (const p of closed) delete next[p];
+        return next;
+      });
+    }
   }, [tabs]);
 
   const save = useCallback(async () => {
