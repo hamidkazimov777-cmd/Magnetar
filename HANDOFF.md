@@ -3509,3 +3509,47 @@ GigaChat из-за лимита freemium «1 запрос за раз») ост�
 
 Аудит производительности P0–P2 закрыт полностью. Возврат к фиче «Генерация» —
 пункт D (переключатель «👁 Видит проект / 🔒 Без проекта»).
+
+### Запись 74 — 2026-08-25 — Kimi Code — Генерация D: переключатель контекста проекта
+
+#### Что сделано
+
+Пункт D плана фичи «Генерация»: per-session переключатель «Видит проект /
+Без проекта». У каждого чата своё состояние; default «Видит» (старое поведение).
+
+- **Персист.** Новое поле `Session.seesProject` (bool, default `true`) прокинуто
+  по тому же пути, что и `track`: миграция
+  `ALTER TABLE sessions ADD COLUMN sees_project INTEGER` (`db.rs`), поле
+  `SessionMeta.sees_project` (`canon.rs`), `SessionMetaRow.seesProject`
+  (`db.ts`), `Session.seesProject` (`types.ts`), `metaOf`/hydrate + action
+  `toggleProjectContext` (`store.ts`).
+- **Гейт памяти.** `buildProjectMemory` при `seesProject === false` возвращает
+  короткую пометку «проект скрыт, не искать файлы/память» (не пустую строку —
+  иначе агент с инструментами снова рыщет по диску).
+- **Гейт обсуждения.** `buildOutgoing` при `seesProject === false` не добавляет
+  блок `## Project Context` и подграф знаний (раньше они дублировали память).
+- **UI.** В шапке чата (рядом с вкладками треков) — icon-only toggle
+  `Eye`/`EyeOff` с тултипом и хинтом; состояние читается из активной сессии.
+- **i18n.** Ключи `seesProject`/`hidesProject`/`hintSeesProject` (ru/en/es).
+- @-упоминания файлов остаются: это явная вставка пользователем, а не неявный
+  контекст проекта. Генерация память не подмешивает — переключатель на ней
+  виден, но поведение `generate` не меняет.
+
+#### Файлы
+
+- `src-tauri/src/{db,canon}.rs` — колонка + DTO/SQL.
+- `src/lib/{types,db,store}.ts` — тип, wire-строка, metaOf/hydrate/action.
+- `src/lib/{memory,handoff}.ts` — гейты контекста.
+- `src/components/ChatView.tsx` — toggle в шапке.
+- `src/lib/i18n.ts` — 3 ключа × ru/en/es.
+
+#### Проверки
+
+`npx tsc --noEmit` — чисто. i18n-скрипт — пусто. `cargo check`/`cargo test`
+(9/9). `npm run build` — проходит. `npm run tauri build` — проходит (app + dmg).
+Коммит `bb216ba`.
+
+#### Следующий шаг
+
+Пункт E: система Proposal (`<proposal>…</proposal>` → «Добавить в память /
+Отклонить» → запись Proposal + ревью агентом).
