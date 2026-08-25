@@ -191,6 +191,11 @@ export const AGENT_TOOLS: ToolDef[] = [
   },
 ];
 
+/** Cached names of every tool, in declaration order. */
+const AGENT_TOOL_NAMES: string[] = AGENT_TOOLS.map((t) => t.name);
+/** `a|b|c` alternation for the bare-call regex, built once instead of per parse. */
+const AGENT_TOOL_NAMES_ALT: string = AGENT_TOOL_NAMES.join("|");
+
 /** Tools that change the machine. Whether each one blocks on a confirm dialog
  *  is decided by `needsConfirm` — file edits can be auto-applied and reviewed
  *  afterwards (VS Code/Antigravity behaviour), shell commands normally cannot. */
@@ -877,7 +882,7 @@ interface ReActParse {
 export function parseTextToolCall(
   text: string,
 ): { action: string; input: ToolArgs } | null {
-  const known = AGENT_TOOLS.map((x) => x.name);
+  const known = AGENT_TOOL_NAMES;
 
   // 1. XML function-call blocks.
   const invoke = text.match(
@@ -942,7 +947,7 @@ function parseReAct(text: string): ReActParse {
   // Weaker models drop the ReAct scaffolding and just write the call, e.g.
   // `list_dir {"path": "/"}` or a fenced block. Accept that rather than
   // letting the run stall — the tool name still has to be a real one.
-  const known = AGENT_TOOLS.map((x) => x.name).join("|");
+  const known = AGENT_TOOL_NAMES_ALT;
   const bare = text.match(
     new RegExp(`(?:^|\\n|\`{1,3})\\s*(${known})\\s*(\\{[\\s\\S]*?\\})`, "i"),
   );
