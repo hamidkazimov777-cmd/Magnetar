@@ -4,6 +4,7 @@ import { X, Save, FileCode2, GitCompare, Loader2 } from "lucide-react";
 import { api } from "../../lib/api";
 import { useStore, type EditorTab } from "../../lib/store";
 import { syncCheckMarkers } from "../../lib/markers";
+import * as lsp from "../../lib/lspManager";
 import { useT } from "../../lib/i18n";
 import { cn } from "../../lib/cn";
 import { EmptyState } from "../ui/EmptyState";
@@ -61,7 +62,11 @@ export function EditorArea() {
     void api
       .editorReadFile(active.path)
       .then((text) => {
-        if (!cancelled) setBuffers((b) => ({ ...b, [active.path]: text }));
+        if (cancelled) return;
+        setBuffers((b) => ({ ...b, [active.path]: text }));
+        // Hand the freshly loaded document to its language server, if one is
+        // installed. Best-effort: never let this disturb the editor.
+        void lsp.didOpen(active.path, text).catch(() => {});
       })
       .catch((e) => {
         if (cancelled) return;
@@ -88,6 +93,7 @@ export function EditorArea() {
       if (!open.has(p)) {
         loadedRef.current.delete(p);
         delete viewStates.current[p];
+        lsp.didClose(p);
       }
   }, [tabs]);
 
@@ -274,6 +280,7 @@ export function EditorArea() {
             onChange={(v) => {
               setBuffers((b) => ({ ...b, [active.path]: v ?? "" }));
               setDirty((d) => ({ ...d, [active.path]: true }));
+              lsp.didChange(active.path, v ?? "");
             }}
             loading={<EditorSkeleton />}
             options={{
