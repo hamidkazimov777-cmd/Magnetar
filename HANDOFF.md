@@ -3270,3 +3270,49 @@ P2.11 аудита: улучшение SQLite настроек (`src-tauri/src/d
 #### Следующий шаг
 
 P2.12 аудита: кэширование схем инструментов (`src/lib/agent.ts`).
+
+### Запись 68 — 2026-08-25 — Kimi Code — AI Generation Hub (генерация изображений)
+
+#### Что сделано
+
+Добавлен «AI Generation Hub» — новая страница в центр-области, открывающаяся
+иконкой (Sparkles) в нижнем рейле activity bar. Каталог генеративных
+провайдеров по категориям (изображения / видео / аудио / голос).
+
+- Работает генерация изображений через OpenAI-совместимые API: **OpenAI Images**
+  и **Together AI**. Провайдеры с проприетарным API (Midjourney, Ideogram,
+  Veo, Kling, Runway, Pika, Luma, Suno, Udio, ElevenLabs, PlayHT и др.) выведены
+  в каталог с меткой «Скоро» — без выдуманных контрактов.
+- Подключение повторяет текущую систему ключей: base URL подставляется из
+  каталога, пользователь вводит только API-ключ и жмёт «Проверить» (валидация
+  идёт через существующий `list_models`), после успеха подгружается список
+  моделей (фильтр на image-модели, фолбэк — статический список).
+- Ключ хранится в том же `secrets.json` (`keychain`), id = `gen:<slug>`; статус
+  «подключено» = `has_api_key`. Фича изолирована от чата/агентов:
+  `store.connections`, SQLite и trait `Provider` не тронуты.
+- Бэкенд: одна команда `generate_image` (POST `{base}/images/generations`,
+  bearer-ключ, `data[]` → `b64_json`/`url`). `response_format` для OpenAI —
+  `b64_json`, для Together — отсутствует (возвращает url).
+
+#### Файлы
+
+- `src/lib/generative.ts` (новый) — каталог + типы `GenProvider`/`GeneratedImage`.
+- `src/components/GenerationView.tsx` (новый) — страница хаба.
+- `src/lib/store.ts` — `CenterView` дополнен `"generation"`.
+- `src/lib/api.ts` — `generateImage`.
+- `src/lib/i18n.ts` — gen-ключи ru/en/es.
+- `src/components/shell/ActivityBar.tsx` — иконка + роут.
+- `src/components/shell/Workspace.tsx` — рендер `GenerationView`.
+- `src-tauri/src/commands.rs` — команда `generate_image`.
+- `src-tauri/src/lib.rs` — регистрация команды.
+
+#### Проверки
+
+`npx tsc --noEmit` — чисто. `cargo check` — чисто. `cargo test` — 9/9.
+`npm run build` — проходит. `npm run tauri build` — проходит (app + dmg).
+Коммит `ab4b612`.
+
+#### Следующий шаг
+
+Вернуться к аудиту производительности: **P2.12** — кэширование схем инструментов
+(`src/lib/agent.ts`).
