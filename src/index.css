@@ -465,6 +465,10 @@
   }
   .switch[data-on="true"]::after {
     left: 14px;
+    /* On the "on" track (near-white in dark, near-black in light) a white knob
+       vanishes into a blob — use the accent's contrasting colour so the knob
+       stays a distinct, visibly-moved dot in both themes. */
+    background: var(--color-accent-fg);
   }
 
   /* --- Fields ------------------------------------------------------------ */
