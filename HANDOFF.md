@@ -4167,3 +4167,37 @@ Veo/Kling) — вкладка «Видео», генерится 1–3 мин (�
 3. Больше провайдеров (Replicate, Google Imagen/Veo), аудио (ElevenLabs).
 4. Столп «свои иконки» (сейчас lucide), изоляция фронт-оркестрации (перф).
 5. Публикация (этап 5) — когда Hamid купит Apple Developer; обвязка готова.
+
+### Запись 89 — 2026-08-26 — Opus 4.8 — Студия 2c: история галереи между сессиями
+
+Результаты генерации больше **не теряются** при уходе из студии — сохраняются в
+SQLite и грузятся при входе. Все проверки зелёные (tsc, i18n ru+en+es, build,
+cargo check+test 20/0), приложение пересобрано в `/Applications`.
+
+- **`db.rs`**: новая таблица `generations` (глобальная, не привязана к проекту —
+  личная библиотека вывода): `id, kind, src, name, prompt, model, created_at` +
+  индекс по `created_at`. Добавлена в блок `CREATE TABLE IF NOT EXISTS`, поэтому
+  создаётся и в новых, и в существующих БД — bump `SCHEMA_VERSION` не нужен
+  (чистая новая таблица, не ALTER).
+- **`workspace.rs`**: `struct Generation` + `list_generations`/`save_generation`
+  (`ON CONFLICT(id) DO NOTHING`)/`delete_generation`/`clear_generations`.
+- **`commands.rs`+`lib.rs`**: 4 команды зарегистрированы.
+- **`db.ts`**: `GenerationRow` + обёртки `listGenerations/saveGeneration/
+  deleteGeneration/clearGenerations`.
+- **`StudioView.tsx`**: `Result` получил `id`; на монтировании грузит историю
+  (`db.listGenerations`), на генерации сохраняет каждый ассет (id, prompt=текст
+  пользователя без @-хэндлов, model, createdAt); наведение на элемент галереи —
+  корзина (удалить один); корзина в шапке (видна, когда есть история) —
+  `clearGenerations` (всё, глобально). Ключ i18n `studioClearHistory` (ru/en/es).
+
+**Компромисс хранения:** `src` для b64-картинок (OpenAI) — это data-URI, он
+ложится в SQLite целиком (иначе картинка не переживёт рестарт). Видео fal —
+это URL (может протухнуть со временем — это свойство провайдера, не баг). Тот же
+размен, что уже делают вложения.
+
+#### Следующий шаг (Фаза 3, продолжение)
+
+1. Больше провайдеров: Replicate, Google (Imagen/Veo), аудио (ElevenLabs).
+2. **Промт-мейкер** в Обсуждении (`/промт`) — отложено. Память: `promptmaker-idea.md`.
+3. Столп «свои иконки» (сейчас lucide), изоляция фронт-оркестрации (перф).
+4. Публикация (этап 5) — когда Hamid купит Apple Developer; обвязка готова.
