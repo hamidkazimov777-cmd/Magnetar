@@ -20,6 +20,15 @@
 - Cross-domain store tests covering folder close, reveal-in-file, project
   adoption, model-per-conversation, track switching and the memory queue.
 
+### Fixed
+
+- Path containment and repository trust were inert after a restart: the
+  workspace root is restored from local storage, but the backend only heard
+  about it through a user action. The first signed run found this.
+- The audit redactor matched credential markers inside other words, so a
+  provider hostname was recorded as `api.token[REDACTED]` and
+  `git checkout secrets.ts` would have been mangled the same way.
+
 ### Security
 
 - Path containment is now enforced in the backend: the workspace root is held

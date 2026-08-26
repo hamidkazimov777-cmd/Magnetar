@@ -150,6 +150,29 @@ describe("the folder is the unit of work", () => {
     workspaceTrusted.mockResolvedValue(true);
   });
 
+  it("hands the folder restored from a previous session to the backend", async () => {
+    // Found on the first real run: the root came back from localStorage but the
+    // backend never heard about it, so a restart silently switched off path
+    // containment and made every folder trusted.
+    const setWorkspaceRoot = vi.mocked(api.setWorkspaceRoot);
+    const workspaceTrusted = vi.mocked(api.workspaceTrusted);
+    setWorkspaceRoot.mockClear();
+    workspaceTrusted.mockClear().mockResolvedValue(false);
+    useStore.setState({ workspaceRoot: "/restored", workspaceTrusted: true });
+
+    await useStore.getState().adoptRestoredWorkspace();
+
+    expect(setWorkspaceRoot).toHaveBeenCalledWith("/restored");
+    expect(useStore.getState().workspaceTrusted).toBe(false);
+
+    // With nothing restored there is nothing to hand over.
+    setWorkspaceRoot.mockClear();
+    useStore.setState({ workspaceRoot: undefined });
+    await useStore.getState().adoptRestoredWorkspace();
+    expect(setWorkspaceRoot).not.toHaveBeenCalled();
+    workspaceTrusted.mockResolvedValue(true);
+  });
+
   it("keeps recent folders newest-first, deduplicated and capped", () => {
     const { setWorkspaceRoot } = useStore.getState();
     for (let i = 0; i < 9; i++) setWorkspaceRoot(`/repo/${i}`);

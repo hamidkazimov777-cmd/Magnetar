@@ -75,9 +75,21 @@ pub fn redact(command: &str) -> String {
             continue;
         }
 
+        // A marker only introduces a credential when a separator follows it.
+        // Without that check the word is matched inside other words, and
+        // `api.tokenflow.ai` came back as `api.token[REDACTED]` — the audit
+        // log's own hostnames were being destroyed. `git checkout secrets.ts`
+        // was heading the same way. The boundary is checked on the right only:
+        // requiring one on the left would stop matching `GITHUB_TOKEN=`, which
+        // is the shape this is most needed for.
         let matched = MARKERS
             .iter()
-            .find(|m| starts_with_at(&lower_chars, i, m))
+            .find(|m| {
+                starts_with_at(&lower_chars, i, m)
+                    && bytes
+                        .get(i + m.chars().count())
+                        .is_some_and(|c| is_separator(*c))
+            })
             .copied();
 
         let Some(marker) = matched else {
@@ -86,7 +98,6 @@ pub fn redact(command: &str) -> String {
             continue;
         };
 
-        // Only treat it as a credential when a value actually follows.
         out.push_str(&command[..].chars().skip(i).take(marker.len()).collect::<String>());
         i += marker.len();
 
@@ -250,6 +261,26 @@ mod tests {
     fn ordinary_commands_pass_through_untouched() {
         for command in ["git status", "cargo test --all", "ls -la src/", "npm run build"] {
             assert_eq!(redact(command), command);
+        }
+    }
+
+    #[test]
+    fn a_marker_inside_a_word_is_not_a_marker() {
+        // Found on the first real run: the audit log recorded a provider host
+        // as `api.token[REDACTED]`. A hostname is not a credential, and a
+        // redactor that eats them destroys the record it exists to protect.
+        assert_eq!(redact("api.tokenflow.ai"), "api.tokenflow.ai");
+        assert_eq!(redact("git checkout secrets.ts"), "git checkout secrets.ts");
+        assert_eq!(redact("cat passwords.md"), "cat passwords.md");
+        assert_eq!(redact("api.together.xyz"), "api.together.xyz");
+    }
+
+    #[test]
+    fn an_underscored_environment_name_is_still_caught() {
+        // The boundary is only checked to the right of the marker: requiring
+        // one on the left would stop matching exactly the shape that matters.
+        for command in ["GITHUB_TOKEN=abcd1234efgh", "MY_API_KEY=abcd1234efgh"] {
+            assert!(redact(command).contains("[REDACTED]"), "missed: {command}");
         }
     }
 

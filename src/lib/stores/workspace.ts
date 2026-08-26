@@ -32,13 +32,20 @@ export interface WorkspaceSlice {
   workspaceTrusted: boolean;
   /** Allow changes and commands in the open folder, and remember the choice. */
   trustWorkspace: () => void;
+  /** Hand the restored folder to the backend at startup.
+   *
+   *  The root is persisted in localStorage and comes back on its own, but the
+   *  backend learns about it only when `setWorkspaceRoot` runs — which is a user
+   *  action. So after a restart the backend believed no folder was open, which
+   *  silently disabled path containment and made every folder trusted. */
+  adoptRestoredWorkspace: () => Promise<void>;
 
   /** State of the code-search index for the open folder. */
   indexState: { status: "unknown" | "building" | "ready" | "error"; files?: number; at?: number };
   setIndexState: (s: WorkspaceSlice["indexState"]) => void;
 }
 
-export const createWorkspaceSlice: Slice<WorkspaceSlice> = (set) => ({
+export const createWorkspaceSlice: Slice<WorkspaceSlice> = (set, get) => ({
   recentFolders: [],
   setWorkspaceRoot: (path) => {
     // The backend decides what is inside the workspace, so it has to be told
@@ -74,6 +81,17 @@ export const createWorkspaceSlice: Slice<WorkspaceSlice> = (set) => ({
   },
 
   workspaceTrusted: true,
+  adoptRestoredWorkspace: async () => {
+    const root = get().workspaceRoot;
+    if (!root) return;
+    await reportPromise(
+      api
+        .setWorkspaceRoot(root)
+        .then(() => api.workspaceTrusted())
+        .then((workspaceTrusted) => set({ workspaceTrusted })),
+      "paths:adopt_restored_workspace",
+    );
+  },
   trustWorkspace: () => {
     void reportPromise(
       api.trustWorkspace().then(() => set({ workspaceTrusted: true })),

@@ -107,6 +107,10 @@ export const createAppSlice: Slice<AppSlice> = (set, get) => ({
           hydrated: true,
         };
       });
+      // The workspace root is restored from localStorage, but the backend only
+      // hears about it through a user action — so without this a restart left
+      // path containment and repository trust switched off.
+      await get().adoptRestoredWorkspace();
     } catch (e) {
       set({ hydrated: true, startupError: reportError(e, "db:hydrate").message });
     }
