@@ -491,18 +491,50 @@ export function buildProjectMemory(
         `Questions that need no files — explaining, planning, reviewing text — answer normally.`,
     );
 
-  const p = session?.projectId
-    ? st.projects.find((x) => x.id === session.projectId)
-    : undefined;
-  if (!p) return parts.join("\n");
+  const memory = buildMemorySection(session, query);
+  if (memory) parts.push(memory);
+  else return parts.join("\n");
 
-  parts.push(`\n## Project memory: ${p.name}`);
+  parts.push(
+    `\nThis memory is background context about the project — it is NOT a substitute for the code.` +
+      ` To change or explain anything concrete, always locate it in the real files first` +
+      ` (search_code, then read_file). Never answer from memory alone about code you have not read,` +
+      ` and never claim a file or symbol exists without finding it.` +
+      ` Prefer read_file(offset,limit) over reading whole files to save tokens.`,
+  );
+  return parts.join("\n");
+}
+
+/** The project's memory, with no assumptions about what the reader can do.
+ *
+ *  This is the one renderer. It used to have a second implementation in
+ *  `handoff.ts`, which read the old prose fields instead of facts — so plain
+ *  chat and the agent were shown different memory for the same project, and
+ *  only one of them could say where any of it came from. Which of two answers
+ *  you got depended on which tab you happened to be in.
+ *
+ *  Returns "" when the session has no project or the user hid it.
+ */
+export function buildMemorySection(
+  /** Only the two fields that decide what memory to show — so a caller that
+   *  has a project but no conversation (the subscription bridge) can ask for
+   *  the same rendering without inventing a session to pass in. */
+  scope: { projectId?: string; seesProject?: boolean } | undefined,
+  query = "",
+): string {
+  if (scope?.seesProject === false) return "";
+  const st = useStore.getState();
+  const p = scope?.projectId
+    ? st.projects.find((x) => x.id === scope.projectId)
+    : undefined;
+  if (!p) return "";
+
+  const parts: string[] = [`\n## Project memory: ${p.name}`];
   if (p.path) parts.push(`Path: ${p.path}`);
   if (p.description) parts.push(`Description: ${p.description}`);
 
   const picked = pickMemory(projectFacts(p.id), projectDecisions(p.id), query);
-  const facts = picked.facts;
-  if (facts.length) parts.push(renderFacts(facts));
+  if (picked.facts.length) parts.push(renderFacts(picked.facts));
   else if (!p.factsMigratedAt) {
     // Not migrated yet (the project has not been opened since facts landed).
     // Falling back to the prose keeps memory working; it just cannot say where
@@ -515,13 +547,9 @@ export function buildProjectMemory(
   if (picked.decisions.length) parts.push(renderDecisions(picked.decisions));
   else if (!p.decisionsMigratedAt && p.decisions)
     parts.push(`Decisions:\n${p.decisions}`);
+
   parts.push(
-    `\nOnly the memory relevant to this request is shown — the project may hold more.` +
-      `\nThis memory is background context about the project — it is NOT a substitute for the code.` +
-      ` To change or explain anything concrete, always locate it in the real files first` +
-      ` (search_code, then read_file). Never answer from memory alone about code you have not read,` +
-      ` and never claim a file or symbol exists without finding it.` +
-      ` Prefer read_file(offset,limit) over reading whole files to save tokens.`,
+    `\nOnly the memory relevant to this request is shown — the project may hold more.`,
   );
   return parts.join("\n");
 }

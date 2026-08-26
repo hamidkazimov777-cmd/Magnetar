@@ -13,6 +13,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useStore } from "../lib/store";
 import { db } from "../lib/db";
+import { buildMemorySection } from "../lib/memory";
 import { useT } from "../lib/i18n";
 import { copyText } from "../lib/clipboard";
 import { LogoMark } from "./Logo";
@@ -73,13 +74,15 @@ async function buildProjectContext(parts: ContextParts): Promise<string> {
   const out: string[] = ["# Project context (exported from Magnetar)"];
 
   if (p && parts.memory) {
-    out.push(`## Project: ${p.name}`);
-    if (p.description) out.push(`Description: ${p.description}`);
-    if (p.techStack) out.push(`Tech stack:\n${p.techStack}`);
-    if (p.architectureNotes) out.push(`Architecture:\n${p.architectureNotes}`);
-    if (p.decisions) out.push(`Key decisions:\n${p.decisions}`);
-    if (p.codingStandards) out.push(`Coding standards:\n${p.codingStandards}`);
-    if (p.lastState) out.push(`Where we stopped:\n${p.lastState}`);
+    // The same memory the chat and the agent are given. It was a third
+    // rendering of the old prose fields, so what you pasted into another
+    // model was not what Magnetar itself was working from — the one thing
+    // this bridge exists to make true.
+    const memory = buildMemorySection({
+      projectId: p.id,
+      seesProject: session?.seesProject,
+    });
+    if (memory) out.push(memory.trim());
   }
 
   if (p && parts.tasks) {

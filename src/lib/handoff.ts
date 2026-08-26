@@ -1,9 +1,12 @@
 import { api } from "./api";
 import { db } from "./db";
 import { useStore } from "./store";
-import { cheapModel } from "./memory";
+import { buildMemorySection, cheapModel } from "./memory";
+import { ensureProjectFacts, newFact, projectFacts } from "./facts";
+import { recordDecision } from "./decisions";
+import { similarity } from "./relevance";
 import { reportError, reportPromise, withRetry } from "./errors";
-import type { ChatMessage, Connection, Session } from "./types";
+import type { ChatMessage, Connection, FactKind, Session } from "./types";
 
 /** Keep this many most-recent messages verbatim; older ones get compressed into
  *  the rolling summary. */
@@ -29,19 +32,18 @@ export async function buildOutgoing(
   const parts: string[] = [BASE_SYSTEM];
 
   if (session.seesProject !== false && session.projectId) {
-    const p = useStore.getState().projects.find((x) => x.id === session.projectId);
-    if (p) {
-      parts.push(`\n## Project Context: ${p.name}`);
-      if (p.description) parts.push(`Description: ${p.description}`);
-      if (p.techStack) parts.push(`Tech Stack: ${p.techStack}`);
-      if (p.codingStandards) parts.push(`Coding Standards: ${p.codingStandards}`);
-      if (p.architectureNotes) parts.push(`Architecture: ${p.architectureNotes}`);
-      if (p.decisions) parts.push(`Decisions: ${p.decisions}`);
-      if (p.lastState)
-        parts.push(
-          `\n## Where the previous model stopped (continue from here)\n${p.lastState}`,
-        );
-    }
+    // The same memory the agent is given, rendered by the same function.
+    // This used to be a second implementation reading the old prose fields, so
+    // asking the same question in Discussion and in Agent produced answers
+    // built from different memory — and only the agent's could say where any
+    // of it came from.
+    //
+    // Selected against the last thing the user said, for the same reason the
+    // agent selects against the request: sending every fact wastes tokens and
+    // buries the two that matter.
+    const lastUser = [...msgs].reverse().find((m) => m.role === "user")?.content ?? "";
+    const memory = buildMemorySection(session, lastUser);
+    if (memory) parts.push(memory);
 
     // Knowledge Graph Subgraph
     try {
@@ -159,30 +161,37 @@ export async function maybeSummarize(
   }
 }
 
-/** Same reason as memory.ts: the model may answer with arrays or objects, and
- *  a non-string in a memory field crashes the panel that renders it. */
-function asText(v: unknown): string | undefined {
-  if (v == null) return undefined;
-  if (typeof v === "string") return v;
-  if (Array.isArray(v)) return v.map((x) => asText(x)).filter(Boolean).join("\n");
-  if (typeof v === "object")
-    return Object.entries(v as Record<string, unknown>)
-      .map(([k, val]) => `${k}: ${asText(val) ?? ""}`)
-      .join("\n");
-  return String(v);
-}
-
-async function maybeExtractProjectBrain(transcript: string, projectId: string, conn: Connection, model: string) {
+/** Mine a finished stretch of conversation for what the project now knows.
+ *
+ *  This used to append prose to `techStack` / `architectureNotes` /
+ *  `codingStandards`, which grew without limit, carried no provenance and could
+ *  never be checked — while the folder audit was writing facts about the same
+ *  project at the same time. Two writers, two shapes, and the panel showed one
+ *  of them.
+ *
+ *  Now it writes facts and decisions, the same entities as everything else. A
+ *  claim a model inferred from a conversation says exactly that, and the
+ *  verifier can later confirm or refute it like any other.
+ */
+async function maybeExtractProjectBrain(
+  transcript: string,
+  projectId: string,
+  conn: Connection,
+  model: string,
+) {
   const p = useStore.getState().projects.find((x) => x.id === projectId);
   if (!p) return;
 
   const instruction: ChatMessage = {
     id: "ext",
     role: "user",
-    content: `Analyze this recent conversation transcript and extract any NEW architectural decisions, tech stack additions, or coding standards that were established.
-Format your response as a JSON object (without markdown blocks) with keys: "techStack", "architectureNotes", "codingStandards", "decisions".
-If there are no new updates for a category, omit the key or return null. Keep notes terse.
-\n\n---\n${transcript}`,
+    content:
+      `From the conversation below, extract only what is NEW and durable about the project ` +
+      `— things that will still be true next week. Skip anything that was merely discussed.\n\n` +
+      `Return raw JSON, no markdown:\n` +
+      `{"facts":[{"kind":"stack|architecture|constraint","text":"one claim, under 200 chars"}],` +
+      `"decisions":[{"title":"what was decided","rationale":"why, in one line"}]}\n` +
+      `Both keys are optional. Empty is a valid and common answer.\n\n---\n${transcript}`,
     createdAt: 0,
   };
 
@@ -191,11 +200,10 @@ If there are no new updates for a category, omit the key or return null. Keep no
       conn,
       model,
       [instruction],
-      "You are an expert tech lead summarizing architectural decisions. Always return raw JSON.",
+      "You extract durable project facts and decisions. Always return raw JSON.",
     );
-    
-    // Attempt to parse JSON and update project
-    let parsed: any = null;
+
+    let parsed: { facts?: unknown; decisions?: unknown } | null = null;
     try {
       parsed = JSON.parse(res.trim().replace(/^```json/, "").replace(/```$/, ""));
     } catch {
@@ -208,45 +216,50 @@ If there are no new updates for a category, omit the key or return null. Keep no
       });
       return;
     }
-
     if (!parsed) return;
 
-    let updated = false;
-    const newP = { ...p };
-    
-    const techStack = asText(parsed.techStack);
-    if (techStack && !p.techStack?.includes(techStack)) {
-      newP.techStack = p.techStack ? `${p.techStack}\n- ${techStack}` : `- ${techStack}`;
-      updated = true;
-    }
-    const architectureNotes = asText(parsed.architectureNotes);
-    if (architectureNotes && !p.architectureNotes?.includes(architectureNotes)) {
-      newP.architectureNotes = p.architectureNotes ? `${p.architectureNotes}\n- ${architectureNotes}` : `- ${architectureNotes}`;
-      updated = true;
-    }
-    const codingStandards = asText(parsed.codingStandards);
-    if (codingStandards && !p.codingStandards?.includes(codingStandards)) {
-      newP.codingStandards = p.codingStandards ? `${p.codingStandards}\n- ${codingStandards}` : `- ${codingStandards}`;
-      updated = true;
-    }
-    const decisions = asText(parsed.decisions);
-    if (decisions && !p.decisions?.includes(decisions)) {
-      newP.decisions = p.decisions ? `${p.decisions}\n- ${decisions}` : `- ${decisions}`;
-      updated = true;
-    }
+    await ensureProjectFacts(projectId);
+    const existing = projectFacts(projectId);
+    const kinds: FactKind[] = ["stack", "architecture", "constraint", "state"];
 
-    if (updated) {
-      newP.updatedAt = Date.now();
-      useStore.getState().updateProject(newP);
-      useStore.getState().logMemory({
-        kind: "decisions",
-        status: "ok",
-        projectId,
-        model,
+    const rows = (Array.isArray(parsed.facts) ? parsed.facts : [])
+      .map((raw) => raw as Record<string, unknown>)
+      .flatMap((f) => {
+        const text = typeof f.text === "string" ? f.text.trim() : "";
+        if (text.length < 3) return [];
+        // A conversation restates what the project already knows constantly.
+        // Without this the same fact accumulates a copy per summarisation.
+        if (existing.some((e) => similarity(e.text, text) > 0.8)) return [];
+        const kind = kinds.includes(f.kind as FactKind) ? (f.kind as FactKind) : "architecture";
+        // Inferred, not extracted: a model read a conversation, not a file.
+        // No verify spec, because there is no source to check it against.
+        return [newFact(projectId, kind, text.slice(0, 400), "inferred", model)];
+      });
+
+    if (rows.length) useStore.getState().saveFacts(rows);
+
+    for (const raw of Array.isArray(parsed.decisions) ? parsed.decisions : []) {
+      const d = raw as Record<string, unknown>;
+      const title = typeof d.title === "string" ? d.title.trim() : "";
+      if (title.length < 3) continue;
+      await recordDecision(projectId, {
+        title: title.slice(0, 200),
+        rationale: typeof d.rationale === "string" ? d.rationale.slice(0, 500) : undefined,
+        // "agent": a model concluded it from the conversation, as opposed to
+        // the user stating it or it being carried over from the old notes.
+        origin: "agent",
       });
     }
+
+    useStore.getState().logMemory({
+      kind: "decisions",
+      status: "ok",
+      detail: `facts +${rows.length}`,
+      projectId,
+      model,
+    });
   } catch (e) {
-    const error = reportError(e, "memory.decisions");
+    const error = reportError(e, "memory.projectBrain");
     useStore.getState().logMemory({
       kind: "decisions",
       status: "error",

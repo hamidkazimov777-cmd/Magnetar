@@ -39,6 +39,8 @@ beforeEach(() => {
   listKnowledgeNodes.mockResolvedValue([]);
   useStore.setState({
     projects: [],
+    facts: {},
+    decisions: {},
     connections: [],
     models: {},
     modelStatus: {},
@@ -83,6 +85,31 @@ describe("building what actually goes to the provider", () => {
 
     const same = await buildOutgoing(session({ messages }), "gpt-4o");
     expect(same.system).not.toContain("Pick up exactly where");
+  });
+
+  it("shows plain chat the same memory the agent gets", async () => {
+    useStore.setState({
+      projects: [project({ factsMigratedAt: 2 })],
+      facts: {
+        p1: [
+          {
+            id: "f1",
+            projectId: "p1",
+            kind: "stack",
+            text: "Uses SQLite",
+            origin: "extracted",
+            originDetail: "Cargo.toml",
+            status: "unverified",
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        ],
+      },
+    });
+    const { system } = await buildOutgoing(session({ projectId: "p1" }), "m1");
+    // Facts with their provenance, not the old prose fields.
+    expect(system).toContain("Uses SQLite");
+    expect(system).toContain("read from Cargo.toml");
   });
 
   it("omits project context when the user hid the project", async () => {

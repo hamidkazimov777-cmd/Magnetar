@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { buildGenerationContext, buildProjectMemory, cheapModel } from "./memory";
+import {
+  buildGenerationContext,
+  buildMemorySection,
+  buildProjectMemory,
+  cheapModel,
+} from "./memory";
 import { useStore } from "./store";
 import type { Connection, MemoryFact, Project, Session } from "./types";
 
@@ -109,6 +114,48 @@ describe("project memory in the system prompt", () => {
   it("stops at the workspace notice when the session names no project", () => {
     useStore.setState({ projects: [project()], workspaceRoot: "/repo" });
     expect(buildProjectMemory(session())).not.toContain("Project memory");
+  });
+});
+
+describe("one memory, whichever track asks for it", () => {
+  it("gives the agent and plain chat the same facts", () => {
+    useStore.setState({
+      projects: [project({ factsMigratedAt: 2 })],
+      facts: { p1: [fact({ text: "Uses SQLite" })] },
+      workspaceRoot: "/repo",
+    });
+    const shared = buildMemorySection({ projectId: "p1" });
+    // The agent prompt is the shared section plus instructions about tools;
+    // the section itself must be the same text, not a second rendering.
+    expect(buildProjectMemory(session({ projectId: "p1" }))).toContain(shared);
+    expect(shared).toContain("Uses SQLite");
+  });
+
+  it("says nothing without a project, or when the project is hidden", () => {
+    useStore.setState({ projects: [project()] });
+    expect(buildMemorySection(undefined)).toBe("");
+    expect(buildMemorySection({ projectId: "gone" })).toBe("");
+    expect(buildMemorySection({ projectId: "p1", seesProject: false })).toBe("");
+  });
+
+  it("can be asked for a project without a conversation", () => {
+    // The subscription bridge exports memory with no session in hand.
+    useStore.setState({
+      projects: [project({ factsMigratedAt: 2 })],
+      facts: { p1: [fact({ text: "Uses SQLite" })] },
+    });
+    expect(buildMemorySection({ projectId: "p1" })).toContain("Uses SQLite");
+  });
+
+  it("leaves the tool instructions out of the shared section", () => {
+    useStore.setState({
+      projects: [project({ factsMigratedAt: 2 })],
+      facts: { p1: [fact()] },
+      workspaceRoot: "/repo",
+    });
+    const shared = buildMemorySection({ projectId: "p1" });
+    expect(shared).not.toContain("search_code");
+    expect(shared).not.toContain("Workspace root");
   });
 });
 
