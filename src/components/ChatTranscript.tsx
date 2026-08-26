@@ -51,14 +51,27 @@ export const ChatTranscript = memo(function ChatTranscript({
       index < messages.length ? messages[index].id : "__chat-error__",
   });
 
-  // Keep pinned to the newest message — and to the error banner when it is the
-  // last item — whenever the transcript grows or the error state changes.
+  // Follow the newest message, but never fight the user: only stay pinned while
+  // they are already at the bottom. Once they scroll up to read — even mid-run,
+  // while the agent is streaming — we stop steering, so the view holds still.
+  const stick = useRef(true);
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+  };
+  // Sending a new message always snaps back to the bottom, even if they had
+  // scrolled up in the previous turn.
+  const lastRole = messages[messages.length - 1]?.role;
+  if (lastRole === "user") stick.current = true;
+
   useEffect(() => {
-    if (itemCount > 0) virtualizer.scrollToIndex(itemCount - 1, { align: "end" });
+    if (itemCount > 0 && stick.current)
+      virtualizer.scrollToIndex(itemCount - 1, { align: "end" });
   }, [messages, activeError, itemCount, virtualizer]);
 
   return (
-    <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+    <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
       {messages.length === 0 ? (
         <div className="w-full px-3 py-4">
           <EmptyChat

@@ -57,7 +57,7 @@ export function SettingsView() {
             hint={t("prefMaxStepsHint")}
             value={prefs.agentMaxSteps}
             min={5}
-            max={100}
+            max={300}
             step={5}
             onChange={(v) => setPrefs({ agentMaxSteps: v })}
           />

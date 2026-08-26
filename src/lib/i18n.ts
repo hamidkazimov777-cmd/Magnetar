@@ -431,7 +431,7 @@ const ru: Dict = {
 
   // --- Agent run visualisation --------------------------------------------
   agentDeclinedByUser: "отклонено пользователем",
-  agentStepLimit: "Достигнут лимит шагов агента.",
+  agentStepLimit: "Достигнут лимит шагов агента. Напишите «продолжи», чтобы он работал дальше, или увеличьте лимит в Настройках.",
   errorTitle: "Что-то пошло не так",
   errorRequestFailed: "Запрос к модели не выполнен",
   errorDismiss: "Скрыть",
@@ -1046,7 +1046,7 @@ const en: Dict = {
   switchedTo: "Switched to {model}",
 
   agentDeclinedByUser: "declined by user",
-  agentStepLimit: "Agent step limit reached.",
+  agentStepLimit: "Agent step limit reached. Say “continue” to let it keep going, or raise the limit in Settings.",
   errorTitle: "Something went wrong",
   errorRequestFailed: "The model request failed",
   errorDismiss: "Dismiss",
@@ -1652,7 +1652,7 @@ const es: Dict = {
   switchedTo: "Cambiado a {model}",
 
   agentDeclinedByUser: "rechazado por el usuario",
-  agentStepLimit: "Se alcanzó el límite de pasos del agente.",
+  agentStepLimit: "Se alcanzó el límite de pasos del agente. Escribe «continúa» para que siga, o aumenta el límite en Ajustes.",
   errorTitle: "Algo salió mal",
   errorRequestFailed: "La petición al modelo falló",
   errorDismiss: "Ocultar",

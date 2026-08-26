@@ -172,13 +172,19 @@ export const Message = memo(function Message({
           {!isUser && trace && trace.length > 0 && <AgentTrace events={trace} />}
 
           {message.content ? (
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeHighlight]}
-              components={{ pre: Pre }}
-            >
-              {renderedContent}
-            </ReactMarkdown>
+            // In the agent track the assistant's prose is its working voice —
+            // narrating what it is doing between steps — not a chat answer, so
+            // it reads in italic (code stays upright). The discussion track is a
+            // real conversation and stays normal.
+            <div className={cn(!isUser && !inChatTrack && "agent-say")}>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeHighlight]}
+                components={{ pre: Pre }}
+              >
+                {renderedContent}
+              </ReactMarkdown>
+            </div>
           ) : isPending ? (
             <span className="inline-flex gap-1 text-[var(--color-text-dim)]">
               <Dot /> <Dot delay={150} /> <Dot delay={300} />

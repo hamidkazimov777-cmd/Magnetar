@@ -83,7 +83,7 @@ export interface Prefs {
 export const DEFAULT_PREFS: Prefs = {
   autoApplyEdits: true,
   confirmBash: true,
-  agentMaxSteps: 40,
+  agentMaxSteps: 80,
   bashTimeoutSecs: 600,
   subagentParallel: 3,
   subagentRoster: [],

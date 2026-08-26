@@ -871,6 +871,17 @@
     }
   }
 
+  /* The agent's narration voice: italic prose, but code/pre stay upright so
+     commands and snippets remain legible. */
+  .agent-say {
+    font-style: italic;
+  }
+  .agent-say pre,
+  .agent-say code,
+  .agent-say kbd {
+    font-style: normal;
+  }
+
   /* --- Chat markdown ----------------------------------------------------- */
   .prose-chat > :first-child {
     margin-top: 0;
