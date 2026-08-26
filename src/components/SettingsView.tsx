@@ -9,12 +9,15 @@ import {
   Sun,
   Moon,
   Monitor,
+  Save,
 } from "./icons";
 import { useStore, DEFAULT_PREFS } from "../lib/store";
 import { useT, LANGS } from "../lib/i18n";
 import { cn } from "../lib/cn";
 import { api } from "../lib/api";
 import { Select } from "./ui/Select";
+import { exportSettings, parseSettings } from "../lib/settingsFile";
+import { importVsCodeKeybindings } from "../lib/keybindings";
 
 /** Real settings: how the agent behaves and how the editor looks. Connections
  *  and API keys stay in their own dialog (they are security-sensitive). */
@@ -157,6 +160,11 @@ export function SettingsView() {
               ))}
             </div>
           </div>
+        </Section>
+
+        {/* Portable configuration */}
+        <Section icon={Save} title={t("settingsPortable")}>
+          <SettingsFileControls />
         </Section>
 
         <button
@@ -407,6 +415,117 @@ function BackgroundModelPicker({
           {connections.find((c) => c.id === pinned.connectionId)?.name ?? "?"} · {pinned.model}
         </p>
       )}
+    </div>
+  );
+}
+
+
+/** Carrying the setup to another machine, and getting it back after a reset.
+ *
+ *  Every outcome is reported, including the partial ones: an import that says
+ *  "done" while ignoring half the file teaches people not to trust it.
+ */
+function SettingsFileControls() {
+  const t = useT();
+  const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const say = (text: string) => setNote(text.slice(0, 160));
+
+  const run = async (work: () => Promise<string | null>) => {
+    setBusy(true);
+    setNote(null);
+    try {
+      const said = await work();
+      if (said) say(said);
+    } catch (e) {
+      say(String(e).replace(/^Error:\s*/, ""));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const readChosen = async (): Promise<string | null> => {
+    const chosen = await api.pickAttachments(["json"]);
+    if (!chosen.length) return null;
+    return atob(await api.readFileBase64(chosen[0]));
+  };
+
+  return (
+    <div className="py-3">
+      {note && (
+        <p className="mb-2 rounded-[var(--r-sm)] bg-[var(--color-surface-2)] px-2 py-1.5 text-[length:var(--fs-xs)] text-[var(--color-text-dim)]">
+          {note}
+        </p>
+      )}
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          className="btn btn-secondary btn-sm"
+          disabled={busy}
+          onClick={() =>
+            void run(async () => {
+              const st = useStore.getState();
+              const path = await exportSettings({
+                prefs: st.prefs,
+                keybindings: st.keybindings,
+                theme: st.theme,
+                lang: st.lang,
+              });
+              return path ? t("settingsExported").replace("{name}", path.split("/").pop() ?? path) : null;
+            })
+          }
+        >
+          {t("settingsExport")}
+        </button>
+
+        <button
+          className="btn btn-secondary btn-sm"
+          disabled={busy}
+          onClick={() =>
+            void run(async () => {
+              const json = await readChosen();
+              if (!json) return null;
+              const parsed = parseSettings(json);
+              const st = useStore.getState();
+              st.setPrefs(parsed.prefs);
+              st.setKeybindings(parsed.keybindings);
+              if (parsed.theme) st.setTheme(parsed.theme as never);
+              if (parsed.lang) st.setLang(parsed.lang as never);
+              return parsed.ignored.length
+                ? t("settingsImportedPartly").replace("{keys}", parsed.ignored.join(", "))
+                : t("settingsImported");
+            })
+          }
+        >
+          {t("settingsImport")}
+        </button>
+
+        <button
+          className="btn btn-secondary btn-sm"
+          disabled={busy}
+          onClick={() =>
+            void run(async () => {
+              const json = await readChosen();
+              if (!json) return null;
+              const result = importVsCodeKeybindings(json);
+              useStore.getState().setKeybindings(result.bindings);
+              const parts = [t("keysImported")];
+              if (result.unsupported.length)
+                parts.push(
+                  t("keysUnsupported").replace("{commands}", result.unsupported.slice(0, 4).join(", ")),
+                );
+              if (result.conflicts.length)
+                parts.push(t("keysConflicts").replace("{list}", result.conflicts[0]));
+              return parts.join(" · ");
+            })
+          }
+        >
+          {t("keysImport")}
+        </button>
+      </div>
+      <p className="mt-2 text-[length:var(--fs-2xs)] leading-relaxed text-[var(--color-text-mute)]">
+        {t("settingsPortableHint")}
+      </p>
     </div>
   );
 }

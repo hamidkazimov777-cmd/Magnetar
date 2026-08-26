@@ -8,6 +8,7 @@ import { GuideDialog } from "./components/GuideDialog";
 import { Splash } from "./components/Splash";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { useStore } from "./lib/store";
+import { chordOf, commandFor } from "./lib/keybindings";
 import { useT } from "./lib/i18n";
 import { api } from "./lib/api";
 import { installLinkInterceptor } from "./lib/links";
@@ -82,27 +83,45 @@ export default function App() {
   // Links must never navigate the app window — see lib/links.ts.
   useEffect(installLinkInterceptor, []);
 
-  // Global shortcuts: ⌘K palette, ⌘J terminal, ⌘B sidebar, ⌘⇧A agent panel.
+  // Global shortcuts, resolved through the bindings table rather than a chain
+  // of key comparisons — so an imported VS Code binding reaches the same
+  // commands, and ⌘⇧P works for anyone who has spent years pressing it.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const mod = e.metaKey || e.ctrlKey;
-      if (!mod) return;
+      if (!e.metaKey && !e.ctrlKey) return;
       const st = useStore.getState();
-      if (e.key === "k") {
-        e.preventDefault();
-        setPalette((v) => (v === "commands" ? null : "commands"));
-      } else if (e.key === "p" && !e.shiftKey) {
-        e.preventDefault();
-        setPalette((v) => (v === "files" ? null : "files"));
-      } else if (e.key === "j") {
-        e.preventDefault();
-        st.toggleTerminal();
-      } else if (e.key === "b") {
-        e.preventDefault();
-        st.toggleSidebar();
-      } else if (e.shiftKey && e.key.toLowerCase() === "a") {
-        e.preventDefault();
-        st.toggleAgentPanel();
+      const command = commandFor(chordOf(e), st.keybindings);
+      if (!command) return;
+
+      switch (command) {
+        case "palette.commands":
+          e.preventDefault();
+          setPalette((v) => (v === "commands" ? null : "commands"));
+          break;
+        case "palette.files":
+          e.preventDefault();
+          setPalette((v) => (v === "files" ? null : "files"));
+          break;
+        case "view.terminal":
+          e.preventDefault();
+          st.toggleTerminal();
+          break;
+        case "view.sidebar":
+          e.preventDefault();
+          st.toggleSidebar();
+          break;
+        case "view.agentPanel":
+          e.preventDefault();
+          st.toggleAgentPanel();
+          break;
+        case "search.focus":
+          e.preventDefault();
+          st.setSidePanel("search");
+          break;
+        // The editor owns save and close: it is the only thing that knows
+        // which buffer is dirty and which tab is in front.
+        default:
+          break;
       }
     };
     window.addEventListener("keydown", onKey);

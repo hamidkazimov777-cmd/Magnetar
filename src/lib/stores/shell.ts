@@ -1,4 +1,5 @@
 import { api } from "../api";
+import { DEFAULT_BINDINGS } from "../keybindings";
 import { reportPromise } from "../errors";
 import type { Lang } from "../i18n";
 import { applyTheme, type Theme } from "../theme";
@@ -43,6 +44,11 @@ export interface ShellSlice {
   readOnly: boolean;
   setReadOnly: (on: boolean) => void;
 
+  /** Which chords run which command. Persisted, because a shortcut somebody
+   *  set and then had to set again after a restart is not their shortcut. */
+  keybindings: Record<string, string[]>;
+  setKeybindings: (bindings: Record<string, string[]>) => void;
+
   onboarded: boolean;
   setOnboarded: (v: boolean) => void;
   sidePanel: SidePanel;
@@ -75,6 +81,9 @@ export const createShellSlice: Slice<ShellSlice> = (set) => ({
   subsSafariUa: { gemini: true },
   setSubsSafariUa: (providerId, on) =>
     set((s) => ({ subsSafariUa: { ...s.subsSafariUa, [providerId]: on } })),
+
+  keybindings: DEFAULT_BINDINGS,
+  setKeybindings: (keybindings) => set({ keybindings }),
 
   readOnly: false,
   setReadOnly: (on) => {

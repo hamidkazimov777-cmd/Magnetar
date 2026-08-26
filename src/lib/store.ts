@@ -93,6 +93,7 @@ export const useStore = create<State>()(
         theme: s.theme,
         hintsOn: s.hintsOn,
         subsSafariUa: s.subsSafariUa,
+        keybindings: s.keybindings,
         activeProjectId: s.activeProjectId,
         onboarded: s.onboarded,
         sidePanel: s.sidePanel,
