@@ -4716,3 +4716,21 @@ Monaco-related chunks и dynamic-import warning; это отдельный perfo
 Расширить единый error layer на доменные background writes (memory/DB/LSP),
 добавить обработку отмены и повторного запуска в тестах, затем перейти к Step 2
 security hardening. Не менять secrets storage до отдельного security шага.
+
+### Запись 108 — 2026-08-26 — Codex — current verified state
+
+Последний фактический baseline после commits `6fa4fc9`, `e2882f5`, `9d8ea15`,
+`7a57499` и `0c47489`:
+
+- Step 0 governance/docs завершён;
+- Step 1 partial: Vitest/CI/portable smoke/redacted error reporting/DB
+  persistence observability/dynamic-import cleanup сделаны;
+- typecheck OK, Vitest 11/11, Rust 20/20, smoke 4/4, production build OK;
+- build всё ещё имеет один chunk-size warning (Monaco ~3.96 MB);
+- npm audit с network доступом выявляет 2 moderate/low DOMPurify advisories
+  через Monaco; force downgrade не применён;
+- Step 1 не объявлен завершённым до cancellation/retry coverage и решения по
+  chunk budget. Step 2 Keychain/backend path authorization ещё не начат.
+
+Продолжение: тестируемый cancellation/retry contract и оставшиеся memory/LSP
+error paths; затем отдельный security slice с Keychain-only production storage.
