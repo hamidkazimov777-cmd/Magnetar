@@ -57,21 +57,21 @@ target or intentionally manual. Test IDs are mapped to quality gates below.
 | Capability | Magnetar | VS Code | Cursor | Windsurf | Zed | Acceptance criteria / test scenario | Priority |
 |---|---:|---:|---:|---:|---:|---|---:|
 | Editor + syntax highlighting | ✅ Monaco | ✅ | ✅ | ✅ | ✅ | Open representative TS, Rust, Python, JSON, YAML, Markdown, CSS, HTML and Bash files; no crash. `IDE-01` | P0 |
-| Tabs and unsaved state | ◐ | ✅ | ✅ | ✅ | ✅ | Edit, switch tabs, close/reopen, and verify dirty state and recovery behavior. `IDE-02` | P0 |
-| Split panes / pinned tabs | □ | ✅ | ✅ | ✅ | ✅ | Split editor, pin tab, reopen project; layout and pin state survive session. `IDE-03` | P1 |
+| Tabs and unsaved state | ✅ dirty marks, autosave optional | ✅ | ✅ | ✅ | ✅ | Edit, switch tabs, close/reopen, and verify dirty state and recovery behavior. `IDE-02` | P0 |
+| Split panes / pinned tabs | ✅ one split, pins survive close-all | ✅ | ✅ | ✅ | ✅ | Split editor, pin tab, reopen project; layout and pin state survive session. `IDE-03` | P1 |
 | Quick Open / file search | ✅ ⌘P | ✅ | ✅ | ✅ | ✅ | ⌘P filters 10k files, opens exact result, handles empty and duplicate names. `IDE-04` | P0 |
 | Command palette | ✅ ⌘K | ✅ | ✅ | ✅ | ✅ | ⌘K lists commands, keyboard navigation and cancellation work. `IDE-05` | P0 |
 | Workspace search | ✅ ranked BM25 | ✅ | ✅ | ✅ | ✅ | Search returns file/line hits and opens the result. `SEARCH-01` | P0 |
-| Replace in workspace | ◐ exact, no regex | ✅ | ✅ | ✅ | ✅ | Preview selected files, apply, handle zero matches, failure and rerun. `SEARCH-02` | P0 |
-| Regex search + cancellation | □ | ✅ | ✅ | ✅ | ✅ | Regex, timeout, result budget and cancel work on a large repository. `SEARCH-03` | P0 |
-| Breadcrumbs / outline / symbols | ◐ LSP-dependent | ✅ | ✅ | ✅ | ✅ | Show structure without LSP via parser layer; LSP enriches it when available. `IDE-06` | P1 |
+| Replace in workspace | ✅ same engine as search | ✅ | ✅ | ✅ | ✅ | Preview selected files, apply, handle zero matches, failure and rerun. `SEARCH-02` | P0 |
+| Regex search + cancellation | ✅ budget, deadline, cancel by id | ✅ | ✅ | ✅ | ✅ | Regex, timeout, result budget and cancel work on a large repository. `SEARCH-03` | P0 |
+| Breadcrumbs / outline / symbols | ◐ path breadcrumbs; symbols in Step 5 | ✅ | ✅ | ✅ | ✅ | Show structure without LSP via parser layer; LSP enriches it when available. `IDE-06` | P1 |
 | Definition / implementation / references | ◐ LSP bridge | ✅ | ✅ | ✅ | ✅ | TS/Rust/Python/Go navigation works; missing server gives actionable fallback. `LSP-01` | P0 |
 | Hover / completion / rename / code actions | ◐ LSP bridge | ✅ | ✅ | ✅ | ✅ | Live request, timeout, reconnect and unsupported-server behavior are visible. `LSP-02` | P0 |
 | Formatting / organize imports / format-on-save | □ | ✅ | ✅ | ✅ | ✅ | Detect formatter, show failure, and never overwrite on formatter error. `LSP-03` | P1 |
 | Diagnostics / Problems panel | ✅ checks + LSP | ✅ | ✅ | ✅ | ✅ | Parse compiler/linter output, click to location, preserve raw unparsed output. `LSP-04` | P0 |
-| Multi-root workspaces | □ | ✅ | ✅ | ✅ | ✅ | Two roots have separate containment, index, diagnostics and file identity. `IDE-07` | P1 |
+| Multi-root workspaces | — deliberate, see below | ✅ | ✅ | ✅ | ✅ | One root, documented. `IDE-07` withdrawn | P1 |
 | Recent projects | ✅ | ✅ | ✅ | ✅ | ✅ | Open, close, reopen and remove stale path safely. `IDE-08` | P1 |
-| Keybindings import/export | □ | ✅ | ✅ | ✅ | ✅ | Import VS Code-compatible bindings, detect conflicts, export round-trip. `IDE-09` | P1 |
+| Keybindings import/export | ✅ VS Code chords and keybindings.json | ✅ | ✅ | ✅ | ✅ | Import VS Code-compatible bindings, detect conflicts, export round-trip. `IDE-09` | P1 |
 | Git status / diff / stage / commit | ◐ status/diff/stage paths | ✅ | ✅ | ✅ | ✅ | Stage single file and hunk, inspect diff, commit, handle empty/index errors. `GIT-01` | P0 |
 | Branch / merge / rebase / stash / cherry-pick | ◐ basic branch actions | ✅ | ✅ | ✅ | ✅ | Each operation is cancellable and conflict state is recoverable. `GIT-02` | P1 |
 | Conflict resolver / blame / history / remotes | □ | ✅ | ✅ | ✅ | ✅ | Resolve a synthetic conflict, show blame/history and remote errors verbatim. `GIT-03` | P1 |
@@ -95,6 +95,27 @@ target or intentionally manual. Test IDs are mapped to quality gates below.
 | Onboarding / transparent context | ◐ partial | ◐ | ✅ | ✅ | ✅ | First-run flow shows provider, model, context, cost, checkpoint and rollback. `UX-01` | P1 |
 | Direct free macOS distribution | □ unsigned/local scripts | — | — | — | — | Universal signed/notarized artifact installs on clean Mac without account/paywall. `REL-01` | P0 |
 
+## Multi-root: a decision, not an omission
+
+One workspace root, on purpose. Three things in Magnetar are defined in terms
+of "the project": path containment decides what the agent may touch, repository
+trust decides whether it may act at all, and the index decides what search and
+memory see. Multi-root does not add a second folder to a list — it makes each
+of those a question with several answers, and the interesting cases are the
+ones where the answers differ: an agent editing across two roots where only one
+is trusted, memory that cannot say which project a fact belongs to.
+
+The cost is real but narrow. Opening a second project means a second window,
+which is what most people do anyway. The gain would be a shared terminal and a
+cross-root search — neither worth weakening a containment boundary that was
+built three steps ago.
+
+If this is revisited, it belongs after Step 7: the index has to be per-root and
+persistent first, or cross-root search is a full rescan of everything each time.
+
+`IDE-07` is withdrawn rather than left open, because an acceptance test for
+something deliberately not built is a permanent false failure.
+
 ## Ordered delivery
 
 | Step | Scope | Exit gate |
@@ -103,7 +124,7 @@ target or intentionally manual. Test IDs are mapped to quality gates below.
 | 1 | Warnings, frontend test harness, error reporting, smoke portability, CI | Clean typecheck/tests and reviewed build output; Monaco is lazy and its asset budget is explicit |
 | 2 | Keychain, containment, trust/read-only, permission model, CSP, secret scan | **Done** except the clean-machine review, which belongs to Step 14 |
 | 3 | Canon migrations, FKs, cleanup, backup/import, integrity/recovery | **Done**; migration, cascade, integrity and import covered by tests |
-| 4 | Professional editor workflow and settings/keybindings | `IDE-*` acceptance suite |
+| 4 | Professional editor workflow and settings/keybindings | **Done**; multi-root withdrawn with reasons, symbols deferred to Step 5 |
 | 5 | LSP/parser layer and diagnostics | `LSP-*` acceptance suite for four languages plus graceful fallback |
 | 6 | Git completion, tasks/tests, Test Explorer, Node/Python DAP | `GIT-*`, `TEST-*`, `DEBUG-*` |
 | 7 | Persistent/incremental search, watcher, scale and budgets | `PERF-*` scale runs |
@@ -118,17 +139,24 @@ target or intentionally manual. Test IDs are mapped to quality gates below.
 
 ## Next step
 
-Step 3 is complete. Memory now has one writer, one shape and one renderer:
-facts and decisions are the canon, the prose columns are read-only fallback for
-unmigrated projects, and the knowledge graph — a third representation retrieved
-by substring matching — is out of the interface, its data left intact.
+Step 4 is complete. Search has a real engine — regex or literal, case and whole
+word, with a result budget, a deadline and cancellation by id — and it reports
+which of the three stopped it rather than returning a short list that looks
+complete. Replace runs on the same engine, so the list shown before a replace
+is the list that gets replaced. Tabs pin and survive close-all, a second file
+opens beside the first, autosave is available and off by default, breadcrumbs
+show where the open file lives, VS Code chords work alongside Magnetar's own
+and a `keybindings.json` can be imported, and settings travel as a file.
 
-The schema owns the relationship it always had by convention: project-scoped
-tables cascade, so deleting a project deletes what belonged to it instead of
-leaving rows nothing could show and nothing could remove. A snapshot can be read
-back, the database can be copied and checked, and attachments survive a restart.
+Two things are deliberately not in it. Multi-root is withdrawn with reasons
+above rather than left as an open acceptance test. Symbol-level breadcrumbs,
+outline and workspace symbols need a parser that works without a language
+server, which is Step 5's parser layer — path breadcrumbs ship now so the trail
+is not missing entirely.
 
-Step 4 is next: the professional editor workflow — split panes and pinned tabs,
-regex search with cancellation and a result budget, replace across the
-workspace, breadcrumbs and outline without a language server, multi-root or a
-documented refusal, VS Code-compatible keybindings, and settings import/export.
+Step 5 is next: the LSP and parser layer. Definition, references, rename, hover
+and completion are already bridged for four languages; what is missing is
+formatting and format-on-save, organize imports, code actions, document and
+workspace symbols, semantic tokens, server onboarding when none is installed,
+restart and reconnect, and a Tree-sitter-style parser so structure works
+without a server at all.

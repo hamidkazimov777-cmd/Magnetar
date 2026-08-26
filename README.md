@@ -244,7 +244,10 @@ subscriptions bridge, light and dark themes, RU/EN/ES interface.
   must return to Keychain
 - LSP is present for Rust, Python, Go and TypeScript/JavaScript, but parser
   fallback, formatting and full IDE navigation are incomplete
-- Search is an in-memory BM25 index capped at 5,000 files
+- Search is an in-memory BM25 index capped at 5,000 files (the search panel and
+  replace use a separate text engine and are not capped)
+- One folder at a time: multi-root is deliberately not built, see
+  [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
 - Backend path authorization, trust/read-only mode, durable agent runs,
   checkpoints/rollback, DAP debugger, MCP and inline completion are incomplete
 - The production build keeps Monaco in a lazy ~3.96 MB chunk; the initial

@@ -27,6 +27,15 @@ export interface EditorSlice {
   /** Pin or unpin a tab. Pinned tabs sort first, so pinning also moves it. */
   togglePin: (path: string) => void;
 
+  /** The file shown beside the main editor, if any.
+   *
+   *  One secondary pane, not an arbitrary tree of editor groups: two files
+   *  side by side is what people actually reach for — a test next to the thing
+   *  it tests, an interface next to its implementation — and the layout stays
+   *  something a person can hold in their head. */
+  splitTabPath?: string;
+  setSplitTab: (path: string | undefined) => void;
+
   /** Line a newly opened tab should scroll to (set by Problems / Search).
    *  The editor consumes and clears it once the file is on screen. */
   pendingReveal?: { path: string; line: number; column?: number };
@@ -48,11 +57,23 @@ export const createEditorSlice: Slice<EditorSlice> = (set, get) => ({
     set((s) => {
       const idx = s.tabs.findIndex((x) => x.path === path);
       const tabs = s.tabs.filter((x) => x.path !== path);
-      if (s.activeTabPath !== path) return { tabs };
+      if (s.activeTabPath !== path)
+        return { tabs, splitTabPath: s.splitTabPath === path ? undefined : s.splitTabPath };
       // Focus the neighbour that takes the closed tab's place.
       const next = tabs[Math.min(idx, tabs.length - 1)];
-      return { tabs, activeTabPath: next?.path };
+      return {
+        tabs,
+        activeTabPath: next?.path,
+        splitTabPath: s.splitTabPath === path ? undefined : s.splitTabPath,
+      };
     }),
+  setSplitTab: (path) =>
+    set((s) => ({
+      // Splitting a file that is already beside you closes the split instead
+      // of doing nothing, so one button both opens and closes it.
+      splitTabPath: s.splitTabPath === path ? undefined : path,
+    })),
+
   closeAllTabs: () =>
     set((s) => {
       // "Close all" is for clearing what a search or an agent run left behind.
@@ -63,6 +84,7 @@ export const createEditorSlice: Slice<EditorSlice> = (set, get) => ({
         activeTabPath: kept.some((x) => x.path === s.activeTabPath)
           ? s.activeTabPath
           : kept[0]?.path,
+        splitTabPath: kept.some((x) => x.path === s.splitTabPath) ? s.splitTabPath : undefined,
       };
     }),
   setActiveTab: (path) => set({ activeTabPath: path, centerView: "editor" }),

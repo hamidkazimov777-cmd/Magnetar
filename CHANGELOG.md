@@ -20,6 +20,24 @@
 - Cross-domain store tests covering folder close, reveal-in-file, project
   adoption, model-per-conversation, track switching and the memory queue.
 
+### Editor and search
+
+- Project search has a real engine: regex or literal, case and whole-word, with
+  a result budget, a deadline and cancellation. It reports which of the three
+  stopped it instead of returning a short list that looks complete.
+- Replace runs on the same engine, so the list shown before a replace is the
+  list that gets replaced, and a truncated scan says so before anything is
+  written.
+- Tabs can be pinned: pinned tabs sort first and survive "close all".
+- A second file can be opened beside the first.
+- Optional autosave, off by default, debounced so a file is written when the
+  edits stop rather than mid-word.
+- Breadcrumbs show where the open file lives.
+- VS Code chords work alongside Magnetar's own — ⌘⇧P opens the command palette
+  — and a `keybindings.json` can be imported, with anything unhonourable named.
+- Settings export and import as a file: preferences, bindings, theme and
+  language, and nothing secret.
+
 ### Memory and data
 
 - Project memory has one renderer. The agent, plain chat and the subscription

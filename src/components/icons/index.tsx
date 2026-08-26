@@ -365,6 +365,13 @@ export const Download: IconType = (p) => (
     <path d="M5 19h14" />
   </G>
 );
+/** Two panes side by side. */
+export const Columns: IconType = (p) => (
+  <G {...p}>
+    <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+    <path d="M12 4.5v15" />
+  </G>
+);
 /** A tab held in place. */
 export const Pin: IconType = (p) => (
   <G {...p}>

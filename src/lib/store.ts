@@ -102,6 +102,7 @@ export const useStore = create<State>()(
         terminalOpen: s.terminalOpen,
         tabs: s.tabs,
         activeTabPath: s.activeTabPath,
+        splitTabPath: s.splitTabPath,
         memoryLog: s.memoryLog.slice(0, 30),
       }),
     },
