@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Editor, { type OnMount } from "@monaco-editor/react";
 import { X, Save, FileCode2, GitCompare, Loader2, Info, Copy, Check, Pin, Columns } from "../icons";
 import { copyText } from "../../lib/clipboard";
@@ -14,6 +14,7 @@ import { DiffView } from "./DiffView";
 import type * as monaco from "monaco-editor";
 import { monacoThemeFor, languageForPath, loadMonaco } from "../../lib/monaco";
 import { useResolvedTheme } from "../../lib/useTheme";
+import { outlineOf, trailAt } from "../../lib/outline";
 
 const tabKey = (tab: EditorTab) =>
   `${tab.kind === "diff" ? "diff" : "file"}:${tab.staged ? "s:" : ""}${tab.path}`;
@@ -26,6 +27,9 @@ export function EditorArea() {
   const activeTabPath = useStore((s) => s.activeTabPath);
   const togglePin = useStore((s) => s.togglePin);
   const splitPath = useStore((s) => s.splitTabPath);
+  /** Which line the cursor is on, so the breadcrumb trail can say which
+   *  function you are looking at rather than only which file. */
+  const [cursorLine, setCursorLine] = useState(1);
   const setSplitTab = useStore((s) => s.setSplitTab);
   const autosave = useStore((s) => s.prefs.autosave);
   const autosaveDelayMs = useStore((s) => s.prefs.autosaveDelayMs);
@@ -215,6 +219,9 @@ export function EditorArea() {
     // Idempotent — safe on every mount.
     registerLspProviders(monacoInstance);
     installDefinitionOpener(editor, { openTab, revealInFile });
+    // The breadcrumb trail follows the cursor, so it has to hear about it.
+    setCursorLine(editor.getPosition()?.lineNumber ?? 1);
+    editor.onDidChangeCursorPosition((e) => setCursorLine(e.position.lineNumber));
   };
 
   // Errors from the project's own checks belong under the code, not only in a
@@ -364,7 +371,20 @@ export function EditorArea() {
         </div>
       </div>
 
-      {active && active.kind !== "diff" && <Breadcrumbs path={active.path} />}
+      {active && active.kind !== "diff" && (
+        <Breadcrumbs
+          path={active.path}
+          text={buffers[active.path] ?? ""}
+          line={cursorLine}
+          onJump={(line) => {
+            const ed = editorRef.current;
+            if (!ed) return;
+            ed.revealLineInCenter(line);
+            ed.setPosition({ lineNumber: line, column: 1 });
+            ed.focus();
+          }}
+        />
+      )}
 
       {error && (
         <div className="alert mx-2 mt-2 items-center py-1.5 text-[length:var(--fs-xs)]">
@@ -488,41 +508,105 @@ function EditorSkeleton() {
 }
 
 
-/** Where the open file sits, as a path you can read at a glance.
+/** Where the open file sits, and what part of it the cursor is in.
  *
  *  A tab shows a filename, and half a project's filenames are `index.ts`. The
- *  full path is in the tooltip, which means it is available to someone who
- *  already suspects they have the wrong file open — by which point the trail
- *  has done its job badly.
+ *  full path was in the tooltip — available to someone who already suspects
+ *  they have the wrong file open, by which point the trail has done its job
+ *  badly.
  *
- *  Path segments only for now. Symbol-level breadcrumbs need a parser that can
- *  say what function the cursor is in without a language server, which arrives
- *  with the parser layer in Step 5.
+ *  The symbol half comes from the heuristic outline rather than a language
+ *  server, so it is there on the first keystroke and in files whose language
+ *  has no server installed. A trail that appears only once `npm install -g`
+ *  has been run is a trail nobody sees.
  */
-function Breadcrumbs({ path }: { path: string }) {
+function Breadcrumbs({
+  path,
+  text,
+  line,
+  onJump,
+}: {
+  path: string;
+  text: string;
+  line: number;
+  onJump: (line: number) => void;
+}) {
+  const t = useT();
   const root = useStore((s) => s.workspaceRoot);
+  const [open, setOpen] = useState(false);
   const relative = root && path.startsWith(root + "/") ? path.slice(root.length + 1) : path;
   const segments = relative.split("/").filter(Boolean);
+
+  // Re-read the structure only when the text settles, not per keystroke: the
+  // scan is cheap but it is not free, and a breadcrumb that flickers while you
+  // type is worse than one that lags a moment behind.
+  const symbols = useMemo(() => outlineOf(path, text), [path, text]);
+  const trail = useMemo(() => trailAt(symbols, line), [symbols, line]);
+
   if (segments.length === 0) return null;
 
   return (
     <nav
       aria-label="breadcrumbs"
-      className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--color-border)] px-3 py-1 text-[length:var(--fs-xs)] text-[var(--color-text-mute)]"
-      title={path}
+      className="relative flex shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--color-border)] px-3 py-1 text-[length:var(--fs-xs)] text-[var(--color-text-mute)]"
     >
       {segments.map((segment, i) => (
-        <span key={`${segment}-${i}`} className="flex shrink-0 items-center gap-1">
+        <span key={`p-${i}`} className="flex shrink-0 items-center gap-1" title={path}>
           {i > 0 && <span className="opacity-50">/</span>}
           <span className={i === segments.length - 1 ? "text-[var(--color-text-dim)]" : undefined}>
             {segment}
           </span>
         </span>
       ))}
+
+      {trail.map((symbol, i) => (
+        <button
+          key={`s-${symbol.line}-${i}`}
+          onClick={() => onJump(symbol.line)}
+          className="flex shrink-0 items-center gap-1 text-[var(--color-text-dim)] hover:text-[var(--color-text)]"
+          title={`${symbol.kind} · ${symbol.name}`}
+        >
+          <span className="opacity-50">›</span>
+          {symbol.name}
+        </button>
+      ))}
+
+      {symbols.length > 0 && (
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="ml-auto shrink-0 pl-2 text-[var(--color-text-mute)] hover:text-[var(--color-text)]"
+          title={t("editorOutline")}
+          aria-expanded={open}
+        >
+          ⌄
+        </button>
+      )}
+
+      {open && (
+        <div className="absolute right-2 top-full z-20 max-h-72 w-72 overflow-auto rounded-[var(--r-md)] border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-lg">
+          {symbols.map((symbol, i) => (
+            <button
+              key={`o-${symbol.line}-${i}`}
+              onClick={() => {
+                onJump(symbol.line);
+                setOpen(false);
+              }}
+              className="flex w-full items-center gap-2 px-2 py-1 text-left hover:bg-[var(--color-surface-2)]"
+              style={{ paddingLeft: 8 + Math.min(symbol.level, 4) * 12 }}
+            >
+              <span className="min-w-0 flex-1 truncate text-[var(--color-text)]">
+                {symbol.name}
+              </span>
+              <span className="shrink-0 text-[length:var(--fs-2xs)] text-[var(--color-text-mute)]">
+                {symbol.line}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
     </nav>
   );
 }
-
 
 /** One Monaco editor, configured the way this app configures them.
  *
