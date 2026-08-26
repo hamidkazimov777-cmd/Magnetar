@@ -18,6 +18,33 @@ function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
  *  build: a release refuses to write a key to disk in the clear. */
 export type KeyStorage = "keychain" | "plaintextfile" | "none";
 
+export interface SearchOptions {
+  regex?: boolean;
+  caseSensitive?: boolean;
+  wholeWord?: boolean;
+  maxResults?: number;
+  timeoutMs?: number;
+}
+
+export interface SearchHit {
+  file: string;
+  line: number;
+  text: string;
+  /** Where the match starts in `text`, so the result can be highlighted
+   *  rather than leaving the reader to find it again. */
+  column: number;
+}
+
+export interface SearchOutcome {
+  hits: SearchHit[];
+  /** Stopped early, and which of the three reasons — they mean different
+   *  things to the reader: narrow the query, wait longer, or nothing at all. */
+  truncated: boolean;
+  timedOut: boolean;
+  cancelled: boolean;
+  filesScanned: number;
+}
+
 export interface ToolDef {
   name: string;
   description: string;
@@ -257,6 +284,12 @@ export const api = {
    *  than implying protection the build did not provide. */
   keyStorage: (connectionId: string) =>
     invoke<KeyStorage>("key_storage", { connectionId }),
+  /** Search the project's text. Reports why it stopped, so a short list is
+   *  never mistaken for a complete one. */
+  searchText: (root: string, pattern: string, options: SearchOptions, id: string) =>
+    invoke<SearchOutcome>("search_text", { root, pattern, options, id }),
+  /** Stop one search by the id it was started with. */
+  searchCancel: (id: string) => invoke<void>("search_cancel", { id }),
   /** Keep an attachment's bytes so the conversation still has them tomorrow.
    *  Addressed by id, never by path: there is no path here to point elsewhere. */
   attachmentWrite: (id: string, data: string) =>

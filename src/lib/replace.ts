@@ -1,73 +1,107 @@
-import { api } from "./api";
+import { api, type SearchOptions } from "./api";
 
 /* ==========================================================================
    FIND AND REPLACE ACROSS THE PROJECT
 
-   Deliberately literal and case-sensitive, and deliberately two-step.
+   Deliberately two-step, and deliberately the same engine as the search panel.
 
-   The ranked index that powers the search panel matches *words*, which is
-   right for "where does this live" and wrong for replacing: it cannot tell you
-   how many exact occurrences a file holds, and replacing what it returns would
-   edit things the user never saw. So the candidate files come from a grep and
-   every occurrence is then counted in the file itself, exactly as typed.
+   It used to run off the ranked index, which matches *words* — right for "where
+   does this live", wrong for replacing, because it cannot say how many exact
+   occurrences a file holds and replacing what it returns would edit things the
+   user never saw. Now both use one text search, so the list shown before the
+   replace is the list that gets replaced.
 
-   Nothing is written until the user has seen the file list with counts. A
+   Nothing is written until the user has seen the files and the counts. A
    project-wide replace is a destructive act; it gets the same respect as one.
    ========================================================================== */
 
 export interface ReplaceCandidate {
   file: string;
-  /** Exact, case-sensitive occurrences of the needle in this file. */
+  /** Occurrences in this file, counted with the same matcher the search used. */
   count: number;
   /** First matching line, for a glance before committing. */
   preview: string;
   previewLine: number;
 }
 
-const countOccurrences = (haystack: string, needle: string): number => {
-  if (!needle) return 0;
-  let count = 0;
-  let from = 0;
-  for (;;) {
-    const at = haystack.indexOf(needle, from);
-    if (at < 0) return count;
-    count += 1;
-    from = at + needle.length;
-  }
-};
+export interface ReplaceScan {
+  candidates: ReplaceCandidate[];
+  /** Carried through from the search: the user must know the list is partial
+   *  before replacing from it. */
+  truncated: boolean;
+  timedOut: boolean;
+}
 
-/** Files that literally contain the needle, with how many times. */
+/** Build the matcher the preview and the write both use, so what was counted
+ *  is what gets changed. */
+export function buildRegExp(needle: string, opts: SearchOptions): RegExp {
+  const body = opts.regex ? needle : needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const wrapped = opts.wholeWord ? `\\b(?:${body})\\b` : body;
+  return new RegExp(wrapped, opts.caseSensitive ? "g" : "gi");
+}
+
+/** Count without letting a zero-width match spin forever.
+ *
+ *  A pattern like `x*` matches the empty string at every position; the naive
+ *  loop over `exec` never advances past it and hangs the app.
+ */
+export function countMatches(haystack: string, re: RegExp): number {
+  const scan = new RegExp(re.source, re.flags.includes("g") ? re.flags : `${re.flags}g`);
+  let count = 0;
+  let guard = 0;
+  for (;;) {
+    const m = scan.exec(haystack);
+    if (!m) return count;
+    count += 1;
+    if (m.index === scan.lastIndex) scan.lastIndex += 1;
+    if (++guard > 1_000_000) return count;
+  }
+}
+
+/** Files that contain the pattern, with how many times. */
 export async function findExact(
   root: string,
   needle: string,
-): Promise<ReplaceCandidate[]> {
-  if (!needle.trim()) return [];
-  // grep narrows the search to plausible files (it is case-insensitive and
-  // skips node_modules, .git, build output); the exact count is done here.
-  const hits = await api.toolGrep(needle, root);
-  const files = [...new Set(hits.map((h) => h.file))];
+  opts: SearchOptions = {},
+): Promise<ReplaceScan> {
+  if (!needle.trim()) return { candidates: [], truncated: false, timedOut: false };
 
-  const out: ReplaceCandidate[] = [];
-  for (const file of files) {
-    let content: string;
-    try {
-      content = await api.editorReadFile(file);
-    } catch {
-      continue; // binary or unreadable — never a replace target
-    }
-    const count = countOccurrences(content, needle);
-    if (!count) continue; // matched only case-insensitively
+  const found = await api.searchText(
+    root,
+    needle,
+    // A generous budget: this list is about to be acted on, so a quietly
+    // shortened one is worse here than anywhere else.
+    { ...opts, maxResults: 2000 },
+    `replace-${Date.now()}`,
+  );
 
-    const lines = content.split("\n");
-    const idx = lines.findIndex((l) => l.includes(needle));
-    out.push({
-      file,
-      count,
-      preview: (lines[idx] ?? "").trim().slice(0, 200),
-      previewLine: idx + 1,
+  const re = buildRegExp(needle, opts);
+  const byFile = new Map<string, ReplaceCandidate>();
+  for (const hit of found.hits) {
+    const existing = byFile.get(hit.file);
+    if (existing) continue;
+    byFile.set(hit.file, {
+      file: hit.file,
+      count: 0,
+      preview: hit.text,
+      previewLine: hit.line,
     });
   }
-  return out.sort((a, b) => b.count - a.count);
+
+  const candidates: ReplaceCandidate[] = [];
+  for (const candidate of byFile.values()) {
+    let content: string;
+    try {
+      content = await api.editorReadFile(candidate.file);
+    } catch {
+      continue; // unreadable — never a replace target
+    }
+    const count = countMatches(content, re);
+    if (!count) continue;
+    candidates.push({ ...candidate, count });
+  }
+
+  return { candidates, truncated: found.truncated, timedOut: found.timedOut };
 }
 
 export interface ReplaceResult {
@@ -76,27 +110,35 @@ export interface ReplaceResult {
   failed: string[];
 }
 
-/** Rewrite the chosen files. Only the exact string is touched. */
+/** Apply the replacement to the chosen files. */
 export async function replaceIn(
   files: string[],
   needle: string,
   replacement: string,
+  opts: SearchOptions = {},
 ): Promise<ReplaceResult> {
-  const result: ReplaceResult = { files: 0, occurrences: 0, failed: [] };
-  if (!needle) return result;
+  const re = buildRegExp(needle, opts);
+  const out: ReplaceResult = { files: 0, occurrences: 0, failed: [] };
 
   for (const file of files) {
     try {
       const content = await api.editorReadFile(file);
-      const count = countOccurrences(content, needle);
+      const count = countMatches(content, re);
       if (!count) continue;
-      await api.toolWriteFile(file, content.split(needle).join(replacement));
-      result.files += 1;
-      result.occurrences += count;
+      const pattern = new RegExp(re.source, re.flags);
+      // Only a regex replacement gets $1 and friends. A literal one goes
+      // through a function so a dollar sign the user typed stays a dollar sign
+      // instead of being read as a capture reference.
+      const next = opts.regex
+        ? content.replace(pattern, replacement)
+        : content.replace(pattern, () => replacement);
+      if (next === content) continue;
+      await api.toolWriteFile(file, next);
+      out.files += 1;
+      out.occurrences += count;
     } catch (e) {
-      // Report which files were left alone instead of claiming a clean run.
-      result.failed.push(`${file}: ${String(e).slice(0, 80)}`);
+      out.failed.push(`${file}: ${String(e).slice(0, 120)}`);
     }
   }
-  return result;
+  return out;
 }

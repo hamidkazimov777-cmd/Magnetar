@@ -459,6 +459,13 @@ const ru: Dict = {
   trustBannerBody:
     "Эта папка открыта впервые. Пока вы её не подтвердите, Magnetar может читать код, но не менять файлы и не запускать команды — в репозитории могут быть скрипты сборки и задачи, которые выполняются сами.",
   trustBannerAction: "Доверять этой папке",
+  searchStop: "Остановить",
+  searchStopped: "Поиск остановлен",
+  searchTruncated: "Показаны первые {count} — уточните запрос, чтобы увидеть остальное",
+  searchTimedOut: "Не успел за отведённое время; просмотрено файлов: {files}",
+  searchCaseHint: "Учитывать регистр",
+  searchWordHint: "Слово целиком: «cat» не найдётся внутри «concatenate»",
+  searchRegexHint: "Регулярное выражение. Ошибка в шаблоне объясняется прямо здесь.",
   attachmentMissing: "{name} — файл вложения больше не найден",
   memImport: "Импортировать память",
   memImportHint:
@@ -1097,6 +1104,13 @@ const en: Dict = {
   trustBannerBody:
     "This folder is new here. Until you vouch for it, Magnetar can read the code but cannot change files or run commands — a repository can carry build scripts and tasks that run on their own.",
   trustBannerAction: "Trust this folder",
+  searchStop: "Stop",
+  searchStopped: "Search stopped",
+  searchTruncated: "Showing the first {count} — narrow the query to see the rest",
+  searchTimedOut: "Ran out of time; files scanned: {files}",
+  searchCaseHint: "Match case",
+  searchWordHint: "Whole word: \"cat\" will not match inside \"concatenate\"",
+  searchRegexHint: "Regular expression. A bad pattern is explained right here.",
   attachmentMissing: "{name} — the attached file is no longer there",
   memImport: "Import memory",
   memImportHint:
@@ -1727,6 +1741,13 @@ const es: Dict = {
   trustBannerBody:
     "Esta carpeta es nueva aquí. Hasta que la apruebes, Magnetar puede leer el código pero no cambiar archivos ni ejecutar comandos: un repositorio puede incluir scripts de compilación y tareas que se ejecutan solas.",
   trustBannerAction: "Confiar en esta carpeta",
+  searchStop: "Detener",
+  searchStopped: "Búsqueda detenida",
+  searchTruncated: "Mostrando los primeros {count}: afina la consulta para ver el resto",
+  searchTimedOut: "Se agotó el tiempo; archivos revisados: {files}",
+  searchCaseHint: "Distinguir mayúsculas",
+  searchWordHint: "Palabra completa: «cat» no coincidirá dentro de «concatenate»",
+  searchRegexHint: "Expresión regular. Un patrón incorrecto se explica aquí mismo.",
   attachmentMissing: "{name}: el archivo adjunto ya no está",
   memImport: "Importar memoria",
   memImportHint:

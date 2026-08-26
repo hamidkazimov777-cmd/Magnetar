@@ -2201,6 +2201,7 @@ dependencies = [
  "once_cell",
  "pdf-extract",
  "portable-pty",
+ "regex",
  "reqwest 0.12.28",
  "rusqlite",
  "security-framework",

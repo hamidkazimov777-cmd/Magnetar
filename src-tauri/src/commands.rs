@@ -1071,6 +1071,31 @@ pub async fn editor_read_file(app: tauri::AppHandle, path: String) -> Result<Str
     blocking(move || tools::read_text(&path.to_string_lossy())).await
 }
 
+// ---- Text search -----------------------------------------------------------
+
+/// Search the project's text, reporting why it stopped.
+///
+/// `id` is the caller's handle on this run: passing it to `search_cancel`
+/// stops that search and no other. Without one, a user typing quickly would
+/// cancel the search they are waiting for along with the one they abandoned.
+#[tauri::command]
+pub async fn search_text(
+    app: tauri::AppHandle,
+    root: String,
+    pattern: String,
+    options: crate::search::Options,
+    id: String,
+) -> Result<crate::search::Outcome, String> {
+    policy::require(Access::Read)?;
+    let root = ensure_allowed(&app, &root).await?;
+    blocking(move || crate::search::run(&root.to_string_lossy(), &pattern, &options, &id)).await
+}
+
+#[tauri::command]
+pub fn search_cancel(id: String) {
+    crate::search::cancel(&id);
+}
+
 // ---- Codebase index (BM25 retrieval) --------------------------------------
 
 #[tauri::command]

@@ -7,6 +7,7 @@ mod keychain;
 mod lsp;
 mod paths;
 mod policy;
+mod search;
 mod providers;
 mod pty;
 mod tools;
@@ -134,6 +135,8 @@ pub fn run() {
             commands::db_backup,
             commands::attachment_write,
             commands::attachment_read,
+            commands::search_text,
+            commands::search_cancel,
             commands::set_read_only,
             commands::read_only,
             commands::trust_workspace,
