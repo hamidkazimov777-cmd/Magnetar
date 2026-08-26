@@ -118,13 +118,12 @@ target or intentionally manual. Test IDs are mapped to quality gates below.
 
 ## Next step
 
-Step 1 test coverage is now closed against its own scope: agent, memory,
-handoff, leases, verification, verify-spec construction and fact provenance
-have Vitest coverage, and the Rust BM25 index has unit tests. The remaining
-Step 1 item is the domain split of `src/lib/store.ts` (one 1,373-line store);
-the tests above are the safety net that split is being done against.
+Step 1 is complete. Its final item — the domain split of `src/lib/store.ts` —
+landed as ten slices under `src/lib/stores/`, with `store.ts` reduced to
+composition and persistence. The cross-domain actions that a split could break
+silently are covered by `src/lib/store.test.ts`.
 
-After that, Step 2 security hardening: Keychain-only production secrets,
-canonical workspace containment, trust/read-only policy, backend command
-authorization, CSP and secret-scan tests. Apple Developer Program and
-publication remain untouched until Step 15.
+Step 2 security hardening is next: Keychain-only production secrets, canonical
+workspace containment, trust/read-only policy, backend command authorization,
+CSP and secret-scan tests. Apple Developer Program and publication remain
+untouched until Step 15.

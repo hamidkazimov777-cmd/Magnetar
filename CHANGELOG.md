@@ -17,6 +17,8 @@
   rules, oversized-file skipping, ranking with snippet line numbers, the result
   budget and rebuild-on-root-change.
 - README section documenting the five offline verification gates.
+- Cross-domain store tests covering folder close, reveal-in-file, project
+  adoption, model-per-conversation, track switching and the memory queue.
 
 ### Changed
 
@@ -26,11 +28,12 @@
   failures through the redacted error reporter instead of swallowing them.
 - Made the smoke fixture portable by defaulting it to the OS temp directory.
 - Moved the editor route and Monaco engine out of the initial workspace chunk;
-  initial entry is ~408.75 KB gzip, with the lazy Monaco budget documented.
+  initial entry is ~408.9 KB gzip, with the lazy Monaco budget documented.
+- Split the 1,373-line `src/lib/store.ts` into ten domain slices under
+  `src/lib/stores/`; `store.ts` now holds composition and persistence only.
 
 ### Known gaps
 
-- `src/lib/store.ts` is still a single 1,373-line store awaiting a domain split.
 - In-memory index capped at 5,000 files, with no persistence or watcher.
 - Plaintext-at-rest `secrets.json` development posture pending Keychain hardening.
 - No backend authorization boundary, path containment policy or CSP.

@@ -4862,3 +4862,74 @@ npm run typecheck && npx vitest run
 cargo test --manifest-path src-tauri/Cargo.toml
 npm run build && npm run smoke
 ```
+
+### Запись 113 — 2026-08-26 — Claude — Step 1 закрыт: доменный раскол store
+
+Последний невыполненный пункт Step 1. `src/lib/store.ts` был одним файлом на
+1373 строки с единственным `useStore`.
+
+**Что сделано**
+
+`src/lib/stores/` — десять доменных срезов, каждый объявляет свой интерфейс и
+свой `StateCreator`:
+
+- `providers.ts` — соединения, модели, `modelStatus`/`modelTools`;
+- `shell.ts` — prefs, язык, тема, подсказки, раскладка окна;
+- `workspace.ts` — открытая папка, recent folders, git-статусы, состояние индекса;
+- `editor.ts` — вкладки и `revealInFile`;
+- `sessions.ts` — канон: сессии, треки, сообщения, персист;
+- `projects.ts` — проекты и усыновление текущей беседы;
+- `memory.ts` — facts / divergences / decisions / proposals / memoryLog;
+- `diagnostics.ts` — checkRuns, LSP-диагностика, отсутствующие серверы;
+- `agentRun.ts` — прогон агента (transient, не персистится);
+- `app.ts` — `hydrate` и `startupError`.
+
+Плюс `stores/shared.ts` (общие типы, `DEFAULT_PREFS`, `persistMeta`) и
+`stores/state.ts` (`State` как пересечение срезов + алиас `Slice<T>`).
+
+`src/lib/store.ts` сократился до 108 строк: композиция срезов, `merge`,
+`partialize` и ре-экспорт публичной поверхности. **Ни один компонент не
+менялся** — импорты `useStore`, `DEFAULT_PREFS`, `NEW_CHAT_TITLE`,
+`CenterView`, `EditorTab`, `FileChange`, `SidePanel` работают как раньше.
+
+Осознанное решение: **один store, а не десять**. Домены реально связаны —
+`closeFolder` чистит вкладки и непросмотренные правки, `setActiveProject`
+перенаправляет живую беседу, `revealInFile` открывает вкладку. Отдельные
+store'ы не убрали бы эту связанность, а спрятали бы её. Записано в
+`docs/ARCHITECTURE.md`.
+
+**Проверка того, что ничего не потеряно**
+
+- сравнение ключей рантайм-состояния до и после раскола: 130 ключей, лишних
+  нет, потерянных нет (13 «отсутствующих» — это опциональные поля, которые и
+  в монолите не имели значения по умолчанию);
+- `src/lib/store.test.ts` (21 тест) покрывает именно межсрезовые действия:
+  закрытие папки, reveal-in-file, усыновление проекта, модель-на-беседу,
+  переключение треков, очередь divergence при удалении факта, схлопывание
+  сайдбара, `requestPrompt` → открытие панели агента;
+- приложение поднято через Vite dev и снято скриншотом: вне Tauri `hydrate`
+  падает на отсутствующем `invoke`, показывает redacted-баннер «Не удалось
+  загрузить сохранённые данные» и рендерит welcome-экран — то есть штатный
+  fallback, а не белый экран.
+
+**Изменённые файлы**: `src/lib/store.ts` (переписан), 12 новых файлов в
+`src/lib/stores/`, `src/lib/store.test.ts`, `docs/ARCHITECTURE.md`,
+`docs/QUALITY_GATES.md`, `docs/IMPLEMENTATION_PLAN.md`, `CHANGELOG.md`,
+`HANDOFF.md`.
+
+**Гейты**: typecheck OK, Vitest 117/117 в 13 файлах, Rust 31/31, production
+build OK (initial entry 408.93 KB gzip — +0.18 KB от границ модулей),
+`npm run smoke` 4/4.
+
+**Ограничения**
+
+- Проверка в браузере — это Vite dev без Tauri: доказано, что store
+  собирается, React монтируется и путь ошибки отрабатывает. Полный прогон в
+  собранном `.app` не выполнялся.
+- Крупная бизнес-логика в UI-компонентах (`ChatView.tsx` 799, `SettingsDialog.tsx`
+  628, `StudioView.tsx` 624) не выносилась — это отдельная задача.
+
+**Следующий шаг**: Step 2 security hardening — Keychain-only production
+secrets, canonical workspace containment, trust/read-only режимы, backend
+authorization для Tauri-команд, CSP, secret scanning. Apple Developer Program
+не трогать до Step 15.

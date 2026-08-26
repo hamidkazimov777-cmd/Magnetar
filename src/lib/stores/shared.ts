@@ -1,0 +1,126 @@
+import { db, type SessionMetaRow } from "../db";
+import { reportPromise } from "../errors";
+import type { Session } from "../types";
+
+/* ==========================================================================
+   SHARED STORE VOCABULARY
+
+   The pieces every domain slice needs: the small shell/editor types, the
+   preference defaults, and the write-through helper that keeps SQLite in step
+   with memory. Kept free of any slice import so a slice can depend on this
+   without depending on its neighbours.
+   ========================================================================== */
+
+/** Which panel the activity bar shows in the primary (left) sidebar. */
+export type SidePanel =
+  | "explorer"
+  | "chats"
+  | "git"
+  | "search"
+  | "changes"
+  | "problems"
+  | "project";
+
+/** What the center area renders: the code editor, or a full-width page. */
+export type CenterView =
+  | "editor"
+  | "studio"
+  | "settings"
+  | "projects"
+  | "roadmap"
+  | "knowledge"
+  | "timeline"
+  | "subscriptions";
+
+/** An open editor tab. Tabs live in the store so the agent and Source Control
+ *  can open things too. `kind: "diff"` renders a git diff instead of an editor. */
+export interface EditorTab {
+  path: string;
+  name: string;
+  kind?: "file" | "diff";
+  /** Diff tabs only: show the staged diff rather than the working-tree diff. */
+  staged?: boolean;
+}
+
+/** Sentinel title for a freshly created chat; the UI renders it translated. */
+export const NEW_CHAT_TITLE = "__new_chat__";
+
+/** One file mutation made by the agent, kept so the user can review and undo.
+ *  `before === null` means the agent created the file. */
+export interface FileChange {
+  id: string;
+  path: string;
+  before: string | null;
+  after: string;
+  tool: "write_file" | "edit_file";
+  at: number;
+  reverted?: boolean;
+}
+
+/** User-facing behaviour switches, surfaced in Settings. */
+export interface Prefs {
+  /** Apply agent edits immediately and let the user review/undo (VS Code-like),
+   *  instead of blocking on a confirm dialog for every single write. */
+  autoApplyEdits: boolean;
+  /** Shell commands are never auto-approved unless the user opts in. */
+  confirmBash: boolean;
+  /** How many tool-use rounds the agent may take before stopping. */
+  agentMaxSteps: number;
+  /** Seconds a single shell command may run (npm install/cargo build are slow). */
+  bashTimeoutSecs: number;
+  /** Model used for background work: project memory, handoff notes, knowledge
+   *  graph. Undefined = pick automatically. Explicit is safer — the automatic
+   *  pick can land on a catalogue entry the token cannot actually call. */
+  memoryModel?: { connectionId: string; model: string };
+  /** The bench of models helper agents run on. Tasks are handed out round
+   *  robin, so three models and three parallel helpers means each task runs on
+   *  a different one — mixing providers on purpose is allowed and useful.
+   *  Empty means the helpers use the lead's model. */
+  subagentRoster: { connectionId: string; model: string }[];
+  /** How many helpers actually run at once. More than a handful is not
+   *  followable on screen, and providers rate-limit anyway. */
+  subagentParallel: number;
+  editorFontSize: number;
+  editorWordWrap: boolean;
+  editorMinimap: boolean;
+}
+
+export const DEFAULT_PREFS: Prefs = {
+  autoApplyEdits: true,
+  confirmBash: true,
+  agentMaxSteps: 80,
+  bashTimeoutSecs: 600,
+  subagentParallel: 3,
+  subagentRoster: [],
+  editorFontSize: 13,
+  editorWordWrap: false,
+  editorMinimap: true,
+};
+
+export const uid = () =>
+  (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)) as string;
+
+export const now = () => Date.now();
+
+/** The canon (sessions/messages) lives in SQLite; connections and preferences
+ *  stay in localStorage. Mutations update memory immediately and write through
+ *  to the DB in the background (fire-and-forget — chat never blocks on disk). */
+
+function metaOf(s: Session): SessionMetaRow {
+  return {
+    id: s.id,
+    title: s.title,
+    connectionId: s.connectionId ?? null,
+    model: s.model ?? null,
+    summary: s.summary ?? null,
+    summaryUpToId: s.summaryUpToId ?? null,
+    projectId: s.projectId ?? null,
+    track: s.track ?? null,
+    seesProject: s.seesProject ?? null,
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt,
+  };
+}
+
+export const persistMeta = (s: Session) =>
+  void reportPromise(db.saveSession(metaOf(s)), "db:save_session");

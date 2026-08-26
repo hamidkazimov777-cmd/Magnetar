@@ -29,11 +29,11 @@ never required for an offline build.
 - Rust: 31 tests passed, covering tools, DB migrations, LSP framing, UTF-8
   streaming, the workspace/memory round trip and the BM25 index (tokenising,
   skip rules, ranking, result budget and rebuild-on-root-change).
-- Frontend: 96 tests passed across 12 files, covering redaction, retry and
+- Frontend: 117 tests passed across 13 files, covering redaction, retry and
   cancellation, agent guards and text-tool-call recovery, memory prompt
   assembly and background-model selection, handoff/summarisation, fact
   provenance and rendering, machine verification, verify-spec construction and
-  file leases.
+  file leases, plus the store's cross-domain actions after the slice split.
 - Frontend production build: passed.
 - Build warning: the lazy Monaco engine chunk is ~3.96 MB; the initial route is
   ~1.4 MB raw / 408.75 KB gzip. Duplicate agent and redundant dynamic-import

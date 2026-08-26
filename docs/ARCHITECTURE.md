@@ -20,6 +20,19 @@ Project facts, decisions, divergences and provenance are separate durable
 entities. The UI currently owns parts of agent orchestration and routing; Step 8
 moves durable run state and event handling into a headless core.
 
+## Frontend state
+
+One Zustand store, composed from domain slices in `src/lib/stores/`: providers,
+shell, workspace, editor, sessions, projects, memory, diagnostics, agent run and
+startup. `src/lib/store.ts` composes them and owns persistence; `stores/state.ts`
+is the sum type every slice is written against.
+
+It is one store rather than ten because the domains genuinely touch each other —
+closing a folder clears editor tabs and unreviewed changes, selecting a project
+re-points the live conversation, revealing a problem opens a tab. Separate
+stores would move that coupling somewhere harder to see. Those cross-domain
+actions are covered by `src/lib/store.test.ts`.
+
 ## Durable data
 
 SQLite currently holds sessions/messages, projects, memory facts, decisions,
