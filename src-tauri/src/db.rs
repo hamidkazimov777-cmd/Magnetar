@@ -11,7 +11,7 @@ static DB: OnceCell<Mutex<Connection>> = OnceCell::new();
 /// Schema version recorded in `PRAGMA user_version`. Bump this and add a step
 /// in `migrate` whenever the schema changes — never append to the old
 /// best-effort `ALTER TABLE` list.
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
     std::fs::create_dir_all(app_dir).map_err(|e| e.to_string())?;
@@ -97,7 +97,8 @@ pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
             owner       TEXT,
             created_at  INTEGER NOT NULL,
             updated_at  INTEGER NOT NULL,
-            deleted_at  INTEGER
+            deleted_at  INTEGER,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
 
@@ -106,7 +107,8 @@ pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
             project_id  TEXT NOT NULL,
             event_type  TEXT NOT NULL,
             content     TEXT NOT NULL,
-            created_at  INTEGER NOT NULL
+            created_at  INTEGER NOT NULL,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS idx_tevents_project ON timeline_events(project_id);
 
@@ -129,7 +131,8 @@ pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
             checked_at    INTEGER,
             created_at    INTEGER NOT NULL,
             updated_at    INTEGER NOT NULL,
-            deleted_at    INTEGER
+            deleted_at    INTEGER,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS idx_facts_project ON memory_facts(project_id);
 
@@ -148,7 +151,8 @@ pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
             commit_sha   TEXT,
             origin       TEXT NOT NULL,
             created_at   INTEGER NOT NULL,
-            deleted_at   INTEGER
+            deleted_at   INTEGER,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS idx_decisions_project ON decisions(project_id);
 
@@ -168,7 +172,8 @@ pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
             source      TEXT NOT NULL,
             status      TEXT NOT NULL,
             created_at  INTEGER NOT NULL,
-            resolved_at INTEGER
+            resolved_at INTEGER,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS idx_divergences_project ON divergences(project_id);
 
@@ -183,7 +188,8 @@ pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
             status      TEXT NOT NULL,
             review      TEXT,
             created_at  INTEGER NOT NULL,
-            reviewed_at INTEGER
+            reviewed_at INTEGER,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS idx_proposals_project ON proposals(project_id);
 
@@ -236,6 +242,7 @@ fn migrate(conn: &Connection) -> Result<(), String> {
     for v in (current + 1)..=SCHEMA_VERSION {
         match v {
             1 => migrate_v1(conn)?,
+            2 => migrate_v2(conn)?,
             other => return Err(format!("unknown schema version {other}")),
         }
         conn.execute_batch(&format!("PRAGMA user_version = {v}"))
@@ -246,6 +253,129 @@ fn migrate(conn: &Connection) -> Result<(), String> {
 
 /// v0 → v1: add columns introduced after the first schema. Only "duplicate
 /// column" is expected and ignored — anything else is a real failure.
+/// The project-scoped tables, and the column that ties each to its project.
+///
+/// Everything here is meaningless without its project: a fact about a project
+/// that no longer exists is not a fact about anything.
+const PROJECT_SCOPED: [&str; 6] = [
+    "memory_facts",
+    "decisions",
+    "divergences",
+    "proposals",
+    "tasks",
+    "timeline_events",
+];
+
+/// v2: make the project the owner of its memory, in the schema rather than by
+/// convention.
+///
+/// Deleting a project was a soft delete that touched one row. Its facts,
+/// decisions, queued contradictions, proposals, tasks and timeline stayed
+/// behind for good — invisible, still counted by anything that reads the
+/// tables, and impossible to get rid of from the interface. Nothing declared
+/// the relationship, so nothing could enforce it.
+///
+/// SQLite cannot add a foreign key to an existing table, so each one is rebuilt
+/// the documented way: new table, copy, drop, rename. Orphans are cleared
+/// first, because they would otherwise make the copy fail — and a row whose
+/// project vanished is exactly what this migration exists to remove.
+fn migrate_v2(conn: &Connection) -> Result<(), String> {
+    // Foreign keys must be off while tables are being swapped, and the whole
+    // thing has to be one transaction: a half-rebuilt database is worse than an
+    // unmigrated one.
+    conn.execute_batch("PRAGMA foreign_keys = OFF;")
+        .map_err(|e| e.to_string())?;
+
+    let result = rebuild_project_tables(conn);
+
+    conn.execute_batch("PRAGMA foreign_keys = ON;")
+        .map_err(|e| e.to_string())?;
+    result?;
+
+    // If the rebuild produced a violation, the schema is now lying about its
+    // own integrity — say so loudly rather than carrying on.
+    let violations: i64 = conn
+        .query_row("SELECT count(*) FROM pragma_foreign_key_check", [], |r| r.get(0))
+        .unwrap_or(0);
+    if violations > 0 {
+        return Err(format!("foreign key check failed after migration: {violations} rows"));
+    }
+    Ok(())
+}
+
+fn rebuild_project_tables(conn: &Connection) -> Result<(), String> {
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+
+    for table in PROJECT_SCOPED {
+        // A table that does not exist yet was created with the foreign key
+        // already in place by `init`, so there is nothing to rebuild.
+        let exists: i64 = tx
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                [table],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if exists == 0 {
+            continue;
+        }
+
+        // Already rebuilt (a previous partial run, or a fresh database).
+        let ddl: String = tx
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name=?1",
+                [table],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if ddl.contains("REFERENCES projects") {
+            continue;
+        }
+
+        tx.execute(
+            &format!(
+                "DELETE FROM {table} WHERE project_id NOT IN (SELECT id FROM projects)"
+            ),
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+
+        // The new table copies the old declaration and appends the constraint,
+        // so no column list has to be repeated here — repeating one is how a
+        // rebuild silently drops a column.
+        let new_ddl = ddl
+            .replacen(
+                &format!("CREATE TABLE {table}"),
+                &format!("CREATE TABLE {table}__new"),
+                1,
+            )
+            .replacen(
+                &format!("CREATE TABLE IF NOT EXISTS {table}"),
+                &format!("CREATE TABLE {table}__new"),
+                1,
+            );
+        let new_ddl = match new_ddl.rfind(')') {
+            Some(at) => format!(
+                "{},\n  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE\n){}",
+                &new_ddl[..at].trim_end().trim_end_matches(','),
+                &new_ddl[at + 1..]
+            ),
+            None => return Err(format!("{table}: cannot parse its schema")),
+        };
+
+        tx.execute_batch(&new_ddl).map_err(|e| format!("{table}: {e}"))?;
+        tx.execute_batch(&format!(
+            "INSERT INTO {table}__new SELECT * FROM {table};
+             DROP TABLE {table};
+             ALTER TABLE {table}__new RENAME TO {table};
+             CREATE INDEX IF NOT EXISTS idx_{table}_project ON {table}(project_id);"
+        ))
+        .map_err(|e| format!("{table}: {e}"))?;
+    }
+
+    tx.commit().map_err(|e| e.to_string())
+}
+
 fn migrate_v1(conn: &Connection) -> Result<(), String> {
     for stmt in [
         "ALTER TABLE sessions ADD COLUMN connection_id TEXT",
@@ -277,6 +407,29 @@ fn migrate_v1(conn: &Connection) -> Result<(), String> {
 
 /// Add a column when it is missing. Only "duplicate column" is treated as a
 /// no-op — any other error means the migration should fail loudly.
+/// Remove a project and everything that belonged to it.
+///
+/// The soft delete stays for the undo path; this is the drain. Cascade does the
+/// work now that the schema declares the relationship, so a table added later
+/// is covered by its own foreign key rather than by remembering to extend a
+/// list here.
+pub fn purge_project(conn: &Connection, id: &str) -> Result<usize, String> {
+    let before: i64 = PROJECT_SCOPED
+        .iter()
+        .map(|t| {
+            conn.query_row(
+                &format!("SELECT count(*) FROM {t} WHERE project_id = ?1"),
+                [id],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap_or(0)
+        })
+        .sum();
+    conn.execute("DELETE FROM projects WHERE id = ?1", [id])
+        .map_err(|e| e.to_string())?;
+    Ok(before as usize)
+}
+
 fn add_column(conn: &Connection, stmt: &str) -> Result<(), String> {
     if let Err(e) = conn.execute(stmt, []) {
         let msg = e.to_string();
@@ -368,6 +521,100 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(v, SCHEMA_VERSION);
+    }
+
+    /// A project-scoped table as it existed before v2: no foreign key, so
+    /// nothing stopped a row outliving its project.
+    fn unowned_memory_tables(conn: &Connection) {
+        conn.execute_batch(
+            r#"
+            CREATE TABLE memory_facts (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                text TEXT NOT NULL,
+                origin TEXT NOT NULL,
+                origin_detail TEXT,
+                verify TEXT,
+                status TEXT NOT NULL,
+                checked_at INTEGER,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                deleted_at INTEGER
+            );
+            INSERT INTO projects (id, name, created_at, updated_at)
+                VALUES ('p1', 'Kept', 1, 1);
+            INSERT INTO memory_facts
+                (id, project_id, kind, text, origin, status, created_at, updated_at)
+                VALUES ('f1', 'p1', 'stack', 'Uses SQLite', 'user', 'unverified', 1, 1),
+                       ('f2', 'gone', 'stack', 'Orphan', 'user', 'unverified', 1, 1);
+            "#,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn migration_gives_a_project_ownership_of_its_memory() {
+        let conn = Connection::open_in_memory().unwrap();
+        old_schema(&conn);
+        unowned_memory_tables(&conn);
+
+        migrate(&conn).unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+
+        // The row whose project no longer existed is gone. It was invisible in
+        // the interface and impossible to remove from it, and every count that
+        // read the table was wrong because of it.
+        let ids: Vec<String> = {
+            let mut stmt = conn.prepare("SELECT id FROM memory_facts ORDER BY id").unwrap();
+            let rows = stmt.query_map([], |r| r.get(0)).unwrap();
+            rows.map(|x| x.unwrap()).collect()
+        };
+        assert_eq!(ids, vec!["f1".to_string()]);
+
+        // And the relationship is now declared, so it is enforced rather than
+        // remembered.
+        let orphan = conn.execute(
+            "INSERT INTO memory_facts
+               (id, project_id, kind, text, origin, status, created_at, updated_at)
+             VALUES ('f3', 'nowhere', 'stack', 'x', 'user', 'unverified', 1, 1)",
+            [],
+        );
+        assert!(orphan.is_err(), "a fact about no project must be refused");
+    }
+
+    #[test]
+    fn deleting_a_project_takes_its_memory_with_it() {
+        let conn = Connection::open_in_memory().unwrap();
+        old_schema(&conn);
+        unowned_memory_tables(&conn);
+        migrate(&conn).unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+
+        let removed = purge_project(&conn, "p1").expect("purge");
+        assert_eq!(removed, 1, "the fact it owned is reported as removed");
+
+        let left: i64 = conn
+            .query_row("SELECT count(*) FROM memory_facts", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(left, 0);
+    }
+
+    #[test]
+    fn the_migration_can_be_run_twice() {
+        // A partially applied migration is retried on the next launch, so
+        // rebuilding a table that already has its key must be a no-op rather
+        // than a second rebuild.
+        let conn = Connection::open_in_memory().unwrap();
+        old_schema(&conn);
+        unowned_memory_tables(&conn);
+        migrate(&conn).unwrap();
+        migrate_v2(&conn).expect("second run is harmless");
+
+        let left: i64 = conn
+            .query_row("SELECT count(*) FROM memory_facts", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(left, 1);
     }
 
     #[test]

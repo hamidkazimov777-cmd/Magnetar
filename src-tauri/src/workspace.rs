@@ -154,11 +154,25 @@ pub fn save_project(p: Project) -> Result<(), String> {
     })
 }
 
+/// Delete a project and everything that belonged to it.
+///
+/// This used to set `deleted_at` and stop there. The project vanished from the
+/// list, and its facts, decisions, queued contradictions, proposals, tasks and
+/// timeline stayed in the database for good — with no interface that could
+/// show them and none that could remove them. The user had been asked "delete
+/// this project?" and had said yes.
+///
+/// Telling someone their data is gone while keeping it is the kind of thing a
+/// local-first, privacy-first tool has no excuse for, so the deletion is real.
+/// The dependent rows go with it through the schema's own cascade rather than a
+/// list of tables maintained here, which would fall behind the first time
+/// somebody added one.
 pub fn delete_project(id: &str) -> Result<(), String> {
     with_conn(|c| {
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
-        c.execute("UPDATE projects SET deleted_at = ?2 WHERE id = ?1", params![id, now])
-            .map_err(|e| e.to_string())?;
+        let removed = crate::db::purge_project(c, id)?;
+        if removed > 0 {
+            eprintln!("magnetar: deleted project {id} and {removed} rows that belonged to it");
+        }
         Ok(())
     })
 }
@@ -902,6 +916,17 @@ mod tests {
             created_at: now,
         })
         .expect("save decision");
+        // A second, real project. It used to be a bare string: the isolation
+        // assertions below wrote rows for a project that did not exist, which
+        // the schema now refuses — correctly, because a decision belonging to
+        // no project is not a decision about anything.
+        save_project(Project {
+            id: "other".into(),
+            name: "Other".into(),
+            ..project.clone()
+        })
+        .expect("save other project");
+
         save_decision(Decision {
             id: "d2".into(),
             project_id: "other".into(),
