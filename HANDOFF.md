@@ -4420,3 +4420,27 @@ Wrench, Palette, FolderTree, Database, Music.
 Столп UI-идентичности (свои иконки) закрыт. Дальше: (1) больше провайдеров
 генерации (Replicate/Google/ElevenLabs), (2) изоляция перф-оркестрации, (3) промт-
 мейкер /промт (отложено), (4) публикация (Apple Developer).
+
+### Запись 97 — 2026-08-26 — Opus 4.8 — Студия: вкладка «Аудио» через fal.ai
+
+По плану «больше провайдеров» — зажёг пустую вкладку «Аудио», переиспользовав
+проверенный fal async-адаптер (один ключ fal теперь = фото + видео + аудио).
+Проверки зелёные (tsc, build), пересобрано. Rust НЕ трогал.
+
+- **`generation.ts`**: новый провайдер `fal-audio` (kind `audio`, baseUrl
+  fal.run, authScheme key, modelInPath, strategy `poll`, resultPath `audio`).
+  Модели text-to-music/sound: `stable-audio`, `minimax-music`, `ace-step`.
+  `params: []` — только промпт, чтобы ни одна модель не отвергла незнакомую
+  опцию.
+- Ничего больше не понадобилось: `generate_async` + `extract_assets` уже
+  понимают `audio` (в т.ч. одиночный `{audio:{url}}`), StudioView уже рендерит
+  `<audio>`, `providerFor(baseUrl,"audio")` и heal-эффект уже работают.
+- ⚠️ id аудио-моделей fal могут дрейфовать — если модель ошибается, поправить
+  строку в `GEN_PROVIDERS` (как с видео). Проверить вживую с ключом fal не мог.
+
+#### Следующий шаг
+
+Больше провайдеров можно продолжить (Replicate — агрегатор с version-хэшами;
+Google Imagen/Veo — прямой; ElevenLabs TTS — но вход `text`, не `prompt`, нужен
+маппинг). Крупный оставшийся столп — **изоляция производительности** (отдельная
+сессия, стоит сперва обсудить план). Публикация — Apple Developer.
