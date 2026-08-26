@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
+import { readFile } from "@tauri-apps/plugin-fs";
 import {
   Image as ImageIcon,
   Clapperboard,
@@ -14,6 +16,7 @@ import {
   Plus,
   ChevronDown,
   Check,
+  X,
 } from "lucide-react";
 import { useStore } from "../lib/store";
 import { useT } from "../lib/i18n";
@@ -41,6 +44,33 @@ interface Result {
   name: string;
   kind: GenerationKind;
 }
+
+/** A reference image attached to the prompt. It is addressed as `@imageN` by its
+ *  position and passed to image-input providers as a data-URI. */
+interface Ref {
+  id: string;
+  name: string;
+  mime: string;
+  data: string; // base64
+}
+
+function arrayBufferToBase64(bytes: Uint8Array) {
+  let binary = "";
+  const CHUNK = 0x8000; // stay under the argument limit on big files
+  for (let i = 0; i < bytes.length; i += CHUNK)
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  return btoa(binary);
+}
+
+function imageMime(path: string): string {
+  const ext = path.split(".").pop()?.toLowerCase();
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if (ext === "webp") return "image/webp";
+  if (ext === "gif") return "image/gif";
+  return "image/png";
+}
+
+const refDataUrl = (r: Ref) => `data:${r.mime};base64,${r.data}`;
 
 /** Sizes read better as aspect ratios in the picker — both pixel sizes (OpenAI,
  *  Together) and fal.ai's named sizes. */
@@ -92,6 +122,8 @@ export function StudioView() {
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<Result[]>([]);
   const [params, setParams] = useState<Record<string, unknown>>({});
+  const [refs, setRefs] = useState<Ref[]>([]);
+  const promptRef = useRef<HTMLTextAreaElement>(null);
 
   const conn = connections.find((c) => c.id === activeConnectionId);
   // The provider follows the modality tab, so one fal.ai key serves images and
@@ -134,6 +166,51 @@ export function StudioView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [genConns, conn?.id, modality]);
 
+  // Reference images only make sense for providers that accept image input.
+  const imageInput = provider?.imageInput;
+
+  const handleAttach = async () => {
+    try {
+      const selected = await open({
+        multiple: true,
+        filters: [
+          { name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] },
+        ],
+      });
+      if (!Array.isArray(selected)) return;
+      const next: Ref[] = [];
+      for (const file of selected) {
+        const bytes = await readFile(file);
+        next.push({
+          id: crypto.randomUUID(),
+          name: file.split(/[/\\]/).pop() || file,
+          mime: imageMime(file),
+          data: arrayBufferToBase64(bytes),
+        });
+      }
+      if (next.length) setRefs((r) => [...r, ...next]);
+    } catch {
+      /* the user cancelled the dialog */
+    }
+  };
+
+  const removeRef = (id: string) => setRefs((r) => r.filter((x) => x.id !== id));
+
+  /** Insert an `@imageN` handle into the prompt at the caret. */
+  const insertHandle = (idx: number) => {
+    const el = promptRef.current;
+    const token = `@image${idx + 1}`;
+    const caret = el?.selectionStart ?? prompt.length;
+    const next =
+      prompt.slice(0, caret) +
+      (caret > 0 && !/\s$/.test(prompt.slice(0, caret)) ? " " : "") +
+      token +
+      " " +
+      prompt.slice(caret);
+    setPrompt(next);
+    requestAnimationFrame(() => el?.focus());
+  };
+
   const generate = async () => {
     const text = prompt.trim();
     if (!text || !conn || !activeModel || !provider?.available) return;
@@ -143,9 +220,25 @@ export function StudioView() {
       const body: Record<string, unknown> = { ...params };
       if (provider.responseFormat) body.response_format = provider.responseFormat;
 
+      // Reference images: pick the ones cited as @imageN (or all attached, if
+      // none are cited), pass them under the provider's image-input key, and
+      // strip the handles from the text the model actually reads.
+      let promptText = text;
+      if (imageInput && refs.length) {
+        const cited = new Set<number>();
+        for (const m of text.matchAll(/@image(\d+)/gi)) {
+          const i = Number(m[1]) - 1;
+          if (i >= 0 && i < refs.length) cited.add(i);
+        }
+        const chosen = cited.size ? [...cited].sort((a, b) => a - b).map((i) => refs[i]) : refs;
+        promptText = text.replace(/@image\d+/gi, "").replace(/\s{2,}/g, " ").trim();
+        const urls = chosen.map(refDataUrl);
+        body[imageInput.key] = imageInput.multiple ? urls : urls[0];
+      }
+
       const sess = useStore.getState().sessions.find((s) => s.id === activeSessionId);
       const brief = buildGenerationContext(sess);
-      const full = brief ? `${brief}\n\n${text}` : text;
+      const full = brief ? `${brief}\n\n${promptText}` : promptText;
 
       const req = {
         kind: provider.kind,
@@ -259,11 +352,47 @@ export function StudioView() {
 
           {/* Prompt bar */}
           <div className="pointer-events-none sticky bottom-0 flex justify-center px-4 pb-4">
-            <div className="pointer-events-auto flex w-full max-w-[720px] items-end gap-2 rounded-[var(--r-lg)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-2 shadow-[var(--e-2)]">
-              <button className="icon-btn h-8 w-8 shrink-0" title={t("attachFile")} disabled>
+            <div className="pointer-events-auto flex w-full max-w-[720px] flex-col gap-2 rounded-[var(--r-lg)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-2 shadow-[var(--e-2)]">
+              {imageInput && refs.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {refs.map((r, i) => (
+                    <button
+                      key={r.id}
+                      onClick={() => insertHandle(i)}
+                      title={t("studioInsertRef")}
+                      className="group relative flex items-center gap-1.5 rounded-[var(--r-md)] border border-[var(--color-border)] bg-[var(--color-bg)] py-0.5 pl-0.5 pr-1.5 text-[length:var(--fs-xs)] hover:border-[var(--color-border-strong)]"
+                    >
+                      <img
+                        src={refDataUrl(r)}
+                        alt={r.name}
+                        className="h-6 w-6 rounded-[var(--r-sm)] object-cover"
+                      />
+                      <span className="font-mono text-[var(--color-text-dim)]">@image{i + 1}</span>
+                      <span
+                        role="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeRef(r.id);
+                        }}
+                        className="grid h-4 w-4 place-items-center rounded-full text-[var(--color-text-mute)] hover:bg-[var(--color-surface-3)] hover:text-[var(--color-text)]"
+                      >
+                        <X size={11} />
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-end gap-2">
+              <button
+                className="icon-btn h-8 w-8 shrink-0"
+                title={imageInput ? t("attachFile") : t("studioNoRefs")}
+                onClick={() => void handleAttach()}
+                disabled={!imageInput || !ready || busy}
+              >
                 <Paperclip size={15} />
               </button>
               <textarea
+                ref={promptRef}
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 onKeyDown={(e) => {
@@ -290,6 +419,7 @@ export function StudioView() {
               >
                 {busy ? <Loader2 size={15} className="animate-spin" /> : <ArrowUp size={15} />}
               </button>
+              </div>
             </div>
           </div>
         </div>

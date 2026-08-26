@@ -42,6 +42,11 @@ export interface GenerationProvider {
   authScheme?: "bearer" | "key";
   /** Some providers (fal.ai) put the model in the URL path, not the body. */
   modelInPath?: boolean;
+  /** How this provider accepts reference images attached in the prompt bar.
+   *  `key` is the request-body field (fal.ai: `image_url` for image-to-video,
+   *  `image_urls` for multi-reference / edit); `multiple` picks array vs single.
+   *  Absent → the provider takes no image input and the paperclip stays off. */
+  imageInput?: { key: string; multiple: boolean };
   models: string[];
   params: GenerationParamDef[];
 }
@@ -138,11 +143,16 @@ export const GEN_PROVIDERS: GenerationProvider[] = [
     strategy: "direct",
     responseFormat: null,
     resultPath: "images",
+    // fal image models take reference images as an array of data-URIs; edit /
+    // character-reference models (nano-banana/edit) use them, plain text-to-image
+    // ignores them, so attaching is always safe.
+    imageInput: { key: "image_urls", multiple: true },
     models: [
       "fal-ai/flux/schnell",
       "fal-ai/flux/dev",
       "fal-ai/flux-pro/v1.1",
       "fal-ai/nano-banana",
+      "fal-ai/nano-banana/edit",
       "fal-ai/recraft-v3",
     ],
     params: [
@@ -178,10 +188,15 @@ export const GEN_PROVIDERS: GenerationProvider[] = [
     strategy: "poll",
     responseFormat: null,
     resultPath: "video",
+    // Image-to-video models take a single starting frame as `image_url`; the
+    // text-to-video ones ignore it, so one attachment is enough for either.
+    imageInput: { key: "image_url", multiple: false },
     models: [
       "fal-ai/veo3",
       "fal-ai/kling-video/v2/master/text-to-video",
+      "fal-ai/kling-video/v2/master/image-to-video",
       "fal-ai/bytedance/seedance/v1/pro/text-to-video",
+      "fal-ai/bytedance/seedance/v1/pro/image-to-video",
       "fal-ai/minimax/hailuo-02/standard/text-to-video",
     ],
     params: [
