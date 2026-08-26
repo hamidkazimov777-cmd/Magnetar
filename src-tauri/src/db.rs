@@ -198,6 +198,23 @@ pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
             ca_path    TEXT,
             created_at INTEGER NOT NULL
         );
+
+        -- Generation studio history: the user's produced media, kept across
+        -- sessions so the gallery is not lost on leaving the studio. Global
+        -- (not project-scoped) — it is a personal output library. `src` is the
+        -- asset itself: a hosted URL (fal video) or an inline data-URI (OpenAI
+        -- b64 image); storing the data-URI is the price of the image surviving
+        -- a restart, the same trade-off attachments already make.
+        CREATE TABLE IF NOT EXISTS generations (
+            id         TEXT PRIMARY KEY,
+            kind       TEXT NOT NULL,
+            src        TEXT NOT NULL,
+            name       TEXT NOT NULL,
+            prompt     TEXT,
+            model      TEXT,
+            created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_generations_created ON generations(created_at);
         "#,
     )
     .map_err(|e| e.to_string())?;

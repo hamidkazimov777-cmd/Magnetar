@@ -17,10 +17,12 @@ import {
   ChevronDown,
   Check,
   X,
+  Trash2,
 } from "lucide-react";
 import { useStore } from "../lib/store";
 import { useT } from "../lib/i18n";
 import { api } from "../lib/api";
+import { db } from "../lib/db";
 import {
   providerForBaseUrl,
   providerFor,
@@ -40,6 +42,7 @@ import { cn } from "../lib/cn";
    ========================================================================== */
 
 interface Result {
+  id: string;
   src: string;
   name: string;
   kind: GenerationKind;
@@ -125,6 +128,29 @@ export function StudioView() {
   const [refs, setRefs] = useState<Ref[]>([]);
   const promptRef = useRef<HTMLTextAreaElement>(null);
 
+  // Load the persisted gallery once — results survive leaving the studio.
+  useEffect(() => {
+    let alive = true;
+    db.listGenerations()
+      .then((rows) => {
+        if (!alive) return;
+        setResults(
+          rows.map((r) => ({
+            id: r.id,
+            src: r.src,
+            name: r.name,
+            kind: r.kind as GenerationKind,
+          })),
+        );
+      })
+      .catch(() => {
+        /* first run / no backend — the gallery is simply empty */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const conn = connections.find((c) => c.id === activeConnectionId);
   // The provider follows the modality tab, so one fal.ai key serves images and
   // video from the same connection.
@@ -196,6 +222,16 @@ export function StudioView() {
 
   const removeRef = (id: string) => setRefs((r) => r.filter((x) => x.id !== id));
 
+  const deleteResult = (id: string) => {
+    setResults((r) => r.filter((x) => x.id !== id));
+    void db.deleteGeneration(id).catch(() => {});
+  };
+
+  const clearHistory = () => {
+    setResults([]);
+    void db.clearGenerations().catch(() => {});
+  };
+
   /** Insert an `@imageN` handle into the prompt at the caret. */
   const insertHandle = (idx: number) => {
     const el = promptRef.current;
@@ -256,12 +292,28 @@ export function StudioView() {
         provider.strategy === "poll"
           ? await api.generateAsync(conn, req)
           : await api.generate(conn, req);
+      const now = Date.now();
       const next: Result[] = res.assets.map((a, i) => ({
+        id: crypto.randomUUID(),
         src: a.url ?? (a.b64 ? `data:${a.mimeType ?? "image/png"};base64,${a.b64}` : ""),
         name: `${provider.name} · ${i + 1}`,
         kind: provider.kind,
       }));
       if (!next.length) setError(t("genEmpty"));
+      // Persist to the gallery history so it survives leaving the studio.
+      for (let i = 0; i < next.length; i++) {
+        void db
+          .saveGeneration({
+            id: next[i].id,
+            kind: next[i].kind,
+            src: next[i].src,
+            name: next[i].name,
+            prompt: promptText,
+            model: activeModel,
+            createdAt: now + i,
+          })
+          .catch(() => {});
+      }
       setResults((r) => [...next, ...r]);
       setPrompt("");
     } catch (e) {
@@ -295,6 +347,15 @@ export function StudioView() {
           ))}
         </div>
         <div className="flex-1" />
+        {results.length > 0 && (
+          <button
+            className="icon-btn h-7 w-7 shrink-0"
+            onClick={clearHistory}
+            title={t("studioClearHistory")}
+          >
+            <Trash2 size={13} />
+          </button>
+        )}
         <button
           className="toggle-pill shrink-0"
           data-on={seesProject}
@@ -318,11 +379,11 @@ export function StudioView() {
             </Centered>
           ) : shown.length > 0 ? (
             <div className="grid grid-cols-2 gap-3 p-4 lg:grid-cols-3">
-              {shown.map((r, i) => (
+              {shown.map((r) => (
                 <div
-                  key={i}
+                  key={r.id}
                   className={cn(
-                    "overflow-hidden rounded-[var(--r-lg)] border border-[var(--color-border)] bg-[var(--color-surface)]",
+                    "group relative overflow-hidden rounded-[var(--r-lg)] border border-[var(--color-border)] bg-[var(--color-surface)]",
                     r.kind === "image" && "aspect-square",
                   )}
                 >
@@ -333,6 +394,13 @@ export function StudioView() {
                   ) : (
                     <img src={r.src} alt={r.name} className="h-full w-full object-cover" />
                   )}
+                  <button
+                    onClick={() => deleteResult(r.id)}
+                    title={t("delete")}
+                    className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-[var(--r-md)] bg-[var(--color-overlay)] text-white opacity-0 transition-opacity group-hover:opacity-100"
+                  >
+                    <Trash2 size={14} />
+                  </button>
                 </div>
               ))}
             </div>

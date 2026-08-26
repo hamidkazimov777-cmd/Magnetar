@@ -728,6 +728,78 @@ pub fn save_timeline_event(t: TimelineEvent) -> Result<(), String> {
     })
 }
 
+// --- Generation studio history (global personal output library) ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Generation {
+    pub id: String,
+    /// image | video | audio | voice
+    pub kind: String,
+    /// Hosted URL or inline data-URI — the asset itself.
+    pub src: String,
+    pub name: String,
+    pub prompt: Option<String>,
+    pub model: Option<String>,
+    pub created_at: i64,
+}
+
+pub fn list_generations() -> Result<Vec<Generation>, String> {
+    with_conn(|c| {
+        let mut stmt = c
+            .prepare(
+                "SELECT id, kind, src, name, prompt, model, created_at \
+                 FROM generations \
+                 ORDER BY created_at DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(Generation {
+                    id: r.get(0)?,
+                    kind: r.get(1)?,
+                    src: r.get(2)?,
+                    name: r.get(3)?,
+                    prompt: r.get(4)?,
+                    model: r.get(5)?,
+                    created_at: r.get(6)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    })
+}
+
+pub fn save_generation(g: Generation) -> Result<(), String> {
+    with_conn(|c| {
+        c.execute(
+            "INSERT INTO generations \
+               (id, kind, src, name, prompt, model, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) \
+             ON CONFLICT(id) DO NOTHING",
+            params![g.id, g.kind, g.src, g.name, g.prompt, g.model, g.created_at],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+}
+
+pub fn delete_generation(id: &str) -> Result<(), String> {
+    with_conn(|c| {
+        c.execute("DELETE FROM generations WHERE id = ?1", params![id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+}
+
+pub fn clear_generations() -> Result<(), String> {
+    with_conn(|c| {
+        c.execute("DELETE FROM generations", [])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -34,6 +34,17 @@ export interface ConnectionRow {
   createdAt: number;
 }
 
+/** A produced media asset in the studio gallery history (global). */
+export interface GenerationRow {
+  id: string;
+  kind: string;
+  src: string;
+  name: string;
+  prompt: string | null;
+  model: string | null;
+  createdAt: number;
+}
+
 export const db = {
   listConnections: () => invoke<ConnectionRow[]>("list_connections"),
   saveConnection: (connection: ConnectionRow) =>
@@ -76,6 +87,13 @@ export const db = {
     invoke<import("./types").Proposal[]>("list_proposals", { projectId }),
   saveProposal: (proposal: import("./types").Proposal) =>
     invoke<void>("save_proposal", { proposal }),
+
+  // Generation studio gallery history (global, not project-scoped)
+  listGenerations: () => invoke<GenerationRow[]>("list_generations"),
+  saveGeneration: (generation: GenerationRow) =>
+    invoke<void>("save_generation", { generation }),
+  deleteGeneration: (id: string) => invoke<void>("delete_generation", { id }),
+  clearGenerations: () => invoke<void>("clear_generations"),
 
   listTasks: (projectId: string) => invoke<import("./types").Task[]>("list_tasks", { projectId }),
   saveTask: (task: import("./types").Task) => invoke<void>("save_task", { task }),

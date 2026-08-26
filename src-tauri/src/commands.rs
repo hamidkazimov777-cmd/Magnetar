@@ -2,8 +2,8 @@
 
 use crate::canon::{self, MessageRow, SessionMeta};
 use crate::workspace::{
-    self, ConnectionRow, Decision, Divergence, KnowledgeEdge, KnowledgeNode, MemoryFact,
-    Project, Proposal, Task,
+    self, ConnectionRow, Decision, Divergence, Generation, KnowledgeEdge, KnowledgeNode,
+    MemoryFact, Project, Proposal, Task,
     TimelineEvent,
 };
 use crate::keychain;
@@ -157,6 +157,26 @@ pub fn list_proposals(project_id: String) -> Result<Vec<Proposal>, String> {
 #[tauri::command]
 pub fn save_proposal(proposal: Proposal) -> Result<(), String> {
     workspace::save_proposal(proposal)
+}
+
+#[tauri::command]
+pub fn list_generations() -> Result<Vec<Generation>, String> {
+    workspace::list_generations()
+}
+
+#[tauri::command]
+pub fn save_generation(generation: Generation) -> Result<(), String> {
+    workspace::save_generation(generation)
+}
+
+#[tauri::command]
+pub fn delete_generation(id: String) -> Result<(), String> {
+    workspace::delete_generation(&id)
+}
+
+#[tauri::command]
+pub fn clear_generations() -> Result<(), String> {
+    workspace::clear_generations()
 }
 
 #[tauri::command]
