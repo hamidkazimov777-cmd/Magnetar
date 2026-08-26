@@ -21,8 +21,15 @@ configured by the user or to a local provider.
   be tampered with; backend enforcement is a Step 2 requirement.
 - `read_file` currently reads the complete file before slicing, so large-file
   memory use is a known risk.
-- Path containment, symlink policy, repository trust, read-only mode and
-  per-capability authorization are not yet a complete backend policy.
+- Path resolution now exists as a tested Rust primitive (`src-tauri/src/paths.rs`):
+  it collapses `.`/`..` lexically, canonicalises the deepest existing ancestor so
+  a target that does not exist yet still resolves, and reports whether the result
+  lands inside the workspace root. Symlinks out of the tree, parent traversal and
+  a sibling directory sharing the root's name prefix are all covered by tests.
+  It is not yet called by the file tools — that wiring, the backend-held
+  workspace root and the grant record for outside paths are the next slice.
+- Repository trust, read-only mode and per-capability authorization are still
+  absent from the backend.
 - A restrictive CSP is now configured in `src-tauri/tauri.conf.json` and guarded
   by `config_tests` in `src-tauri/src/lib.rs`, so it cannot silently return to
   `null` or gain `'unsafe-inline'`/`'unsafe-eval'` in `script-src`. Verified

@@ -4,6 +4,7 @@ mod db;
 mod index;
 mod keychain;
 mod lsp;
+mod paths;
 mod providers;
 mod pty;
 mod tools;

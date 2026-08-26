@@ -22,6 +22,10 @@
 
 ### Security
 
+- Added a tested path-containment primitive that resolves `.`/`..` and symlinks
+  before deciding whether a path lands inside the workspace, including paths
+  that do not exist yet. Not yet enforced by the file tools.
+
 - Replaced `csp: null` with a deny-by-default content security policy, and
   guarded it with Rust tests so it cannot silently weaken. Verified against the
   production bundle: inline and cross-origin scripts are refused and the webview
