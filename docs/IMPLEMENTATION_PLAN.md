@@ -88,7 +88,7 @@ target or intentionally manual. Test IDs are mapped to quality gates below.
 | MCP client and permissions | □ | ◐ extensions | ✅ | ✅ | ◐ | Register server, authorize tool by capability, audit calls, deny by default. `INT-01` | P1 |
 | Sandboxed plugin API | □ intentionally delayed | ✅ extensions | ✅ | ✅ | □ | No plugin gets filesystem/network by default; capability grant is visible. `INT-02` | P2 |
 | Inline completion | □ | ✅ | ✅ | ✅ | ✅ | Ghost text accepts word/line/all, cancels stale requests, limits context and cost. `AI-01` | P1 |
-| Provider-neutral memory / provenance | ✅ core identity | — | ◐ | ◐ | ◐ | Facts cite source, verification state and relevance; switching provider preserves canon. `MEM-01` | P0 |
+| Provider-neutral memory / provenance | ✅ one canon, one renderer | — | ◐ | ◐ | ◐ | Facts cite source, verification state and relevance; switching provider preserves canon. `MEM-01` | P0 |
 | Decisions / divergence queue | ✅ | — | ◐ | ◐ | — | Contradictions queue without interrupting work and resolve with audit trail. `MEM-02` | P0 |
 | Local-first / BYOK / no account | ✅ intended | — | ◐ | ◐ | ◐ | Offline UI/index works; only configured endpoints receive network traffic. `SEC-01` | P0 |
 | Secrets / path policy / repository trust | ✅ backend-enforced | — | ◐ | ◐ | ◐ | Keychain, canonical containment, trust/read-only modes and backend auth tests pass. `SEC-02` | P0 |
@@ -102,7 +102,7 @@ target or intentionally manual. Test IDs are mapped to quality gates below.
 | 0 | Baseline, matrix, quality/security/release docs | This commit; baseline commands and gaps recorded |
 | 1 | Warnings, frontend test harness, error reporting, smoke portability, CI | Clean typecheck/tests and reviewed build output; Monaco is lazy and its asset budget is explicit |
 | 2 | Keychain, containment, trust/read-only, permission model, CSP, secret scan | **Done** except the clean-machine review, which belongs to Step 14 |
-| 3 | Canon migrations, FKs, cleanup, backup/import, integrity/recovery | Migration and crash-recovery tests |
+| 3 | Canon migrations, FKs, cleanup, backup/import, integrity/recovery | **Done**; migration, cascade, integrity and import covered by tests |
 | 4 | Professional editor workflow and settings/keybindings | `IDE-*` acceptance suite |
 | 5 | LSP/parser layer and diagnostics | `LSP-*` acceptance suite for four languages plus graceful fallback |
 | 6 | Git completion, tasks/tests, Test Explorer, Node/Python DAP | `GIT-*`, `TEST-*`, `DEBUG-*` |
@@ -118,21 +118,17 @@ target or intentionally manual. Test IDs are mapped to quality gates below.
 
 ## Next step
 
-Step 2 is complete in code and tests. What it delivered: a deny-by-default CSP,
-backend path containment with user-granted exceptions, shell and Git under the
-same gate with an audit record, one policy for file access with the fs
-capability removed, Keychain-only secrets in release builds, read-only mode,
-repository trust, secret scanning in smoke and CI, prompt-injection framing, and
-outbound-host visibility.
+Step 3 is complete. Memory now has one writer, one shape and one renderer:
+facts and decisions are the canon, the prose columns are read-only fallback for
+unmigrated projects, and the knowledge graph — a third representation retrieved
+by substring matching — is out of the interface, its data left intact.
 
-Two things are deliberately outstanding and neither belongs to Step 2: the
-clean-machine security review is a Step 14 release gate, and several controls
-are verified by unit tests rather than end to end because they need a running
-signed app — the native grant dialog, the Keychain migration, the trust banner,
-and the attachment picker. The first launch of the next signed build is the
-pass that closes those, and it is recorded in the release checklist.
+The schema owns the relationship it always had by convention: project-scoped
+tables cascade, so deleting a project deletes what belonged to it instead of
+leaving rows nothing could show and nothing could remove. A snapshot can be read
+back, the database can be copied and checked, and attachments survive a restart.
 
-Step 3 is next: memory_facts and decisions as the single source of truth,
-migration of legacy prose fields, schema migrations and foreign keys, cleanup of
-deleted-project data, backup/export/import, and an integrity check with a
-recovery flow.
+Step 4 is next: the professional editor workflow — split panes and pinned tabs,
+regex search with cancellation and a result budget, replace across the
+workspace, breadcrumbs and outline without a language server, multi-root or a
+documented refusal, VS Code-compatible keybindings, and settings import/export.

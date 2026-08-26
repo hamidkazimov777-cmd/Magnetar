@@ -20,6 +20,28 @@
 - Cross-domain store tests covering folder close, reveal-in-file, project
   adoption, model-per-conversation, track switching and the memory queue.
 
+### Memory and data
+
+- Project memory has one renderer. The agent, plain chat and the subscription
+  bridge were each building it differently — two of them from prose fields that
+  could not say where anything came from — so the same question produced
+  different answers depending on which tab you were in.
+- The background extractor writes facts and decisions instead of appending
+  prose that grew without limit and carried no provenance.
+- The knowledge graph is out of the interface. Its retrieval was substring
+  matching over the last three messages, and it was a third representation of
+  the same conversation carrying neither provenance nor verification. Its data
+  and tables are untouched.
+- Project-scoped tables now declare a foreign key with `ON DELETE CASCADE`.
+  Deleting a project used to set a timestamp and leave its facts, decisions,
+  contradictions, proposals, tasks and timeline in the database for good.
+- Memory exports can be imported. Import is additive, reports what it skipped,
+  and never carries a verification across machines.
+- Added a database backup (`VACUUM INTO`, refuses to overwrite) and a health
+  check that reports and never repairs.
+- Attachments survive a restart: metadata in the message row, bytes in a file,
+  fetched when the image is actually rendered.
+
 ### Fixed
 
 - Path containment and repository trust were inert after a restart: the

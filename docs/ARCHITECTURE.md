@@ -35,11 +35,23 @@ actions are covered by `src/lib/store.test.ts`.
 
 ## Durable data
 
-SQLite currently holds sessions/messages, projects, memory facts, decisions,
-divergences, tasks and generation history. Zustand persistence is reserved for
-local UI preferences and connection metadata, subject to the Step 2 secret
-policy. Attachments and generated assets require explicit metadata/file
-boundaries before release.
+SQLite holds sessions/messages, projects, memory facts, decisions, divergences,
+tasks and generation history. Zustand persistence is reserved for local UI
+preferences; secrets are in the Keychain (see `SECURITY.md`).
+
+Project-scoped tables declare a foreign key to `projects` with `ON DELETE
+CASCADE`, so deleting a project removes what belonged to it instead of leaving
+rows nothing can show and nothing can remove.
+
+Memory has one shape and one renderer. Facts and decisions are the canon; the
+prose columns on `projects` are read as a fallback for unmigrated projects and
+are never written. `buildMemorySection` renders them for every consumer — the
+agent, plain chat, and the subscription bridge — because three renderings meant
+three answers to the same question depending on where you stood.
+
+Large payloads stay out of rows that are read constantly: attachment metadata
+lives in the message row and its bytes in a file under the app data directory,
+fetched when the attachment is actually rendered.
 
 ## Trust boundaries
 

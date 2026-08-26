@@ -31,18 +31,20 @@ never required for an offline build.
 
 ## Current baseline
 
-- Rust: 76 tests passed, covering tools, DB migrations, LSP framing, UTF-8
+- Rust: 85 tests passed, covering tools, DB migrations, LSP framing, UTF-8
   streaming, the workspace/memory round trip and the BM25 index (tokenising,
   skip rules, ranking, result budget and rebuild-on-root-change), plus the
   Step 2 security controls: path containment and symlink escape, the read-only
   and trust policy, credential redaction in the audit log, the content security
-  policy and the capability file.
-- Frontend: 130 tests passed across 14 files, covering redaction, retry and
+  policy and the capability file, plus the schema migration that gives a project
+  ownership of its memory, the database health check and the backup.
+- Frontend: 149 tests passed across 16 files, covering redaction, retry and
   cancellation, agent guards and text-tool-call recovery, memory prompt
   assembly and background-model selection, handoff/summarisation, fact
   provenance and rendering, machine verification, verify-spec construction and
   file leases, the store's cross-domain actions after the slice split, and the
-  prompt-injection detector including its false-positive cases.
+  prompt-injection detector including its false-positive cases, memory import
+  and attachment persistence.
 - Frontend production build: passed.
 - Build warning: the lazy Monaco engine chunk is ~3.96 MB; the initial route is
   ~1.4 MB raw / 408.75 KB gzip. Duplicate agent and redundant dynamic-import

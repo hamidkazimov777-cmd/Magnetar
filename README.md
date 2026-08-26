@@ -234,7 +234,7 @@ public release. The authoritative delivery plan and acceptance criteria are in
 
 **Works and is used daily** — chat and agent across all three provider families,
 editor, git, terminal, code search, project memory with provenance and machine
-verification, the decision log, the divergence queue, roadmap, knowledge graph,
+verification, the decision log, the divergence queue, roadmap,
 subscriptions bridge, light and dark themes, RU/EN/ES interface.
 
 **Rough edges and release blockers**
