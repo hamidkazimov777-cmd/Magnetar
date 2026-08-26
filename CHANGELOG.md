@@ -29,6 +29,10 @@
   are dropped when the folder changes.
 - `grep`, `run_bash` and `git` with no directory given now act on the open
   project rather than whatever directory the app was launched from.
+- Tool results that appear to address the model — attempts to override its
+  instructions, reassign its role, hide activity from the user or exfiltrate a
+  key — are marked as data before the agent reads them, and the system prompt
+  states the rule regardless of whether detection fired.
 - Added `npm run scan:secrets`: scans the working tree and the built bundle for
   provider keys, cloud credentials and private-key blocks, and fails if a
   credential file is tracked by git. Runs in smoke and CI.
