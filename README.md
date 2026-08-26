@@ -203,22 +203,29 @@ a serialisation detail, not a context loss.
 
 ## Project status
 
-Version 0.1.0, macOS, actively built. Honest state of things:
+Version 0.1.0, macOS, actively built. This is a development build, not a
+public release. The authoritative delivery plan and acceptance criteria are in
+[`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md).
 
 **Works and is used daily** — chat and agent across all three provider families,
 editor, git, terminal, code search, project memory with provenance and machine
 verification, the decision log, the divergence queue, roadmap, knowledge graph,
 subscriptions bridge, light and dark themes, RU/EN/ES interface.
 
-**Rough edges**
-- Built and tested on Intel macOS; a universal build is one flag away
-  (`--target universal-apple-darwin`) but is not part of the routine
-- Not notarised — the app is for your own machine
-- No language server yet: Rust and Python get syntax and search, not
-  go-to-definition. This is the largest remaining gap versus a full IDE
+**Rough edges and release blockers**
+- Built and tested on the current development Mac; universal build and
+  notarization are not complete
+- Provider secrets currently use a 0600 `secrets.json` fallback; production
+  must return to Keychain
+- LSP is present for Rust, Python, Go and TypeScript/JavaScript, but parser
+  fallback, formatting and full IDE navigation are incomplete
+- Search is an in-memory BM25 index capped at 5,000 files
+- Backend path authorization, trust/read-only mode, durable agent runs,
+  checkpoints/rollback, DAP debugger, MCP and inline completion are incomplete
+- The production build still reports an unreachable duplicate case and large
+  Monaco-related chunks
 - Embedded browser sign-in for Google-backed services needs a compatibility
   toggle, and some sites behave better in a real browser
-- The JS bundle is large; Monaco is most of it
 
 **Not built on purpose** — hidden automation of subscription AI web apps. It
 breaks their terms of service. The manual context bridge exists instead.
@@ -233,3 +240,10 @@ breaks their terms of service. The manual context bridge exists instead.
 - [HANDOFF.md](HANDOFF.md) — the full development journal, entry by entry
 - [NEXT_TASK_FILES.md](NEXT_TASK_FILES.md) — current state, rules and file map
 - [TEST_SCENARIO.md](TEST_SCENARIO.md) — manual acceptance walkthrough
+- [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) — current audit,
+  parity matrix, acceptance criteria and ordered delivery steps
+- [docs/QUALITY_GATES.md](docs/QUALITY_GATES.md) — required checks and budgets
+- [docs/SECURITY.md](docs/SECURITY.md) — security baseline and release controls
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — architecture and trust boundaries
+- [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) — release gate status
+- [CHANGELOG.md](CHANGELOG.md) — unreleased changes

@@ -4565,3 +4565,34 @@ invoke, зависимости от DOM). Рекомендую планиров�
 (99), Replicate+аудио провайдеры (97,100), перф-изоляция генерации (101).
 Осталась только **публикация** (этап 5, Apple Developer $99) — по слову Hamid
 на потом. Плюс опциональный глубокий перф-рефактор (Web Worker), если решит.
+
+### Запись 102 — 2026-08-26 — Codex — Step 0: baseline и release governance
+
+Проведён новый аудит фактического кода вместо доверия старым handoff-аудитам.
+Запрошенные четыре `.docx`-аудита не найдены ни в репозитории, ни в доступной
+папке вложений, поэтому они помечены как недоступные источники, а не как
+подтверждение статуса.
+
+Добавлены:
+
+- `docs/IMPLEMENTATION_PLAN.md` — исполнимый план шагов, parity matrix для
+  Magnetar/VS Code/Cursor/Windsurf/Zed и acceptance IDs;
+- `docs/QUALITY_GATES.md` — baseline, команды и измеримые performance budgets;
+- `docs/SECURITY.md` — текущая security posture и обязательные production
+  controls;
+- `docs/ARCHITECTURE.md` — фактическая схема runtime/data/trust boundaries;
+- `docs/RELEASE_CHECKLIST.md` — честный release status без претензии на
+  публикацию;
+- `CHANGELOG.md` — запись изменений.
+
+Зафиксированы реальные gaps: in-memory BM25 с cap 5000, `secrets.json` вместо
+production Keychain, `csp: null`, отсутствие frontend unit-test script,
+неполная backend authorization, durable agent runtime/checkpoints/DAP/MCP и
+build warnings. Baseline: Rust 20/20, `npm run build` проходит с указанными
+warning'ами.
+
+#### Следующий шаг
+
+Step 1: исправить duplicate unreachable `new_project` case, добавить минимальный
+Vitest harness и тесты для текущих pure-logic модулей; затем повторить build и
+smoke-проверки до отдельного коммита.
