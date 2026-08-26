@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { reportError } from "./errors";
 
 /* ==========================================================================
    LSP CLIENT
@@ -85,7 +86,7 @@ export class LspClient {
     if (this.exited) return;
     void api
       .lspSend(this.id, JSON.stringify({ jsonrpc: "2.0", method, params }))
-      .catch(() => {});
+      .catch((error) => reportError(error, "lsp.notify"));
   }
 
   onNotification(method: string, handler: (params: unknown) => void): void {
@@ -99,7 +100,9 @@ export class LspClient {
   /** Stop the server and reject anything still in flight. */
   async stop(): Promise<void> {
     this.fail(new Error("language server stopped"));
-    await api.lspKill(this.id).catch(() => {});
+    await api.lspKill(this.id).catch((error) => {
+      reportError(error, "lsp.stop");
+    });
   }
 
   private dispatch(raw: string): void {
@@ -145,7 +148,7 @@ export class LspClient {
               ...(error ? { error } : { result }),
             }),
           )
-          .catch(() => {});
+          .catch((error) => reportError(error, "lsp.reply"));
       if (handler) {
         try {
           reply(handler(msg.params));

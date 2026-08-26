@@ -11,6 +11,14 @@ export interface AppError {
   retryable: boolean;
 }
 
+export interface RetryOptions {
+  attempts?: number;
+  delayMs?: number;
+  signal?: AbortSignal;
+  sleep?: (ms: number) => Promise<void>;
+  shouldRetry?: (error: AppError, attempt: number) => boolean;
+}
+
 const SECRET_VALUE =
   /(api[-_ ]?key|authorization|bearer|basic|token|secret|password|client[-_ ]?id|rq[-_ ]?uid)(\s*[:=]\s*|\s+)([^\s,;}\]]+)/gi;
 
@@ -64,4 +72,31 @@ export function reportPromise<T>(
     onError?.(normalized);
     return undefined;
   });
+}
+
+/** Retry transient async work without retrying non-idempotent failures by default. */
+export async function withRetry<T>(
+  operation: (attempt: number) => Promise<T>,
+  options: RetryOptions = {},
+): Promise<T> {
+  const attempts = Math.max(1, options.attempts ?? 2);
+  const delayMs = Math.max(0, options.delayMs ?? 250);
+  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (options.signal?.aborted) throw new Error("cancelled");
+    try {
+      return await operation(attempt);
+    } catch (error) {
+      const normalized = toAppError(error, "retry");
+      const retry =
+        attempt + 1 < attempts &&
+        normalized.retryable &&
+        (options.shouldRetry?.(normalized, attempt) ?? true);
+      if (!retry) throw error;
+      await sleep(delayMs * 2 ** attempt);
+    }
+  }
+
+  throw new Error("retry exhausted");
 }

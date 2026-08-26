@@ -5,6 +5,7 @@ import { pickMemory } from "./relevance";
 import { buildVerify } from "./verifyspec";
 import { verifyProjectFacts } from "./verify";
 import { useStore } from "./store";
+import { reportError } from "./errors";
 import type { ChatMessage, Connection, FactKind, MemoryFact, Project, Session } from "./types";
 
 const uid = () =>
@@ -139,7 +140,8 @@ export async function analyzeFolderIntoMemory(
     store.logMemory({ kind: "index", status: "ok", detail: String(r.files) });
   } catch (e) {
     store.setIndexState({ status: "error", at: Date.now() });
-    store.logMemory({ kind: "index", status: "error", detail: String(e).slice(0, 200) });
+    const error = reportError(e, "memory.index");
+    store.logMemory({ kind: "index", status: "error", detail: error.message });
   }
 
   let signals = "";
@@ -220,11 +222,12 @@ export async function analyzeFolderIntoMemory(
   } catch (e) {
     // The provider rejected the call (bad key, no access to this model, offline).
     // Surface it — a silent failure here is what leaves memory empty.
-    store.setMemoryError(String(e).slice(0, 300));
+    const error = reportError(e, "memory.audit");
+    store.setMemoryError(error.message);
     store.logMemory({
       kind: "audit",
       status: "error",
-      detail: String(e).slice(0, 200),
+      detail: error.message,
       model,
     });
     return null;
@@ -410,10 +413,11 @@ export async function flushHandoffToMemory(
       });
     }
   } catch (e) {
+    const error = reportError(e, "memory.handoff");
     st.logMemory({
       kind: "handoff",
       status: "error",
-      detail: String(e).slice(0, 200),
+      detail: error.message,
       model: picked.model,
     });
   }

@@ -2,6 +2,7 @@ import { api } from "./api";
 import { db } from "./db";
 import { useStore } from "./store";
 import { cheapModel } from "./memory";
+import { reportError, reportPromise, withRetry } from "./errors";
 import type { ChatMessage, Connection, Session } from "./types";
 
 /** Keep this many most-recent messages verbatim; older ones get compressed into
@@ -57,8 +58,8 @@ export async function buildOutgoing(
           });
         }
       }
-    } catch {
-      // Ignore DB errors for graph retrieval
+    } catch (error) {
+      reportError(error, "handoff.graph.retrieve");
     }
   }
 
@@ -121,29 +122,40 @@ export async function maybeSummarize(
   const useModel = picked?.model ?? defaultModel;
 
   try {
-    const summary = await api.complete(
-      useConn,
-      useModel,
-      [instruction],
-      "You write terse, information-dense engineering handoff notes.",
+    const summary = await withRetry(
+      () =>
+        api.complete(
+          useConn,
+          useModel,
+          [instruction],
+          "You write terse, information-dense engineering handoff notes.",
+        ),
+      { attempts: 2 },
     );
     if (summary.trim()) {
       setSummary(summary.trim(), upToId);
       useStore.getState().logMemory({ kind: "summary", status: "ok", model: useModel });
     }
   } catch (e) {
+    const error = reportError(e, "memory.summary");
     useStore.getState().logMemory({
       kind: "summary",
       status: "error",
-      detail: String(e).slice(0, 200),
+      detail: error.message,
       model: useModel,
     });
   }
 
   // Also try to extract project brain updates if this session belongs to a project.
   if (session.projectId) {
-    void maybeExtractProjectBrain(transcript, session.projectId, useConn, useModel).catch(() => {});
-    void maybeBuildKnowledgeGraph(transcript, session.projectId, useConn, useModel).catch(() => {});
+    void reportPromise(
+      maybeExtractProjectBrain(transcript, session.projectId, useConn, useModel),
+      "memory.projectBrain",
+    );
+    void reportPromise(
+      maybeBuildKnowledgeGraph(transcript, session.projectId, useConn, useModel),
+      "memory.knowledgeGraph",
+    );
   }
 }
 
@@ -234,10 +246,11 @@ If there are no new updates for a category, omit the key or return null. Keep no
       });
     }
   } catch (e) {
+    const error = reportError(e, "memory.decisions");
     useStore.getState().logMemory({
       kind: "decisions",
       status: "error",
-      detail: String(e).slice(0, 200),
+      detail: error.message,
       projectId,
       model,
     });
@@ -287,7 +300,7 @@ Keep the extraction minimal and focused on important architecture, tools, or dom
             summary: n.summary || "",
             createdAt: Date.now(),
             updatedAt: Date.now(),
-          }).catch(() => {});
+          }).catch((error) => reportError(error, "memory.knowledgeNode"));
         }
       }
 
@@ -300,7 +313,7 @@ Keep the extraction minimal and focused on important architecture, tools, or dom
               source: sourceId,
               target: targetId,
               relation: e.relation,
-            }).catch(() => {});
+            }).catch((error) => reportError(error, "memory.knowledgeEdge"));
           }
         }
       }
@@ -315,10 +328,11 @@ Keep the extraction minimal and focused on important architecture, tools, or dom
         });
     }
   } catch (e) {
+    const error = reportError(e, "memory.knowledgeGraph");
     useStore.getState().logMemory({
       kind: "graph",
       status: "error",
-      detail: String(e).slice(0, 200),
+      detail: error.message,
       projectId,
       model,
     });

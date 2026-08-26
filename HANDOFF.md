@@ -4734,3 +4734,23 @@ security hardening. Не менять secrets storage до отдельного 
 
 Продолжение: тестируемый cancellation/retry contract и оставшиеся memory/LSP
 error paths; затем отдельный security slice с Keychain-only production storage.
+
+### Запись 109 — 2026-08-26 — Codex — Step 1: memory/LSP resilience contract
+
+Закрыт следующий slice Step 1:
+
+- `src/lib/errors.ts` получил bounded `withRetry` с exponential backoff,
+  retryable-классификацией и `AbortSignal` cancellation;
+- `src/lib/handoff.ts`, `src/lib/memory.ts` и `src/lib/lsp.ts` больше не
+  проглатывают фоновые ошибки: используется redacted `reportError`/`reportPromise`;
+- summary retry использует helper; LSP request cancellation проверяет отправку
+  `$/cancelRequest`;
+- добавлены `src/lib/lsp.test.ts` и retry/cancel тест в `errors.test.ts`.
+
+Проверено: typecheck OK, Vitest 13/13, production build OK, Rust 20/20,
+`npm run smoke` 4/4, `git diff --check` OK. Build сохраняет один известный
+chunk-size warning: Monaco initial chunks около 3.96 MB; npm audit advisories
+по DOMPurify через Monaco остаются открытыми, force downgrade не применён.
+
+Step 1 всё ещё partial до решения по chunk budget. Step 2 security hardening
+(Keychain-only storage, backend authorization/path containment, CSP) не начат.

@@ -11,8 +11,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 npm run smoke
 ```
 
-The frontend currently has no unit-test script. Step 1 must add Vitest and a
-`test:unit` script, then the required command set becomes:
+The frontend test harness is Vitest; the required command set is:
 
 ```bash
 npm run typecheck
@@ -28,6 +27,8 @@ never required for an offline build.
 ## Current baseline
 
 - Rust: 20 tests passed.
+- Frontend: 13 tests passed across 5 files, including redaction, retry and
+  cancellation paths.
 - Frontend production build: passed.
 - Build warning: large Monaco-related chunks (largest observed ~3.96 MB).
   Duplicate agent and redundant dynamic-import warnings were removed in Step 1.

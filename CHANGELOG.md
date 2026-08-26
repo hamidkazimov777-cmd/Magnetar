@@ -23,3 +23,5 @@
 - Removed the confirmed unreachable duplicate `new_project` agent case.
 - Made the smoke fixture portable by defaulting it to the OS temp directory.
 - Added shared redacted error normalization/reporting and a frontend/Rust CI workflow.
+- Added bounded transient retry with AbortSignal cancellation coverage; routed
+  background memory, graph and LSP failures through redacted reporting.

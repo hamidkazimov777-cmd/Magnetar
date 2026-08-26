@@ -117,8 +117,7 @@ target or intentionally manual. Test IDs are mapped to quality gates below.
 ## Next step
 
 Step 1 is in progress: duplicate case, portable fixture, frontend test harness,
-CI and the initial unified error-reporting path are complete. The next slice is
-to route remaining memory/LSP failures through the same safe path and add
-explicit cancellation/retry tests. Store DB writes now report failures through
-the shared layer. Chunk warnings remain tracked under
-performance work and are not hidden by raising Vite's warning threshold.
+CI, unified error reporting, background DB/memory/LSP reporting and the
+cancellation/retry contract are complete. Remaining Step 1 work is to decide
+the Monaco chunk budget/code-split treatment without hiding the warning. Step 2
+security hardening starts only after that review.
