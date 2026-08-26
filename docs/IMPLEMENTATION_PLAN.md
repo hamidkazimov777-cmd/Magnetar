@@ -43,8 +43,8 @@ Key facts found in code:
   requirement and is a Step 2 blocker.
 - `src-tauri/tauri.conf.json` currently has `csp: null`; this is a release
   blocker.
-- `npm run build` passes but reports an unreachable duplicate `new_project`
-  switch case, dynamic-import chunking warnings, and chunks up to about 3.96 MB.
+- `npm run build` passes but reports dynamic-import chunking warnings and chunks
+  up to about 3.96 MB. The duplicate `new_project` case was fixed in Step 1.
 - Rust tests pass 20/20. There is no frontend unit-test script in `package.json`.
 
 ## Feature parity matrix
@@ -116,5 +116,7 @@ target or intentionally manual. Test IDs are mapped to quality gates below.
 
 ## Next step
 
-Start Step 1 with the known duplicate switch case and a minimal frontend test
-harness. Do not broaden the change until those gates are green.
+Step 1 is in progress: the duplicate switch case, portable fixture and minimal
+frontend test harness are complete. The next reliability slice is CI plus a
+unified error-reporting path; the remaining chunk warnings are tracked under
+performance work and are not hidden by raising Vite's warning threshold.

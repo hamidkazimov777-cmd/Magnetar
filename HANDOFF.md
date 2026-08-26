@@ -4593,6 +4593,38 @@ warning'ами.
 
 #### Следующий шаг
 
-Step 1: исправить duplicate unreachable `new_project` case, добавить минимальный
-Vitest harness и тесты для текущих pure-logic модулей; затем повторить build и
-smoke-проверки до отдельного коммита.
+Step 1: завершить проверками portable smoke fixture и зафиксировать changes
+в отдельном commit; затем перейти к следующему reliability gap.
+
+### Запись 103 — 2026-08-26 — Codex — Step 1 reliability slice
+
+Сделан и проверен первый небольшой срез Step 1:
+
+- удалён недостижимый повторный `case "new_project"` в `src/lib/agent.ts`;
+- добавлен Vitest (`test:unit`) и 8 deterministic unit-тестов для guards,
+  relevance и adaptive routing;
+- smoke fixture больше не зависит от `~/Documents`: по умолчанию создаётся в
+  OS temp directory, а `MAGNETAR_FIXTURE_DIR` позволяет выбрать путь для ручной
+  UI-проверки;
+- добавлен `typecheck` script и обновлены quality/changelog/release документы.
+
+Проверки:
+
+- `npm run typecheck` — OK;
+- `npm run test:unit -- --run` — 3 файла / 8 тестов OK;
+- `npm run build` — OK; остались только динамический import warning и большие
+  Monaco chunks (largest ~3.96 MB), это не замаскировано;
+- `cargo test --manifest-path src-tauri/Cargo.toml` — 20/20 OK;
+- `npm run smoke` — 4/4 авто-проверки OK, fixture 706 файлов / 300 намеренных
+  Rust errors.
+
+Ограничения: `npm audit` не прошёл из-за `ENOTFOUND` registry в sandbox; при
+установке Vitest npm сообщил 2 vulnerabilities. Это не закрывает security
+gate и требует отдельного networked dependency review. CI и unified error
+reporting пока не сделаны.
+
+#### Следующий шаг
+
+Добавить CI workflow без секретов и единый error-reporting слой с тестами на
+ошибку, отмену и повторный запуск; затем снова обновить все gates и сделать
+отдельный commit.

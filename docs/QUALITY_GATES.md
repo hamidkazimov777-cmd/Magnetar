@@ -29,10 +29,11 @@ never required for an offline build.
 
 - Rust: 20 tests passed.
 - Frontend production build: passed.
-- Build warnings: duplicate unreachable `new_project` case; dynamic imports
-  that cannot split; large Monaco-related chunks (largest observed ~3.96 MB).
-- Smoke script exists but its fixture path is tied to `~/Documents/Magnetar` and
-  its checks are partly manual.
+- Build warnings: dynamic imports that cannot split and large Monaco-related
+  chunks (largest observed ~3.96 MB). The duplicate unreachable agent case was
+  removed in Step 1.
+- Smoke script exists; its fixture defaults to the OS temp directory and can be
+  overridden with `MAGNETAR_FIXTURE_DIR`. Some UI checks remain manual.
 - No CI workflow is present in the repository.
 
 ## Targets

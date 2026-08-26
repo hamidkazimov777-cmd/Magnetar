@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* Deterministic fixture project for the build smoke run.
  *
- * Generates ~/Documents/Magnetar/_fixture/ — a project large enough that the
+ * Generates an OS-temp fixture — a project large enough that the
  * virtualized panels actually have something to virtualize:
  *   - a wide/deep file tree (file-tree virtualization),
  *   - a Rust crate with 300 deliberate type errors (problems-list
@@ -13,15 +13,16 @@
  * between builds.
  *
  * Run: node scripts/gen-fixture.mjs
+ * Override location with MAGNETAR_FIXTURE_DIR for manual UI testing.
  */
 
 import { mkdirSync, writeFileSync, rmSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
+import { tmpdir } from "node:os";
 
 /* The fixture lives in a VISIBLE folder (no dot-directories) so it can be
  * opened from the standard folder picker, next to real Magnetar projects. */
-const FIXTURE = join(homedir(), "Documents", "Magnetar", "_fixture");
+const FIXTURE = process.env.MAGNETAR_FIXTURE_DIR ?? join(tmpdir(), "magnetar-fixture");
 
 /* Deterministic PRNG (mulberry32) so the fixture never changes between runs. */
 function mulberry32(seed) {

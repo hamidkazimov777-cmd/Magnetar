@@ -437,8 +437,6 @@ export async function executeTool(name: string, args: ToolArgs): Promise<string>
         void analyzeFolderIntoMemory(path).catch(() => {});
         return `Created and opened ${path}. Relative paths now resolve there — carry on with the task.`;
       }
-      case "new_project":
-      return `→ ${String(args.name ?? "")}`;
     case "delegate": {
         if (!teamCtx) return "Delegation is not available in this run.";
         const raw = Array.isArray(args.tasks) ? args.tasks : [];
