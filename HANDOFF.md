@@ -4767,3 +4767,16 @@ quality gates и README.
 Следующий этап — Step 2 security hardening: Keychain-only production secrets,
 canonical workspace containment, trust/read-only policy, backend command auth,
 CSP и secret-scan tests. Apple Developer/publication по-прежнему не затрагивать.
+
+### Запись 111 — 2026-08-26 — Codex — свежая локальная сборка
+
+После commit `571a749` пересобраны frontend и локальный macOS app bundle:
+
+- `npm run build` — OK; initial entry 408.75 KB gzip, lazy Monaco chunk
+  3.96 MB, известный asset warning сохранён явно;
+- `npm run tauri build -- --bundles app` — OK;
+- результат: `src-tauri/target/release/bundle/macos/Magnetar.app`;
+- bundle unsigned/local-only, Apple signing, notarization и publication не
+  выполнялись.
+
+Рабочее дерево после сборки чистое. Следующая сессия продолжает с Step 2.
