@@ -459,6 +459,7 @@ const ru: Dict = {
   trustBannerBody:
     "Эта папка открыта впервые. Пока вы её не подтвердите, Magnetar может читать код, но не менять файлы и не запускать команды — в репозитории могут быть скрипты сборки и задачи, которые выполняются сами.",
   trustBannerAction: "Доверять этой папке",
+  attachmentMissing: "{name} — файл вложения больше не найден",
   memImport: "Импортировать память",
   memImportHint:
     "Читает файл экспорта и добавляет факты и решения в открытый проект. Ничего не перезаписывает: совпадающие пропускаются, и импорт скажет, сколько пропустил. Проверки не переносятся — их делали на другой машине.",
@@ -1096,6 +1097,7 @@ const en: Dict = {
   trustBannerBody:
     "This folder is new here. Until you vouch for it, Magnetar can read the code but cannot change files or run commands — a repository can carry build scripts and tasks that run on their own.",
   trustBannerAction: "Trust this folder",
+  attachmentMissing: "{name} — the attached file is no longer there",
   memImport: "Import memory",
   memImportHint:
     "Reads an export file and adds its facts and decisions to the open project. It never overwrites: matching entries are skipped, and the import says how many. Verifications are not carried over — they were run on another machine.",
@@ -1725,6 +1727,7 @@ const es: Dict = {
   trustBannerBody:
     "Esta carpeta es nueva aquí. Hasta que la apruebes, Magnetar puede leer el código pero no cambiar archivos ni ejecutar comandos: un repositorio puede incluir scripts de compilación y tareas que se ejecutan solas.",
   trustBannerAction: "Confiar en esta carpeta",
+  attachmentMissing: "{name}: el archivo adjunto ya no está",
   memImport: "Importar memoria",
   memImportHint:
     "Lee un archivo de exportación y añade sus hechos y decisiones al proyecto abierto. Nunca sobrescribe: las entradas coincidentes se omiten y la importación dice cuántas. Las verificaciones no se trasladan: se hicieron en otra máquina.",

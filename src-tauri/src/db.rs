@@ -15,6 +15,7 @@ const SCHEMA_VERSION: i64 = 2;
 
 pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
     std::fs::create_dir_all(app_dir).map_err(|e| e.to_string())?;
+    let _ = APP_DIR.set(app_dir.to_path_buf());
     let path = app_dir.join("magnetar.sqlite");
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
     conn.execute_batch(
@@ -495,6 +496,13 @@ fn add_column(conn: &Connection, stmt: &str) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Where the app keeps its own files. Set once at startup, like the key store.
+static APP_DIR: OnceCell<std::path::PathBuf> = OnceCell::new();
+
+pub fn app_dir() -> Result<std::path::PathBuf, String> {
+    APP_DIR.get().cloned().ok_or_else(|| "app directory not set".to_string())
 }
 
 pub fn with_conn<T>(f: impl FnOnce(&Connection) -> Result<T, String>) -> Result<T, String> {

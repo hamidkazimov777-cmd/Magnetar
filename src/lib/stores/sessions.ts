@@ -1,3 +1,4 @@
+import { keepBytes, toMetadata } from "../attachments";
 import { db } from "../db";
 import { reportPromise } from "../errors";
 import { providerForBaseUrl } from "../generation";
@@ -249,7 +250,8 @@ export const createSessionsSlice: Slice<SessionsSlice> = (set, get) => ({
       persistMeta(touched);
       // Persist non-empty messages right away; empty assistant placeholders
       // get written when their stream completes (see persistMessage).
-      if (m.content)
+      if (m.content || m.attachments?.length) {
+        keepBytes(m.attachments);
         void reportPromise(
           db.upsertMessage({
             id,
@@ -257,10 +259,12 @@ export const createSessionsSlice: Slice<SessionsSlice> = (set, get) => ({
             role: m.role,
             content: m.content,
             model: m.model ?? null,
+            attachments: toMetadata(m.attachments),
             createdAt,
           }),
           "db:upsert_message",
         );
+      }
     }
     return id;
   },
@@ -314,6 +318,7 @@ export const createSessionsSlice: Slice<SessionsSlice> = (set, get) => ({
           role: edited.role,
           content: edited.content,
           model: edited.model ?? null,
+          attachments: toMetadata(edited.attachments),
           createdAt: edited.createdAt,
         }),
       ),
@@ -371,7 +376,11 @@ export const createSessionsSlice: Slice<SessionsSlice> = (set, get) => ({
     get().persistMessage(sessionId, messageId);
   },
 
-  setMessageAttachments: (sessionId, messageId, attachments) =>
+  setMessageAttachments: (sessionId, messageId, attachments) => {
+    // Produced assets (a generated image) arrive after the message exists, so
+    // this path has to persist too — otherwise everything the agent made was
+    // lost on restart while everything the user attached survived.
+    keepBytes(attachments);
     set((s) => ({
       sessions: s.sessions.map((sess) =>
         sess.id !== sessionId
@@ -383,7 +392,9 @@ export const createSessionsSlice: Slice<SessionsSlice> = (set, get) => ({
               ),
             },
       ),
-    })),
+    }));
+    get().persistMessage(sessionId, messageId);
+  },
 
   persistMessage: (sessionId, messageId) => {
     const sess = get().sessions.find((x) => x.id === sessionId);
@@ -396,6 +407,7 @@ export const createSessionsSlice: Slice<SessionsSlice> = (set, get) => ({
         role: msg.role,
         content: msg.content,
         model: msg.model ?? null,
+        attachments: toMetadata(msg.attachments),
         createdAt: msg.createdAt,
       }),
       "db:persist_message",

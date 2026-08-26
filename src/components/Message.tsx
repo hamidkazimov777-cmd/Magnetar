@@ -1,4 +1,4 @@
-import { memo, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -9,7 +9,8 @@ import { useT } from "../lib/i18n";
 import { AgentTrace } from "./AgentTrace";
 import { ReasoningBlock, TurnStats } from "./ReasoningBlock";
 import { acceptProposal, extractProposal, rejectProposal, stripProposalTags } from "../lib/proposal";
-import type { ChatMessage } from "../lib/types";
+import { loadBytes } from "../lib/attachments";
+import type { Attachment, ChatMessage } from "../lib/types";
 
 /** A code block with a copy button, used inside the markdown renderer. */
 function Pre({ children }: { children?: React.ReactNode }) {
@@ -148,12 +149,8 @@ export const Message = memo(function Message({
                   className="overflow-hidden rounded-[var(--r-md)] border border-[var(--color-border)]"
                   title={a.name}
                 >
-                  {a.type === "image" && (a.data || a.path) ? (
-                    <img
-                      src={a.data ? `data:${a.mimeType};base64,${a.data}` : a.path}
-                      alt={a.name}
-                      className="max-h-44 max-w-full object-contain"
-                    />
+                  {a.type === "image" ? (
+                    <AttachedImage attachment={a} />
                   ) : (
                     <div className="flex items-center gap-2 bg-[var(--color-surface-2)] px-3 py-2">
                       <FileText size={15} className="shrink-0 text-[var(--color-text-dim)]" />
@@ -287,5 +284,62 @@ function Dot({ delay = 0 }: { delay?: number }) {
       className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current"
       style={{ animationDelay: `${delay}ms` }}
     />
+  );
+}
+
+
+/** An attached image, fetched only when it is on screen.
+ *
+ *  A reopened conversation carries the attachment's metadata, not its bytes —
+ *  loading every image anyone ever attached at startup would be paid for on
+ *  every launch to show the handful that are actually scrolled to.
+ *
+ *  A missing file is not an error to shout about: someone who cleared the
+ *  folder should still be able to read the conversation, with the attachment
+ *  shown as gone rather than as a broken image.
+ */
+function AttachedImage({ attachment }: { attachment: Attachment }) {
+  const t = useT();
+  const [data, setData] = useState<string | null>(attachment.data ?? null);
+  const [missing, setMissing] = useState(false);
+
+  useEffect(() => {
+    if (data) return;
+    let cancelled = false;
+    void loadBytes(attachment).then((bytes) => {
+      if (cancelled) return;
+      if (bytes) setData(bytes);
+      else setMissing(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [attachment, data]);
+
+  if (data)
+    return (
+      <img
+        src={`data:${attachment.mimeType};base64,${data}`}
+        alt={attachment.name}
+        className="max-h-44 max-w-full object-contain"
+      />
+    );
+
+  if (attachment.path && !missing)
+    return (
+      <img
+        src={attachment.path}
+        alt={attachment.name}
+        className="max-h-44 max-w-full object-contain"
+      />
+    );
+
+  return (
+    <div className="flex items-center gap-2 bg-[var(--color-surface-2)] px-3 py-2">
+      <FileText size={15} className="shrink-0 text-[var(--color-text-dim)]" />
+      <span className="truncate text-[length:var(--fs-base)] text-[var(--color-text-dim)]">
+        {missing ? t("attachmentMissing").replace("{name}", attachment.name) : attachment.name}
+      </span>
+    </div>
   );
 }

@@ -257,6 +257,12 @@ export const api = {
    *  than implying protection the build did not provide. */
   keyStorage: (connectionId: string) =>
     invoke<KeyStorage>("key_storage", { connectionId }),
+  /** Keep an attachment's bytes so the conversation still has them tomorrow.
+   *  Addressed by id, never by path: there is no path here to point elsewhere. */
+  attachmentWrite: (id: string, data: string) =>
+    invoke<void>("attachment_write", { id, data }),
+  /** Read them back. `null` means the file is gone; the message stays readable. */
+  attachmentRead: (id: string) => invoke<string | null>("attachment_read", { id }),
   /** Ask where to save something. Choosing the destination is the permission,
    *  so the dialog belongs in the backend like the open picker. */
   pickSavePath: (suggestedName: string, extensions: string[]) =>

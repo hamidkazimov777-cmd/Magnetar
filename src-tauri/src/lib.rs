@@ -132,6 +132,8 @@ pub fn run() {
             commands::pick_save_path,
             commands::db_integrity,
             commands::db_backup,
+            commands::attachment_write,
+            commands::attachment_read,
             commands::set_read_only,
             commands::read_only,
             commands::trust_workspace,

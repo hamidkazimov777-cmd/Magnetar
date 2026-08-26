@@ -1,3 +1,4 @@
+import { fromMetadata } from "../attachments";
 import { db } from "../db";
 import { reportError, reportPromise } from "../errors";
 import type { ChatMessage, Connection, Session } from "../types";
@@ -93,6 +94,10 @@ export const createAppSlice: Slice<AppSlice> = (set, get) => ({
               role: r.role as ChatMessage["role"],
               content: r.content,
               model: r.model ?? undefined,
+              // Metadata only. The bytes are fetched when the attachment is
+              // actually rendered, so opening the app does not read every
+              // image anyone ever attached.
+              attachments: fromMetadata(r.attachments),
               createdAt: r.createdAt,
             })),
           };

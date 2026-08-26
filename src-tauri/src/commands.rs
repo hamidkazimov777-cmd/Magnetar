@@ -1217,3 +1217,61 @@ pub fn cancel_stream(request_id: String) -> Result<(), String> {
     }
     Ok(())
 }
+
+// ---- Attachment bytes -------------------------------------------------------
+//
+// What the user handed the model used to live only in memory: reopen the app
+// and the conversation still said "look at this image" with nothing attached.
+//
+// The bytes go to a file under the app's own data directory and the metadata
+// goes in the message row, rather than base64 in the column. A message row is
+// read on every launch and on every render of the transcript; making each one
+// carry a few megabytes of image would be paid for continuously, to no purpose,
+// since the picture is wanted only when it is actually on screen.
+//
+// The frontend never names a path here — it names an id. There is no path for a
+// compromised page to point somewhere else.
+
+fn attachment_dir() -> Result<std::path::PathBuf, String> {
+    let dir = crate::db::app_dir()?.join("attachments");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+fn attachment_file(id: &str) -> Result<std::path::PathBuf, String> {
+    // An id from the frontend must not be able to escape the folder — the
+    // whole point of taking an id instead of a path.
+    if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err("invalid attachment id".into());
+    }
+    Ok(attachment_dir()?.join(id))
+}
+
+/// Keep an attachment's bytes so the conversation still has them tomorrow.
+#[tauri::command]
+pub async fn attachment_write(id: String, data: String) -> Result<(), String> {
+    blocking(move || {
+        let path = attachment_file(&id)?;
+        let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, data)
+            .map_err(|e| format!("attachment {id}: {e}"))?;
+        std::fs::write(path, bytes).map_err(|e| e.to_string())
+    })
+    .await
+}
+
+/// Read one back. Returns None when it is gone rather than failing: an
+/// attachment the user deleted from disk should leave the message readable.
+#[tauri::command]
+pub async fn attachment_read(id: String) -> Result<Option<String>, String> {
+    blocking(move || {
+        let path = attachment_file(&id)?;
+        match std::fs::read(path) {
+            Ok(bytes) => Ok(Some(base64::Engine::encode(
+                &base64::engine::general_purpose::STANDARD,
+                bytes,
+            ))),
+            Err(_) => Ok(None),
+        }
+    })
+    .await
+}

@@ -21,6 +21,11 @@ export interface MessageRow {
   role: string;
   content: string;
   model: string | null;
+  /** Attachment metadata as JSON — never the bytes. Those live on disk under
+   *  the app's data directory, keyed by attachment id. A message row is read
+   *  on every launch, and a few megabytes of base64 in it would be paid for
+   *  continuously to show a picture only when it is actually on screen. */
+  attachments: string | null;
   createdAt: number;
 }
 
