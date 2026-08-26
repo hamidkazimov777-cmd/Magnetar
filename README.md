@@ -179,9 +179,16 @@ numbers are in [`docs/QUALITY_GATES.md`](docs/QUALITY_GATES.md).
 ### Building a release
 
 ```bash
-npm run tauri build          # → src-tauri/target/release/bundle/
-bash scripts/sign-app.sh     # local signing, see below
+npm run build:app            # build + local signing, in one step
 ```
+
+Building and signing are one operation, not two. macOS ties a Keychain item's
+permission to the exact code signature that created it, so an unsigned rebuild
+is a different program as far as the Keychain is concerned — and it asks for
+your password again, every time. `npm run build:app` runs
+`npm run tauri build` and then `scripts/sign-app.sh`, which is why forgetting
+the second half is no longer possible. The bundle lands in
+`src-tauri/target/release/bundle/`.
 
 macOS treats an unsigned rebuild as a different program, which is why signing
 matters even locally. `scripts/setup-signing.sh` creates a local self-signed

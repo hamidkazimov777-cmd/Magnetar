@@ -10,6 +10,7 @@
     "test:unit": "vitest run",
     "preview": "vite preview",
     "tauri": "tauri",
+    "build:app": "npm run tauri build -- --bundles app && bash scripts/sign-app.sh",
     "gen-fixture": "node scripts/gen-fixture.mjs",
     "smoke": "node scripts/smoke.mjs"
   },
