@@ -256,6 +256,12 @@ interface State {
   lspDiagnostics: Record<string, import("./problems").Diag[]>;
   setLspDiagnostics: (path: string, diags: import("./problems").Diag[]) => void;
 
+  /** Language servers that were looked for and not found on PATH, keyed by
+   *  server pool key. Drives the "server not installed" hint in the editor.
+   *  Not persisted — it reflects the current machine. */
+  lspMissing: Record<string, { label: string; install: string }>;
+  setLspMissing: (key: string, info: { label: string; install: string } | null) => void;
+
   /** State of the code-search index for the open folder. */
   indexState: { status: "unknown" | "building" | "ready" | "error"; files?: number; at?: number };
   setIndexState: (s: State["indexState"]) => void;
@@ -822,6 +828,15 @@ export const useStore = create<State>()(
           if (diags.length) next[path] = diags;
           else delete next[path];
           return { lspDiagnostics: next };
+        }),
+
+      lspMissing: {},
+      setLspMissing: (key, info) =>
+        set((s) => {
+          const next = { ...s.lspMissing };
+          if (info) next[key] = info;
+          else delete next[key];
+          return { lspMissing: next };
         }),
 
       indexState: { status: "unknown" },

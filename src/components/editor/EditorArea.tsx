@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Editor, { type OnMount } from "@monaco-editor/react";
-import { X, Save, FileCode2, GitCompare, Loader2 } from "../icons";
+import { X, Save, FileCode2, GitCompare, Loader2, Info, Copy, Check } from "../icons";
+import { copyText } from "../../lib/clipboard";
 import { api } from "../../lib/api";
 import { useStore, type EditorTab } from "../../lib/store";
 import { syncCheckMarkers } from "../../lib/markers";
@@ -32,6 +33,14 @@ export function EditorArea() {
   const resolvedTheme = useResolvedTheme();
 
   const active = tabs.find((x) => x.path === activeTabPath) ?? tabs[0];
+
+  // A configured-but-not-installed language server for the open file: surface an
+  // actionable hint (3.4) instead of silently giving no analysis.
+  const lspMissing = useStore((s) => s.lspMissing);
+  const lspKey = active?.kind === "file" ? lsp.serverKeyForPath(active.path) : undefined;
+  const missingServer = lspKey ? lspMissing[lspKey] : undefined;
+  const [dismissedLsp, setDismissedLsp] = useState<Set<string>>(new Set());
+  const [copiedInstall, setCopiedInstall] = useState(false);
 
   const [buffers, setBuffers] = useState<Record<string, string>>({});
   const [dirty, setDirty] = useState<Record<string, boolean>>({});
@@ -293,6 +302,37 @@ export function EditorArea() {
             {error}
           </span>
           <button className="icon-btn h-5 w-5" onClick={() => setError(null)}>
+            <X size={12} />
+          </button>
+        </div>
+      )}
+
+      {missingServer && lspKey && !dismissedLsp.has(lspKey) && (
+        <div className="mx-2 mt-2 flex items-center gap-2 rounded-[var(--r-md)] border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2.5 py-1.5 text-[length:var(--fs-xs)]">
+          <Info size={13} className="shrink-0 text-[var(--color-text-dim)]" />
+          <span className="shrink-0 text-[var(--color-text-dim)]">
+            {t("lspServerMissing", { name: missingServer.label })}
+          </span>
+          <code className="min-w-0 flex-1 truncate rounded-[var(--r-sm)] bg-[var(--color-bg)] px-1.5 py-0.5 font-mono text-[var(--color-text)]">
+            {missingServer.install}
+          </code>
+          <button
+            className="icon-btn h-5 w-5 shrink-0"
+            title={copiedInstall ? t("copied") : t("copy")}
+            onClick={async () => {
+              if (await copyText(missingServer.install)) {
+                setCopiedInstall(true);
+                setTimeout(() => setCopiedInstall(false), 1200);
+              }
+            }}
+          >
+            {copiedInstall ? <Check size={12} /> : <Copy size={12} />}
+          </button>
+          <button
+            className="icon-btn h-5 w-5 shrink-0"
+            title={t("errorDismiss")}
+            onClick={() => setDismissedLsp((s) => new Set(s).add(lspKey))}
+          >
             <X size={12} />
           </button>
         </div>
