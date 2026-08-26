@@ -34,7 +34,8 @@ never required for an offline build.
   removed in Step 1.
 - Smoke script exists; its fixture defaults to the OS temp directory and can be
   overridden with `MAGNETAR_FIXTURE_DIR`. Some UI checks remain manual.
-- No CI workflow is present in the repository.
+- CI workflow now runs frontend typecheck/unit/build and macOS Rust test/check;
+  integration, security, performance and packaging jobs remain to be added.
 
 ## Targets
 

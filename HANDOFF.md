@@ -4628,3 +4628,50 @@ reporting пока не сделаны.
 Добавить CI workflow без секретов и единый error-reporting слой с тестами на
 ошибку, отмену и повторный запуск; затем снова обновить все gates и сделать
 отдельный commit.
+
+### Запись 105 — 2026-08-26 — Codex — Step 1: CI и error reporting завершены
+
+После записи 104 добавлены `.github/workflows/ci.yml` и `src/lib/errors.ts`.
+ErrorBoundary, agent outer catch и Problems check теперь используют общий
+redacted normalizer; добавлены тесты для `api_key=...`, bearer-like ключей,
+unknown errors и retryable timeout/network признаков. Ошибка в redaction без
+пробела после `=` была поймана тестом и исправлена до commit.
+
+Проверки: `npm run typecheck` OK; Vitest 4 файла / 11 тестов OK; `npm run build`
+OK (только известные dynamic-import и large Monaco chunk warnings); Rust 20/20
+OK; smoke 4/4 OK. CI commit не выполняет provider calls и не содержит secrets.
+
+`npm audit` остаётся внешним блокером проверки зависимостей: sandbox получает
+`ENOTFOUND` registry, а npm install сообщил 2 vulnerabilities. Не выполнялся
+`npm audit fix --force`.
+
+#### Следующий шаг
+
+Маршрутизировать background DB/memory/LSP failures через тот же safe error path,
+добавить cancellation/retry tests и затем начать Step 2 с Keychain/backend
+authorization hardening.
+
+### Запись 104 — 2026-08-26 — Codex — Step 1: CI и единый error layer
+
+Добавлены CI и начальный общий слой ошибок:
+
+- `.github/workflows/ci.yml`: frontend job на Node 20 (`npm ci`, typecheck,
+  Vitest, build) и Rust job на macOS (`cargo test`, `cargo check`), без
+  секретов и сетевых provider calls;
+- `src/lib/errors.ts`: нормализация неизвестных ошибок, retryable-классификация,
+  redaction credential-shaped значений, единый `reportError`/`reportPromise`;
+- `ErrorBoundary`, agent outer catch и Problems check используют safe
+  normalization вместо прямого `String(e)`/сырого `console.error`;
+- добавлены 3 теста для redaction/normalization/reporting.
+
+Проверено локально: typecheck OK, Vitest 11/11 OK после добавления error tests,
+Rust 20/20 OK, smoke 4/4 OK, build OK. Build всё ещё сообщает большие
+Monaco-related chunks и dynamic-import warning; это отдельный performance gap.
+`npm audit` в sandbox не выполняется (`ENOTFOUND` registry), а install сообщил
+2 vulnerabilities — security gate остаётся открытым.
+
+#### Следующий шаг
+
+Расширить единый error layer на доменные background writes (memory/DB/LSP),
+добавить обработку отмены и повторного запуска в тестах, затем перейти к Step 2
+security hardening. Не менять secrets storage до отдельного security шага.

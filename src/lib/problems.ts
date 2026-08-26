@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { toAppError } from "./errors";
 
 /* ==========================================================================
    PROJECT CHECKS
@@ -148,7 +149,7 @@ export async function runCheck(
       checkId: check.id,
       status: "error",
       problems: [],
-      output: String(e).slice(0, 2000),
+      output: toAppError(e, `check:${check.id}`).message,
       at: Date.now(),
       durationMs: Date.now() - started,
     };

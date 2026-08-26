@@ -116,7 +116,8 @@ target or intentionally manual. Test IDs are mapped to quality gates below.
 
 ## Next step
 
-Step 1 is in progress: the duplicate switch case, portable fixture and minimal
-frontend test harness are complete. The next reliability slice is CI plus a
-unified error-reporting path; the remaining chunk warnings are tracked under
+Step 1 is in progress: duplicate case, portable fixture, frontend test harness,
+CI and the initial unified error-reporting path are complete. The next slice is
+to route background DB/memory/LSP failures through the same safe path and add
+explicit cancellation/retry tests. Chunk warnings remain tracked under
 performance work and are not hidden by raising Vite's warning threshold.

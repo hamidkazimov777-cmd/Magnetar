@@ -16,7 +16,8 @@ Current status: development build only. No public release is claimed.
 - [x] `npm run build` passes at baseline.
 - [x] Rust tests pass 20/20 at baseline.
 - [ ] No actionable TypeScript/Vite/Rust warnings.
-- [ ] Frontend unit, integration and security tests are in CI.
+- [x] Frontend unit tests are in CI.
+- [ ] Integration, security and performance tests are in CI.
 - [ ] Smoke fixture is independent of a specific user directory.
 - [ ] Persistent incremental index passes 1k/10k/50k/100k scenarios.
 - [ ] Agent crash recovery, cancellation, budgets and rollback pass.

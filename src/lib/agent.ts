@@ -8,6 +8,7 @@ import { activateProjectForPath, analyzeFolderIntoMemory } from "./memory";
 import { similarity } from "./relevance";
 import { alwaysConfirm, checkLoop, newLoopWatch } from "./guards";
 import { tr } from "./i18n";
+import { reportError } from "./errors";
 import type { ChatMessage, Connection, MemoryFact } from "./types";
 
 /** Tools exposed to the model (OpenAI function schemas). */
@@ -524,7 +525,7 @@ export async function executeTool(name: string, args: ToolArgs): Promise<string>
         return `unknown tool: ${name}`;
     }
   } catch (e) {
-    return `error: ${String(e)}`;
+    return `error: ${reportError(e, "agent").message}`;
   }
 }
 

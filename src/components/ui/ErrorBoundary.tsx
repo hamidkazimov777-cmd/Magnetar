@@ -2,6 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 import { TriangleAlert, RotateCcw } from "../icons";
 import { translate } from "../../lib/i18n";
 import { useStore } from "../../lib/store";
+import { reportError } from "../../lib/errors";
 
 interface Props {
   children: ReactNode;
@@ -22,7 +23,10 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("[Magnetar] UI error", error, info.componentStack);
+    reportError(
+      `${error.message}\n${info.componentStack ?? ""}`,
+      `ui:${this.props.surface ?? "unknown"}`,
+    );
   }
 
   render() {
