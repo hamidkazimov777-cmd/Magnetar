@@ -55,7 +55,7 @@ pub fn run() {
                 "document.documentElement.setAttribute('data-theme','{theme}');\
                  document.documentElement.style.colorScheme='{theme}';"
             );
-            tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::default())
+            let win = tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::default())
                 .title("Magnetar")
                 .inner_size(1080.0, 760.0)
                 .min_inner_size(720.0, 520.0)
@@ -63,7 +63,20 @@ pub fn run() {
                 .hidden_title(true)
                 .background_color(color)
                 .initialization_script(&init)
+                // Start hidden so no half-painted white frame is ever shown; the
+                // frontend calls `show` once the splash is drawn (command below).
+                .visible(false)
                 .build()?;
+
+            // Safety net for the failure mode of Entry 12: if the frontend never
+            // asks to show the window (release-build hiccup, JS crash), reveal it
+            // anyway after a short delay so the app can never launch invisible.
+            let handle = win.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(900));
+                let _ = handle.show();
+                let _ = handle.set_focus();
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

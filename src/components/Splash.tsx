@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 /** Launch screen: the mark draws itself like an invisible pen inking a line —
  *  the thin diagonal beam first, then the main form — then the shape fills in,
@@ -6,6 +7,18 @@ import { useEffect, useState } from "react";
  *  into the app — no idle pause, no hard cut. Click to skip. */
 export function Splash({ onDone }: { onDone: () => void }) {
   const [exiting, setExiting] = useState(false);
+
+  // Reveal the window only now that the splash is painted — it was created
+  // hidden so the launch never shows a half-rendered white frame. Two frames of
+  // slack so the compositor has the splash before the window appears.
+  useEffect(() => {
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        void getCurrentWindow().show().catch(() => {});
+        void getCurrentWindow().setFocus().catch(() => {});
+      }),
+    );
+  }, []);
 
   useEffect(() => {
     // Nothing animates in, so just hold the brand a beat, then fade the whole
