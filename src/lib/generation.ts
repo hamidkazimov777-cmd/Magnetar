@@ -32,8 +32,9 @@ export interface GenerationProvider {
   /** Path appended to baseUrl, e.g. "images/generations". */
   endpoint: string;
   method: "POST";
-  /** direct = synchronous; poll = async job (reserved for video/audio). */
-  strategy?: "direct" | "poll";
+  /** direct = synchronous; poll = fal-style async queue; replicate = Replicate's
+   *  prediction API (create with `Prefer: wait`, then poll). */
+  strategy?: "direct" | "poll" | "replicate";
   /** Request-level option like b64_json, when the provider needs it. */
   responseFormat?: string | null;
   /** Where output assets live in the response JSON. Default "data". */
@@ -234,6 +235,36 @@ export const GEN_PROVIDERS: GenerationProvider[] = [
       "fal-ai/ace-step",
     ],
     params: [],
+  },
+
+  // ---- Replicate · second aggregator (image; owner/name models, no hash) ----
+  {
+    id: "replicate-image",
+    name: "Replicate",
+    kind: "image",
+    available: true,
+    baseUrl: "https://api.replicate.com/v1",
+    authType: "bearer",
+    endpoint: "",
+    method: "POST",
+    strategy: "replicate",
+    responseFormat: null,
+    models: [
+      "black-forest-labs/flux-schnell",
+      "black-forest-labs/flux-dev",
+      "black-forest-labs/flux-1.1-pro",
+      "stability-ai/stable-diffusion-3.5-large",
+      "recraft-ai/recraft-v3",
+    ],
+    params: [
+      {
+        key: "aspect_ratio",
+        label: "genParamSize",
+        type: "select",
+        options: ["1:1", "16:9", "9:16", "4:3", "3:4"],
+        default: "1:1",
+      },
+    ],
   },
 
   // ---- coming soon (listed for discovery, no live calls) ----

@@ -87,6 +87,7 @@ pub fn run() {
             commands::complete,
             commands::generate,
             commands::generate_async,
+            commands::generate_replicate,
             commands::chat_stream,
             commands::cancel_stream,
             commands::list_sessions,

@@ -519,6 +519,120 @@ pub async fn generate_async(
     Ok(GenerationResult { kind, assets })
 }
 
+/// Replicate's `output` is a plain URL string, an array of URL strings, or the
+/// occasional `{url}` object — never fal's `{images:[…]}` shape. Pull the URLs.
+fn replicate_assets(out: Option<&serde_json::Value>) -> Vec<GenerationAsset> {
+    let mut assets = Vec::new();
+    let push = |s: &str, v: &mut Vec<GenerationAsset>| {
+        if s.starts_with("http") || s.starts_with("data:") {
+            v.push(GenerationAsset { url: Some(s.to_string()), b64: None, mime_type: None });
+        }
+    };
+    match out {
+        Some(serde_json::Value::String(s)) => push(s, &mut assets),
+        Some(serde_json::Value::Array(arr)) => {
+            for item in arr {
+                if let Some(s) = item.as_str() {
+                    push(s, &mut assets);
+                } else if let Some(u) = item.get("url").and_then(|x| x.as_str()) {
+                    push(u, &mut assets);
+                }
+            }
+        }
+        Some(obj) if obj.is_object() => {
+            if let Some(u) = obj.get("url").and_then(|x| x.as_str()) {
+                push(u, &mut assets);
+            }
+        }
+        _ => {}
+    }
+    assets
+}
+
+/// Generation via Replicate. Creates a prediction against a model by name
+/// (`owner/name`, no version hash needed for official models), asks the API to
+/// block until done (`Prefer: wait`), and polls the prediction if it is still
+/// running. Auth is `Token <key>`; output URLs are pulled by `replicate_assets`.
+#[tauri::command]
+pub async fn generate_replicate(
+    connection: Connection,
+    kind: String,
+    model: String,
+    prompt: String,
+    params: Option<serde_json::Value>,
+) -> Result<GenerationResult, String> {
+    let key = resolve_key(&connection).await?;
+    let auth = format!("Token {key}");
+    let base = connection.base_url.trim_end_matches('/');
+    let create_url = format!("{base}/models/{model}/predictions");
+
+    let mut input = serde_json::json!({ "prompt": prompt });
+    if let Some(serde_json::Value::Object(map)) = params {
+        for (k, v) in map {
+            input[k] = v;
+        }
+    }
+    let body = serde_json::json!({ "input": input });
+
+    let client = reqwest::Client::new();
+    let mut pred: serde_json::Value = client
+        .post(&create_url)
+        .header("Authorization", &auth)
+        .header("Prefer", "wait")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("network error: {e}"))?
+        .error_for_status()
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let get_url = pred
+        .get("urls")
+        .and_then(|u| u.get("get"))
+        .and_then(|x| x.as_str())
+        .map(String::from);
+
+    // `Prefer: wait` usually returns a terminal prediction already; poll only if
+    // it is still running (slow video/audio models).
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(300);
+    loop {
+        match pred.get("status").and_then(|x| x.as_str()) {
+            Some("succeeded") => break,
+            Some("failed") | Some("canceled") => {
+                let err = pred
+                    .get("error")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("generation failed");
+                return Err(err.to_string());
+            }
+            _ => {}
+        }
+        if std::time::Instant::now() > deadline {
+            return Err("generation timed out".to_string());
+        }
+        let url = get_url.clone().ok_or("no poll url in prediction")?;
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        pred = client
+            .get(&url)
+            .header("Authorization", &auth)
+            .send()
+            .await
+            .map_err(|e| format!("network error: {e}"))?
+            .json()
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    let assets = replicate_assets(pred.get("output"));
+    if assets.is_empty() {
+        return Err("provider returned no assets".to_string());
+    }
+    Ok(GenerationResult { kind, assets })
+}
+
 #[tauri::command]
 pub async fn agent_step(
     connection: Connection,

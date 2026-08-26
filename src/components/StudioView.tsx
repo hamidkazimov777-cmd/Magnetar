@@ -286,11 +286,14 @@ export function StudioView() {
         resultPath: provider.resultPath,
         modelInBody: provider.modelInPath ? false : undefined,
       };
-      // Long jobs (video/audio) go through the polling command.
+      // Route by provider shape: Replicate's prediction API, fal's async queue
+      // (video/audio), or the plain synchronous call.
       const res =
-        provider.strategy === "poll"
-          ? await api.generateAsync(conn, req)
-          : await api.generate(conn, req);
+        provider.strategy === "replicate"
+          ? await api.generateReplicate(conn, req)
+          : provider.strategy === "poll"
+            ? await api.generateAsync(conn, req)
+            : await api.generate(conn, req);
       const now = Date.now();
       const next: Result[] = res.assets.map((a, i) => ({
         id: crypto.randomUUID(),

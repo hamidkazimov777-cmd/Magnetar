@@ -82,6 +82,17 @@ export const api = {
       resultPath: req.resultPath ?? null,
     }),
 
+  /** Generation via Replicate: create a prediction by model name and wait for
+   *  its output. Model is `owner/name`; params become the prediction `input`. */
+  generateReplicate: (connection: Connection, req: GenerationRequest) =>
+    invoke<GenerationResult>("generate_replicate", {
+      connection: toRustConn(connection),
+      kind: req.kind,
+      model: req.model,
+      prompt: req.prompt,
+      params: req.params,
+    }),
+
   /** Single-shot non-streaming completion (router / summarizer). */
   complete: (
     connection: Connection,
