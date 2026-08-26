@@ -210,6 +210,32 @@ export const GEN_PROVIDERS: GenerationProvider[] = [
     ],
   },
 
+  {
+    id: "fal-audio",
+    name: "fal.ai",
+    kind: "audio",
+    available: true,
+    baseUrl: "https://fal.run",
+    authType: "bearer",
+    authScheme: "key",
+    modelInPath: true,
+    endpoint: "",
+    method: "POST",
+    // Audio generation is queued like video: submit → poll → fetch.
+    strategy: "poll",
+    responseFormat: null,
+    resultPath: "audio",
+    // Text-to-music / sound models take just a prompt; kept param-free so no
+    // model rejects an option it doesn't know. fal ids drift — if a model
+    // errors, fix the string here (same as video).
+    models: [
+      "fal-ai/stable-audio",
+      "fal-ai/minimax-music",
+      "fal-ai/ace-step",
+    ],
+    params: [],
+  },
+
   // ---- coming soon (listed for discovery, no live calls) ----
   { id: "midjourney", name: "Midjourney", kind: "image", available: false, baseUrl: "", authType: "bearer", endpoint: "", method: "POST", models: [], params: [] },
   { id: "ideogram", name: "Ideogram", kind: "image", available: false, baseUrl: "", authType: "bearer", endpoint: "", method: "POST", models: [], params: [] },
