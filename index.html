@@ -25,6 +25,10 @@
     </style>
     <script>
       (function () {
+        // In the packaged app the native shell already set data-theme before
+        // this runs (authoritative, from the saved theme) — don't override it.
+        // This branch only matters in the browser/dev, where there is no shell.
+        if (document.documentElement.getAttribute("data-theme")) return;
         try {
           var raw = localStorage.getItem("magnetar-store");
           var theme = raw ? JSON.parse(raw).state.theme : "light";

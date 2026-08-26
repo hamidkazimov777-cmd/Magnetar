@@ -45,6 +45,16 @@ pub fn run() {
             } else {
                 tauri::window::Color(255, 255, 255, 255)
             };
+            // Set data-theme before ANY page script runs, so the very first HTML
+            // paint is already the right colour — the white flash was the page
+            // rendering light before the bundle/localStorage could correct it.
+            // This runs at document-start and is authoritative; index.html's
+            // inline script only fills in when the attribute is not already set.
+            let theme = if dark { "dark" } else { "light" };
+            let init = format!(
+                "document.documentElement.setAttribute('data-theme','{theme}');\
+                 document.documentElement.style.colorScheme='{theme}';"
+            );
             tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::default())
                 .title("Magnetar")
                 .inner_size(1080.0, 760.0)
@@ -52,6 +62,7 @@ pub fn run() {
                 .title_bar_style(tauri::TitleBarStyle::Overlay)
                 .hidden_title(true)
                 .background_color(color)
+                .initialization_script(&init)
                 .build()?;
             Ok(())
         })
