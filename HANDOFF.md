@@ -4444,3 +4444,39 @@ Wrench, Palette, FolderTree, Database, Music.
 Google Imagen/Veo — прямой; ElevenLabs TTS — но вход `text`, не `prompt`, нужен
 маппинг). Крупный оставшийся столп — **изоляция производительности** (отдельная
 сессия, стоит сперва обсудить план). Публикация — Apple Developer.
+
+### Запись 98 — 2026-08-26 — Opus 4.8 — LSP 3.4: TypeScript + статус «сервер не установлен»
+
+Доделан последний кусок LSP-этапа 3 (языки за пределами Rust). Проверки зелёные
+(tsc, i18n ru+en+es, build), пересобрано. На машине Hamid установлен только
+rust-analyzer — поэтому «сервер не установлен» с командой это и есть главная
+ценность.
+
+- **`lspManager.ts`**: `SERVERS` получил `typescript`+`javascript` (бинарь
+  `typescript-language-server`, `--stdio`), общий процесс через `key:
+  "typescript"` (пул-ключ; `serverKey()` теперь ключ Map/restartCounts вместо
+  languageId). ServerConfig получил `label`+`install` (человекочитаемое имя и
+  команда установки) для всех серверов. При старте TS-сервера вызывается
+  `disableMonacoTs()` — выключает встроенные TS/JS-фичи воркера Monaco
+  (`setModeConfiguration` всё в false), чтобы hover/автодополнение/диагностика
+  шли только от сервера. Если сервер НЕ установлен — Monaco работает как раньше
+  (провайдеры возвращают null → Monaco сам отвечает), регресса нет.
+- **Трекинг отсутствия**: `store.lspMissing` (не персистится) + `setLspMissing`.
+  При `lspWhich=not found` пишется `{label,install}`; при успешном старте
+  чистится.
+- **UI**: `EditorArea` — при открытии файла, чей сервер сконфигурирован, но не
+  найден, показывает ненавязчивый баннер: «<name> не установлен — установите…»
+  + команда в `<code>` с кнопкой копирования + крестик (dismiss на сессию по
+  ключу). Экспорт `serverKeyForPath`. Ключ i18n `lspServerMissing`.
+- Python (pyright) и Go (gopls) были подключены раньше — теперь они ещё и
+  «видимы» (баннер подскажет установить). Команды: pyright — `npm i -g pyright`;
+  gopls — `go install golang.org/x/tools/gopls@latest`; TS — `npm i -g
+  typescript-language-server typescript`.
+
+⚠️ Открытие любого `.ts` теперь покажет баннер (у Hamid tsserver не стоит) —
+это ожидаемо и dismissible; Monaco-поддержка TS остаётся до установки сервера.
+
+#### Следующий шаг (в рамках «доделать всё по плану»)
+
+Дальше по плану: (2) промт-мейкер `/промт` в Обсуждении, (3) больше провайдеров,
+(4) изоляция перфа. Публикация — потом (по слову Hamid).
