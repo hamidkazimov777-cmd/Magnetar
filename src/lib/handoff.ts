@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { db } from "./db";
 import { useStore } from "./store";
 import { cheapModel } from "./memory";
 import type { ChatMessage, Connection, Session } from "./types";
@@ -43,7 +44,7 @@ export async function buildOutgoing(
 
     // Knowledge Graph Subgraph
     try {
-      const nodes = await import("./db").then(m => m.db.listKnowledgeNodes(session.projectId!));
+      const nodes = await db.listKnowledgeNodes(session.projectId!);
       if (nodes.length > 0) {
         // Very basic retrieval: just include nodes whose title appears in recent messages
         const recentText = msgs.slice(-3).map(m => m.content).join(" ").toLowerCase();
@@ -274,7 +275,6 @@ Keep the extraction minimal and focused on important architecture, tools, or dom
     if (!parsed) return;
 
     if (parsed.nodes && Array.isArray(parsed.nodes)) {
-      const db = await import("./db").then(m => m.db);
       for (const n of parsed.nodes) {
         if (n.title && n.nodeType) {
           // Use the title as the ID for simpler edge mapping

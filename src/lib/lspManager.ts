@@ -1,4 +1,5 @@
 import { LspClient } from "./lsp";
+import { api } from "./api";
 import { languageForPath, loadMonaco } from "./monaco";
 import { useStore } from "./store";
 
@@ -255,7 +256,7 @@ async function ensureServer(config: ServerConfig): Promise<Server | null> {
   try {
     // In the browser preview there is no Tauri backend; this throws and we
     // cache "unavailable" so we never retry per keystroke.
-    const found = await import("./api").then((m) => m.api.lspWhich(config.bin));
+    const found = await api.lspWhich(config.bin);
     if (!found) {
       servers.set(serverKey(config), null);
       // Tell the editor which server is missing and how to install it, so the
@@ -385,7 +386,6 @@ export function didChange(path: string, text: string): void {
  *  disk (the freshest we have without the editor's buffer). didOpen respawns
  *  the server since the slot was cleared on exit. */
 async function restart(paths: string[]): Promise<void> {
-  const { api } = await import("./api");
   for (const p of paths) {
     try {
       const text = await api.editorReadFile(p);

@@ -1,4 +1,5 @@
 import type * as monaco from "monaco-editor";
+import { api } from "./api";
 import { clientForPath, pathToUri, supportedLanguages } from "./lspManager";
 import { useStore } from "./store";
 
@@ -367,7 +368,6 @@ export function registerLspProviders(m: typeof import("monaco-editor")): void {
         else diskWrites.push({ p, tes });
       }
       if (diskWrites.length) {
-        const { api } = await import("./api");
         await Promise.all(
           diskWrites.map(async ({ p, tes }) => {
             try {

@@ -4651,6 +4651,29 @@ OK; smoke 4/4 OK. CI commit не выполняет provider calls и не со�
 добавить cancellation/retry tests и затем начать Step 2 с Keychain/backend
 authorization hardening.
 
+### Запись 106 — 2026-08-26 — Codex — Step 1: build warning cleanup и dependency audit
+
+Убраны redundant dynamic imports `api/db` в `handoff.ts`, `lspManager.ts` и
+`lspEditor.ts`; после этого Vite больше не сообщает dynamic-import warning.
+Остаётся один реальный размерный warning: Monaco-related chunks до ~3.96 MB —
+это будет исправляться performance budget/code splitting work, а не повышением
+`chunkSizeWarningLimit`.
+
+Повторный `npm audit --omit=dev --audit-level=high` с разрешённым registry
+доступом прошёл, но показал 2 vulnerabilities (moderate/low): DOMPurify,
+притянутый `monaco-editor`. Автоматический `npm audit fix --force` предложил бы
+breaking downgrade Monaco до 0.53.0 и не применялся. Security gate остаётся
+открытым до совместимого remediation/решения.
+
+Проверки этого среза: `npm run typecheck` OK, Vitest 11/11 OK, `npm run build`
+OK с одним chunk-size warning. Rust и smoke уже зелёные на том же commit base.
+
+#### Следующий шаг
+
+Закрыть оставшиеся Step 1 observability gaps для background DB/memory/LSP
+ошибок и cancellation/retry tests. Затем перейти к Step 2: Keychain-only
+production secrets и backend authorization/path containment.
+
 ### Запись 104 — 2026-08-26 — Codex — Step 1: CI и единый error layer
 
 Добавлены CI и начальный общий слой ошибок:

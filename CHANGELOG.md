@@ -14,8 +14,10 @@
 - Plaintext-at-rest `secrets.json` development posture pending Keychain hardening.
 - Missing frontend unit-test script, backend authorization boundary and CSP.
 - Existing build warnings and large Monaco-related chunks.
-- npm audit could not be completed in the restricted environment; dependency
-  install reported 2 vulnerabilities and needs a networked review.
+- Initial sandbox npm audit was unavailable; a networked review now identifies
+  2 moderate/low DOMPurify issues pulled through Monaco.
+- Removed redundant dynamic-import warnings; only the known Monaco chunk-size
+  warning remains. Networked audit identifies DOMPurify issues via Monaco.
 - Removed the confirmed unreachable duplicate `new_project` agent case.
 - Made the smoke fixture portable by defaulting it to the OS temp directory.
 - Added shared redacted error normalization/reporting and a frontend/Rust CI workflow.

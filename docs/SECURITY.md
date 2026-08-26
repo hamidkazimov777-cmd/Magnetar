@@ -24,6 +24,10 @@ configured by the user or to a local provider.
 - Path containment, symlink policy, repository trust, read-only mode and
   per-capability authorization are not yet a complete backend policy.
 - Tauri CSP is currently `null`; release cannot proceed with this value.
+- `npm audit --omit=dev --audit-level=high` currently reports 2 moderate/low
+  vulnerabilities in DOMPurify pulled by Monaco. The available fix would force
+  a breaking Monaco downgrade, so dependency remediation needs a deliberate
+  compatibility decision and security review.
 - Bash and Git have output/time limits and process-group handling, but the
   policy still needs a uniform audit record, cancellation contract and explicit
   external-path authorization.

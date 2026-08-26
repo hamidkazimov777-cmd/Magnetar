@@ -29,9 +29,8 @@ never required for an offline build.
 
 - Rust: 20 tests passed.
 - Frontend production build: passed.
-- Build warnings: dynamic imports that cannot split and large Monaco-related
-  chunks (largest observed ~3.96 MB). The duplicate unreachable agent case was
-  removed in Step 1.
+- Build warning: large Monaco-related chunks (largest observed ~3.96 MB).
+  Duplicate agent and redundant dynamic-import warnings were removed in Step 1.
 - Smoke script exists; its fixture defaults to the OS temp directory and can be
   overridden with `MAGNETAR_FIXTURE_DIR`. Some UI checks remain manual.
 - CI workflow now runs frontend typecheck/unit/build and macOS Rust test/check;
