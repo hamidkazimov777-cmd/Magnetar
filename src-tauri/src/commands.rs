@@ -21,6 +21,25 @@ use tauri::ipc::Channel;
 static CANCELS: Lazy<Mutex<HashMap<String, Arc<AtomicBool>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
+/// One shared HTTP client for generation requests. Building a `reqwest::Client`
+/// per call meant a fresh connection pool and TLS setup every time — which adds
+/// up when several generations run alongside the agent and chat. Cloning shares
+/// the same pool (the client is Arc-backed internally).
+static GEN_HTTP: Lazy<reqwest::Client> = Lazy::new(|| {
+    reqwest::Client::builder()
+        .pool_idle_timeout(std::time::Duration::from_secs(90))
+        .tcp_keepalive(std::time::Duration::from_secs(60))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new())
+});
+
+/// Bounds how many heavy generation jobs run at once, so a burst can't starve
+/// the agent or the UI — the "isolate concurrent generation workers" gap. The
+/// cap is generous (6): a real user rarely fires that many together, so normal
+/// use is never serialized; it only tames pathological load. A permit is held
+/// for the whole job (including the minutes a video spends polling).
+static GEN_SEM: Lazy<tokio::sync::Semaphore> = Lazy::new(|| tokio::sync::Semaphore::new(6));
+
 // ---- Canon (SQLite) --------------------------------------------------------
 
 /// Run blocking work off the UI thread.
@@ -329,6 +348,7 @@ pub async fn generate(
     result_path: Option<String>,
     model_in_body: Option<bool>,
 ) -> Result<GenerationResult, String> {
+    let _permit = GEN_SEM.acquire().await.map_err(|e| e.to_string())?;
     let key = resolve_key(&connection).await?;
     let url = connection.endpoint(&endpoint);
 
@@ -342,7 +362,7 @@ pub async fn generate(
         }
     }
 
-    let req = reqwest::Client::new().post(&url).json(&body);
+    let req = GEN_HTTP.post(&url).json(&body);
     let req = if auth_scheme.as_deref() == Some("key") {
         req.header("Authorization", format!("Key {key}"))
     } else {
@@ -441,6 +461,7 @@ pub async fn generate_async(
     params: Option<serde_json::Value>,
     result_path: Option<String>,
 ) -> Result<GenerationResult, String> {
+    let _permit = GEN_SEM.acquire().await.map_err(|e| e.to_string())?;
     let key = resolve_key(&connection).await?;
     let auth = format!("Key {key}");
     // fal.ai's synchronous host is fal.run; its queue is queue.fal.run.
@@ -454,7 +475,7 @@ pub async fn generate_async(
         }
     }
 
-    let client = reqwest::Client::new();
+    let client = GEN_HTTP.clone();
     let sub: serde_json::Value = client
         .post(&submit_url)
         .header("Authorization", &auth)
@@ -561,6 +582,7 @@ pub async fn generate_replicate(
     prompt: String,
     params: Option<serde_json::Value>,
 ) -> Result<GenerationResult, String> {
+    let _permit = GEN_SEM.acquire().await.map_err(|e| e.to_string())?;
     let key = resolve_key(&connection).await?;
     let auth = format!("Token {key}");
     let base = connection.base_url.trim_end_matches('/');
@@ -574,7 +596,7 @@ pub async fn generate_replicate(
     }
     let body = serde_json::json!({ "input": input });
 
-    let client = reqwest::Client::new();
+    let client = GEN_HTTP.clone();
     let mut pred: serde_json::Value = client
         .post(&create_url)
         .header("Authorization", &auth)
