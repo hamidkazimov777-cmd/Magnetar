@@ -152,7 +152,7 @@ export function Composer({
     const before = value.slice(0, caret);
 
     // Slash commands only make sense as the first thing in the message.
-    const slash = before.match(/^\/([a-z]*)$/i);
+    const slash = before.match(/^\/([a-zа-яё]*)$/i);
     if (slash) {
       setAc({ kind: "command", start: 0, query: slash[1] });
       setAcCursor(0);
