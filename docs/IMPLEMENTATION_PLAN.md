@@ -118,8 +118,13 @@ target or intentionally manual. Test IDs are mapped to quality gates below.
 
 ## Next step
 
-Step 1 is complete: duplicate case, portable fixture, frontend test harness,
-CI, unified error reporting, background DB/memory/LSP reporting, the
-cancellation/retry contract and Monaco lazy loading are verified. The remaining
-3.96 MB Monaco warning is a documented lazy-asset budget, not hidden by Vite's
-threshold. Step 2 security hardening is now in progress.
+Step 1 test coverage is now closed against its own scope: agent, memory,
+handoff, leases, verification, verify-spec construction and fact provenance
+have Vitest coverage, and the Rust BM25 index has unit tests. The remaining
+Step 1 item is the domain split of `src/lib/store.ts` (one 1,373-line store);
+the tests above are the safety net that split is being done against.
+
+After that, Step 2 security hardening: Keychain-only production secrets,
+canonical workspace containment, trust/read-only policy, backend command
+authorization, CSP and secret-scan tests. Apple Developer Program and
+publication remain untouched until Step 15.

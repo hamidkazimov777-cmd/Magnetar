@@ -160,6 +160,22 @@ Then, in this order — it matters:
 New to the interface? The **`i`** button at the top of the rail turns on hint
 mode: hover any control to learn what it does and when it runs.
 
+### Verifying a change
+
+Five gates, all offline — no API key and no network are needed:
+
+```bash
+npm run typecheck
+npm run test:unit -- --run
+npm run build
+cargo test --manifest-path src-tauri/Cargo.toml
+npm run smoke
+```
+
+The smoke fixture is generated into the OS temp directory; set
+`MAGNETAR_FIXTURE_DIR` to put it somewhere else. Targets and current baseline
+numbers are in [`docs/QUALITY_GATES.md`](docs/QUALITY_GATES.md).
+
 ### Building a release
 
 ```bash

@@ -226,3 +226,172 @@ fn best_snippet(path: &str, terms: &[String]) -> (String, usize) {
     }
     (String::new(), 0)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::MutexGuard;
+
+    /// `INDEX` is process-wide, so the tests that build or search it have to run
+    /// one at a time. Without this they interleave and one test's root replaces
+    /// another's mid-assertion.
+    static SERIAL: Mutex<()> = Mutex::new(());
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    fn serial() -> MutexGuard<'static, ()> {
+        SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// A throwaway workspace. Named per process and per call so a parallel run
+    /// never reuses another test's tree.
+    struct Fixture(std::path::PathBuf);
+
+    impl Fixture {
+        fn new() -> Self {
+            let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let dir = std::env::temp_dir()
+                .join(format!("magnetar-index-{}-{}", std::process::id(), n));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).expect("create fixture");
+            Self(dir)
+        }
+
+        fn write(&self, rel: &str, body: &str) {
+            let path = self.0.join(rel);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).expect("create parent");
+            }
+            std::fs::write(path, body).expect("write file");
+        }
+
+        fn root(&self) -> String {
+            self.0.to_string_lossy().into_owned()
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn tokenize_keeps_identifiers_and_drops_noise() {
+        assert_eq!(tokenize("let user_id = 3;"), vec!["let", "user_id"]);
+        // Single characters carry no signal and the long token is a base64 blob,
+        // not a word anyone searches for.
+        assert!(tokenize("a b c").is_empty());
+        assert!(tokenize(&"x".repeat(41)).is_empty());
+        assert_eq!(tokenize(&"x".repeat(40)).len(), 1);
+        assert_eq!(tokenize("SQLite"), vec!["sqlite"]);
+    }
+
+    #[test]
+    fn binaries_and_lockfiles_are_not_texty() {
+        assert!(is_texty("main.rs"));
+        assert!(is_texty("README"));
+        assert!(is_texty("Cargo.toml"));
+        assert!(!is_texty("logo.PNG"));
+        assert!(!is_texty("package-lock.json.lock"));
+        assert!(!is_texty("vendor.min"));
+    }
+
+    #[test]
+    fn list_files_applies_the_index_skip_rules() {
+        let fx = Fixture::new();
+        fx.write("src/main.rs", "fn main() {}");
+        fx.write("README.md", "docs");
+        fx.write("logo.png", "not really an image");
+        fx.write("node_modules/dep/index.js", "noise");
+        fx.write(".git/config", "noise");
+        fx.write(".hidden/secret.txt", "noise");
+
+        let mut files = list_files(&fx.root()).expect("list");
+        files.sort();
+        assert_eq!(files, vec!["README.md".to_string(), "src/main.rs".to_string()]);
+    }
+
+    #[test]
+    fn list_files_rejects_a_path_that_is_not_a_directory() {
+        let fx = Fixture::new();
+        fx.write("a.txt", "hi");
+        let err = list_files(&fx.0.join("a.txt").to_string_lossy()).expect_err("not a dir");
+        assert!(err.contains("not a directory"));
+    }
+
+    #[test]
+    fn list_files_is_empty_for_an_empty_workspace() {
+        let fx = Fixture::new();
+        assert!(list_files(&fx.root()).expect("list").is_empty());
+    }
+
+    #[test]
+    fn oversized_files_are_skipped() {
+        let fx = Fixture::new();
+        fx.write("big.txt", &"a ".repeat((MAX_FILE_BYTES as usize / 2) + 10));
+        fx.write("small.txt", "small");
+        assert_eq!(list_files(&fx.root()).expect("list"), vec!["small.txt".to_string()]);
+    }
+
+    #[test]
+    fn build_counts_indexed_files_and_distinct_terms() {
+        let _guard = serial();
+        let fx = Fixture::new();
+        fx.write("a.txt", "alpha beta");
+        fx.write("b.txt", "beta gamma");
+        let stats = build(&fx.root()).expect("build");
+        assert_eq!(stats.files, 2);
+        assert_eq!(stats.terms, 3);
+    }
+
+    #[test]
+    fn search_ranks_the_matching_file_and_points_at_the_line() {
+        let _guard = serial();
+        let fx = Fixture::new();
+        fx.write("hit.rs", "// header\nlet rusqlite_conn = open();\n");
+        fx.write("miss.rs", "let unrelated = 1;\n");
+
+        let hits = search(&fx.root(), "rusqlite_conn", 5).expect("search");
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].file.ends_with("hit.rs"));
+        assert_eq!(hits[0].line, 2);
+        assert_eq!(hits[0].snippet, "let rusqlite_conn = open();");
+        assert!(hits[0].score > 0.0);
+    }
+
+    #[test]
+    fn search_returns_nothing_for_an_unknown_or_empty_query() {
+        let _guard = serial();
+        let fx = Fixture::new();
+        fx.write("a.txt", "alpha beta");
+        assert!(search(&fx.root(), "nowhere_at_all", 5).expect("search").is_empty());
+        assert!(search(&fx.root(), "", 5).expect("search").is_empty());
+        // A single character is below the token floor, so it can never match.
+        assert!(search(&fx.root(), "a", 5).expect("search").is_empty());
+    }
+
+    #[test]
+    fn search_honours_the_result_budget() {
+        let _guard = serial();
+        let fx = Fixture::new();
+        for i in 0..5 {
+            fx.write(&format!("f{i}.txt"), "shared_term here");
+        }
+        assert_eq!(search(&fx.root(), "shared_term", 2).expect("search").len(), 2);
+    }
+
+    #[test]
+    fn search_rebuilds_when_the_workspace_changes() {
+        let _guard = serial();
+        let first = Fixture::new();
+        first.write("a.txt", "alpha_marker");
+        assert_eq!(search(&first.root(), "alpha_marker", 5).expect("search").len(), 1);
+
+        let second = Fixture::new();
+        second.write("b.txt", "beta_marker");
+        // The stale index must not answer for a root it was not built from.
+        assert!(search(&second.root(), "alpha_marker", 5).expect("search").is_empty());
+        assert_eq!(search(&second.root(), "beta_marker", 5).expect("search").len(), 1);
+    }
+}

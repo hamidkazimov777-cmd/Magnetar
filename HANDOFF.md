@@ -4780,3 +4780,85 @@ CSP и secret-scan tests. Apple Developer/publication по-прежнему не
   выполнялись.
 
 Рабочее дерево после сборки чистое. Следующая сессия продолжает с Step 2.
+
+### Запись 112 — 2026-08-26 — Claude — Step 1: закрыт разрыв в тестовом покрытии
+
+Проверка предыдущего заявления «Step 1 завершён» показала: все пять гейтов
+зелёные, но три пункта из собственного ТЗ шага не выполнены. Этот коммит
+закрывает два из трёх.
+
+**Что было проверено перед работой** (все прогоны локальные, offline):
+typecheck OK, Vitest 13/13 в 5 файлах, Rust 20/20, `cargo check` без warnings,
+production build OK, `npm run smoke` 4/4, рабочее дерево чистое. То есть
+заявленные гейты действительно проходили — не хватало объёма работ.
+
+**Что сделано**
+
+Frontend-тесты (Vitest 13 → 96 в 12 файлах). Новые файлы:
+
+- `src/lib/agent.test.ts` — восстановление tool call из текста (XML `<invoke>`
+  с восстановлением типов параметров, ReAct, голый/фенсированный вызов),
+  отказ на несуществующий инструмент и на `Final Answer`, `summarizeArgs`,
+  `needsConfirm` против prefs/trustCommands;
+- `src/lib/memory.test.ts` — `buildProjectMemory` (скрытый проект, отсутствие
+  root, рендер фактов с provenance, отброс refuted, legacy-fallback только до
+  миграции), `buildGenerationContext`, `cheapModel` (пин, эвристика,
+  пропуск denied, null вместо догадки);
+- `src/lib/handoff.test.ts` — `buildOutgoing` (хвост после summary, пропавший
+  `summaryUpToId`, смена модели, скрытый проект, подграф знаний и его сбой),
+  `maybeSummarize` (порог, покрытый диапазон, пустой ответ, сбой провайдера,
+  фоновая модель);
+- `src/lib/verify.test.ts` — `verifyFact` (grep verified/stale/refuted, поиск
+  по проекту до опровержения, недоступный поиск, битый паттерн, check-спека),
+  `verifyProjectFacts` (тальи, запись только изменённых, постановка в
+  divergence queue, отсутствие повторной постановки);
+- `src/lib/verifyspec.test.ts` — градация кандидатов, срезание пунктуации,
+  экранирование, отказ строить спеку, которую нельзя честно проверить;
+- `src/lib/facts.test.ts` — факт рождается unverified, `parseVerify` на
+  битом/неполном JSON, рендер provenance и порядок verified-первыми;
+- `src/lib/leases.test.ts` — первый claim побеждает, нормализация путей,
+  отказ по одному пересечению, освобождение файлов отклонённой задачи.
+
+Rust-тесты (20 → 31): `src-tauri/src/index.rs` получил `mod tests` —
+`tokenize`, `is_texty`, `list_files` (skip-dirs, dotfiles, бинарники,
+не-директория, пустой workspace, файл больше `MAX_FILE_BYTES`), `build`
+(счёт файлов и терминов), `search` (ранжирование + номер строки сниппета,
+пустой/неизвестный запрос, `top_k`, пересборка при смене root). Глобальный
+`INDEX` — process-wide, поэтому тесты, трогающие его, сериализованы через
+собственный мьютекс; фикстуры уникальны по pid+счётчику и удаляются в `Drop`.
+
+**Изменённые файлы**: 7 новых тестовых файлов в `src/lib/`, `src-tauri/src/index.rs`,
+`README.md`, `CHANGELOG.md`, `docs/QUALITY_GATES.md`, `docs/IMPLEMENTATION_PLAN.md`,
+`HANDOFF.md`.
+
+**Гейты после работы**: typecheck OK, Vitest 96/96 в 12 файлах, Rust 31/31,
+`cargo check --all-targets` без warnings, production build OK (единственный
+известный lazy-Monaco asset warning), `npm run smoke` 4/4.
+
+**Найдено по ходу, не исправлено**
+
+- `src/lib/store.ts` — по-прежнему один `useStore` на 1373 строки. Доменный
+  раскол не сделан; это последний невыполненный пункт Step 1 и следующая задача.
+- Крупная бизнес-логика в UI осталась в `ChatView.tsx` (799), `SettingsDialog.tsx`
+  (628), `StudioView.tsx` (624).
+- `resolveLeases` не резервирует файлы отклонённой задачи — третья задача может
+  занять файл, из-за которого вторую отклонили. Поведение зафиксировано тестом
+  как есть; является ли оно желаемым, требует решения.
+- `SubscriptionsView.tsx` открывает `WebviewWindow` на сайты провайдеров, тогда
+  как `docs/IMPLEMENTATION_PLAN.md` объявляет web-автоматизацию вне области.
+  Требует явного решения до релиза.
+- CHANGELOG использовал секцию «Documented gaps» как журнал выполненных работ;
+  переписан в Added / Changed / Known gaps.
+
+**Следующий шаг**: доменный раскол `src/lib/store.ts` отдельным коммитом,
+опираясь на добавленную тестовую сетку. Затем Step 2 security hardening
+(Keychain-only, containment, trust/read-only, backend auth, CSP, secret scan).
+Apple Developer Program не трогать до Step 15.
+
+**Команды для продолжения**
+
+```bash
+npm run typecheck && npx vitest run
+cargo test --manifest-path src-tauri/Cargo.toml
+npm run build && npm run smoke
+```
