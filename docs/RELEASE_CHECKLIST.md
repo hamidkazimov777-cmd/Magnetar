@@ -44,3 +44,22 @@ Current status: development build only. No public release is claimed.
 Apple Developer Program and Apple Account actions are intentionally excluded
 until every preceding checkbox is green and the user explicitly confirms the
 publication step.
+
+## Verified only on a running signed build
+
+These Step 2 controls are covered by unit tests but not end to end, because
+they need a signed app and a person. The first launch of the next signed build
+must confirm each, and a failure here is a release blocker:
+
+- [ ] Keychain migration: existing keys move out of `secrets.json`, the
+      password prompt appears at most once per key, and "Always Allow" sticks
+      across a rebuild signed with the same identity.
+- [ ] Settings reports "Key in Keychain", not the debug fallback.
+- [ ] Trust banner appears for a folder opened for the first time; writes and
+      commands are refused until it is dismissed by trusting the folder.
+- [ ] Read-only mode actually refuses a write and a shell command.
+- [ ] Path grant: an agent write outside the open folder raises the native
+      dialog, and denying it refuses the write.
+- [ ] Attachment picker and drag-and-drop both attach an image.
+- [ ] `audit.log` exists, is mode 0600, and contains a redacted command line and
+      a contacted host.

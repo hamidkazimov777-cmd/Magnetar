@@ -104,8 +104,8 @@ configured by the user or to a local provider.
    scoped and auditable.
 4. Enforce read/write/execute/network capabilities in Rust commands, not just
    in React (read/write/execute done; network is not yet a declared capability).
-   Read-only mode is a backend decision (done); repository trust is not yet
-   implemented.
+   Read-only mode and repository trust are backend decisions (done). Outbound
+   network is recorded rather than gated — see below.
 5. Run shell commands with bounded timeout, process group cancellation,
    output budgets, non-interactive defaults, confirmation for risky commands,
    and an append-only local audit record without sensitive arguments.
@@ -115,7 +115,29 @@ configured by the user or to a local provider.
 7. Treat model output and repository content as untrusted input (done for tool
    output: see below). Confirmation before privilege changes and credential
    access is enforced by path containment, trust and the secret-path guard;
-   outbound network use is not yet a declared capability.
+   outbound network is recorded rather than gated — see below.
+
+## Outbound network
+
+Magnetar is BYOK, so which endpoints may be contacted is the user's decision,
+not a list this app gets to police: a local model on an unusual port is exactly
+as legitimate as a well-known provider. Gating it would either forbid the
+product's own premise or become a rubber stamp.
+
+What can honestly be offered is visibility. `build_provider` is the single
+place every adapter is constructed, so each host reached is written to the
+audit log once per run — host and port only, never the path or query, because a
+provider URL routinely carries a key in its query string and this record has to
+be safe to read.
+
+## Embedded browser isolation
+
+The subscription bridge opens provider sites in their own webview windows.
+Tauri v2 scopes capabilities by window label and the capability file lists only
+`main`, so those windows inherit nothing and no remote origin is granted IPC. A
+test asserts both, since the failure would be silent and total: a wildcard or a
+`remote` allowance would hand a third-party page the same backend the agent
+uses.
 
 ## Instructions hidden in content
 

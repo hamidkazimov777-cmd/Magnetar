@@ -10,6 +10,7 @@
 //! is sent anywhere: this is a log for the person whose machine it is.
 
 use once_cell::sync::Lazy;
+use std::collections::HashSet;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -18,6 +19,11 @@ const FILE_NAME: &str = "audit.log";
 const ROTATE_AT_BYTES: u64 = 2 * 1024 * 1024;
 
 static DIR: Lazy<Mutex<Option<PathBuf>>> = Lazy::new(|| Mutex::new(None));
+
+/// Hosts already recorded this run, so a long conversation does not write one
+/// line per message. What the record is for is the set of places this machine
+/// talked to, not the count.
+static SEEN_HOSTS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
 
 /// Called once from `setup` with the app data directory, like the key store.
 pub fn init(app_dir: &std::path::Path) {
@@ -156,6 +162,45 @@ pub fn record(kind: &str, cwd: &str, command: &str, outcome: &str) {
     }
 }
 
+/// Note that the app is about to talk to a host.
+///
+/// Magnetar is BYOK, so "which endpoints may be contacted" is the user's
+/// decision, not a list this app gets to police — a local model on a strange
+/// port is exactly as legitimate as a well-known provider. What can honestly be
+/// offered is visibility: the record says where this machine reached, so nobody
+/// has to take the claim on trust.
+pub fn record_destination(url: &str) {
+    let host = host_of(url);
+    if host.is_empty() {
+        return;
+    }
+    {
+        let mut seen = match SEEN_HOSTS.lock() {
+            Ok(s) => s,
+            Err(e) => e.into_inner(),
+        };
+        if !seen.insert(host.clone()) {
+            return;
+        }
+    }
+    record("network", "", &host, "endpoint contacted");
+}
+
+/// Host and port only. A full URL can carry a key in a query string, and this
+/// record exists to be safe to read.
+fn host_of(url: &str) -> String {
+    let after_scheme = url.split("://").nth(1).unwrap_or(url);
+    after_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("")
+        // Some endpoints embed credentials as user:pass@host.
+        .rsplit('@')
+        .next()
+        .unwrap_or("")
+        .to_string()
+}
+
 fn rotate_if_large(path: &std::path::Path) {
     let too_big = std::fs::metadata(path).map(|m| m.len() >= ROTATE_AT_BYTES).unwrap_or(false);
     if too_big {
@@ -220,6 +265,25 @@ mod tests {
     fn a_marker_with_no_value_is_left_alone() {
         assert_eq!(redact("grep -i token"), "grep -i token");
         assert_eq!(redact("echo password"), "echo password");
+    }
+
+    #[test]
+    fn only_the_host_is_recorded_never_the_path_or_query() {
+        // A full URL routinely carries a key in the query string, and this
+        // record exists to be safe to read.
+        assert_eq!(host_of("https://api.openai.com/v1/chat?key=sk-secret"), "api.openai.com");
+        assert_eq!(host_of("http://localhost:11434/api/generate"), "localhost:11434");
+        assert_eq!(host_of("https://user:pass@example.com/x"), "example.com");
+        assert_eq!(host_of(""), "");
+    }
+
+    #[test]
+    fn a_host_is_recorded_once_per_run_not_once_per_message() {
+        // The record is for the set of places this machine reached, not a
+        // counter that buries it under one line per message.
+        let mut seen = HashSet::new();
+        assert!(seen.insert("api.openai.com".to_string()));
+        assert!(!seen.insert("api.openai.com".to_string()));
     }
 
     #[test]

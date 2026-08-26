@@ -206,6 +206,10 @@ pub fn build_provider(
     conn: &Connection,
     api_key: String,
 ) -> Result<Box<dyn Provider>, ProviderError> {
+    // Every outbound provider call is built here, which makes it the one place
+    // that can honestly say where this machine reached.
+    crate::audit::record_destination(&conn.base_url);
+
     match conn.kind {
         ProviderKind::OpenaiCompat => Ok(Box::new(
             openai_compat::OpenAiCompat::new(conn.clone(), api_key),

@@ -29,6 +29,8 @@
   are dropped when the folder changes.
 - `grep`, `run_bash` and `git` with no directory given now act on the open
   project rather than whatever directory the app was launched from.
+- Every provider host contacted is recorded once per run in the audit log, host
+  and port only.
 - Tool results that appear to address the model — attempts to override its
   instructions, reassign its role, hide activity from the user or exfiltrate a
   key — are marked as data before the agent reads them, and the system prompt

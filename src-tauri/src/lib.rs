@@ -223,6 +223,26 @@ mod config_tests {
     }
 
     #[test]
+    fn the_embedded_browser_windows_inherit_nothing() {
+        // The subscription bridge opens provider sites in their own webview
+        // windows. Capabilities in Tauri v2 are scoped by window label, so
+        // listing only "main" is what keeps a remote page from reaching the
+        // app's commands. A wildcard here, or a `remote` allowance, would hand
+        // chat.example.com the same backend the agent uses.
+        let raw = include_str!("../capabilities/default.json");
+        let conf: serde_json::Value = serde_json::from_str(raw).expect("capabilities parse");
+
+        let windows: Vec<&str> = conf["windows"]
+            .as_array()
+            .expect("windows is a list")
+            .iter()
+            .map(|v| v.as_str().unwrap_or_default())
+            .collect();
+        assert_eq!(windows, vec!["main"]);
+        assert!(conf.get("remote").is_none(), "no remote origin may be granted IPC");
+    }
+
+    #[test]
     fn the_policy_denies_by_default() {
         assert_eq!(directive("default-src"), "'self'");
         assert_eq!(directive("object-src"), "'none'");

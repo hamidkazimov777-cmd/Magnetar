@@ -91,7 +91,7 @@ target or intentionally manual. Test IDs are mapped to quality gates below.
 | Provider-neutral memory / provenance | ✅ core identity | — | ◐ | ◐ | ◐ | Facts cite source, verification state and relevance; switching provider preserves canon. `MEM-01` | P0 |
 | Decisions / divergence queue | ✅ | — | ◐ | ◐ | — | Contradictions queue without interrupting work and resolve with audit trail. `MEM-02` | P0 |
 | Local-first / BYOK / no account | ✅ intended | — | ◐ | ◐ | ◐ | Offline UI/index works; only configured endpoints receive network traffic. `SEC-01` | P0 |
-| Secrets / path policy / repository trust | ◐ frontend gates | — | ◐ | ◐ | ◐ | Keychain, canonical containment, trust/read-only modes and backend auth tests pass. `SEC-02` | P0 |
+| Secrets / path policy / repository trust | ✅ backend-enforced | — | ◐ | ◐ | ◐ | Keychain, canonical containment, trust/read-only modes and backend auth tests pass. `SEC-02` | P0 |
 | Onboarding / transparent context | ◐ partial | ◐ | ✅ | ✅ | ✅ | First-run flow shows provider, model, context, cost, checkpoint and rollback. `UX-01` | P1 |
 | Direct free macOS distribution | □ unsigned/local scripts | — | — | — | — | Universal signed/notarized artifact installs on clean Mac without account/paywall. `REL-01` | P0 |
 
@@ -101,7 +101,7 @@ target or intentionally manual. Test IDs are mapped to quality gates below.
 |---:|---|---|
 | 0 | Baseline, matrix, quality/security/release docs | This commit; baseline commands and gaps recorded |
 | 1 | Warnings, frontend test harness, error reporting, smoke portability, CI | Clean typecheck/tests and reviewed build output; Monaco is lazy and its asset budget is explicit |
-| 2 | Keychain, containment, trust/read-only, permission model, CSP, secret scan | Security tests and clean-machine review |
+| 2 | Keychain, containment, trust/read-only, permission model, CSP, secret scan | **Done** except the clean-machine review, which belongs to Step 14 |
 | 3 | Canon migrations, FKs, cleanup, backup/import, integrity/recovery | Migration and crash-recovery tests |
 | 4 | Professional editor workflow and settings/keybindings | `IDE-*` acceptance suite |
 | 5 | LSP/parser layer and diagnostics | `LSP-*` acceptance suite for four languages plus graceful fallback |
@@ -118,12 +118,21 @@ target or intentionally manual. Test IDs are mapped to quality gates below.
 
 ## Next step
 
-Step 1 is complete. Its final item — the domain split of `src/lib/store.ts` —
-landed as ten slices under `src/lib/stores/`, with `store.ts` reduced to
-composition and persistence. The cross-domain actions that a split could break
-silently are covered by `src/lib/store.test.ts`.
+Step 2 is complete in code and tests. What it delivered: a deny-by-default CSP,
+backend path containment with user-granted exceptions, shell and Git under the
+same gate with an audit record, one policy for file access with the fs
+capability removed, Keychain-only secrets in release builds, read-only mode,
+repository trust, secret scanning in smoke and CI, prompt-injection framing, and
+outbound-host visibility.
 
-Step 2 security hardening is next: Keychain-only production secrets, canonical
-workspace containment, trust/read-only policy, backend command authorization,
-CSP and secret-scan tests. Apple Developer Program and publication remain
-untouched until Step 15.
+Two things are deliberately outstanding and neither belongs to Step 2: the
+clean-machine security review is a Step 14 release gate, and several controls
+are verified by unit tests rather than end to end because they need a running
+signed app — the native grant dialog, the Keychain migration, the trust banner,
+and the attachment picker. The first launch of the next signed build is the
+pass that closes those, and it is recorded in the release checklist.
+
+Step 3 is next: memory_facts and decisions as the single source of truth,
+migration of legacy prose fields, schema migrations and foreign keys, cleanup of
+deleted-project data, backup/export/import, and an integrity check with a
+recovery flow.
