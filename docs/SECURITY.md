@@ -16,9 +16,12 @@ configured by the user or to a local provider.
   the code can migrate legacy Keychain entries once. This is weaker than the
   required production posture and must be replaced in Step 2.
 - SQLite stores provider metadata but should not store credential material.
-- File and shell mutations have frontend confirmation preferences. Frontend
-  confirmation is not a sufficient authorization boundary because a client can
-  be tampered with; backend enforcement is a Step 2 requirement.
+- File paths are now authorized in the backend (see below). Shell commands are
+  not: `tool_run_bash` still receives a command string and runs it, so anything
+  containment forbids through a file tool remains reachable through a shell
+  command. Bringing bash under the same policy is the next Step 2 slice, and
+  until it lands path containment should be read as a meaningful narrowing, not
+  a closed boundary.
 - `read_file` currently reads the complete file before slicing, so large-file
   memory use is a known risk.
 - Path resolution now exists as a tested Rust primitive (`src-tauri/src/paths.rs`):
@@ -26,8 +29,12 @@ configured by the user or to a local provider.
   a target that does not exist yet still resolves, and reports whether the result
   lands inside the workspace root. Symlinks out of the tree, parent traversal and
   a sibling directory sharing the root's name prefix are all covered by tests.
-  It is not yet called by the file tools — that wiring, the backend-held
-  workspace root and the grant record for outside paths are the next slice.
+  It is now enforced: the backend holds the workspace root (set by
+  `set_workspace_root`, not readable or movable from the store), every file
+  command resolves through it, and a path landing outside requires a grant.
+  Grants are asked for in a **native dialog drawn by Rust**, so a compromised
+  webview can neither skip the question nor answer it, and are kept in memory
+  only — a grant never survives a restart or a change of folder.
 - Repository trust, read-only mode and per-capability authorization are still
   absent from the backend.
 - A restrictive CSP is now configured in `src-tauri/tauri.conf.json` and guarded

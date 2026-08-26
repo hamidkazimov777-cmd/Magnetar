@@ -10,12 +10,14 @@ use crate::keychain;
 use crate::providers::{
     build_provider, AgentStep, ChatParams, Connection, ModelInfo, StreamEvent, ToolDef,
 };
+use crate::paths::{self, Decision as PathDecision};
 use crate::tools;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::ipc::Channel;
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 /// Live stream cancellation flags, keyed by a frontend-supplied request id.
 static CANCELS: Lazy<Mutex<HashMap<String, Arc<AtomicBool>>>> =
@@ -705,33 +707,101 @@ pub fn delete_messages_from(session_id: String, message_id: String) -> Result<()
     canon::delete_messages_from(&session_id, &message_id)
 }
 
+
+// ---- Path authorization ----------------------------------------------------
+
+/// Tell the backend which folder is open. Containment is decided here rather
+/// than in the store: the webview is the side that gets compromised, and a
+/// boundary it can move is not a boundary.
+#[tauri::command]
+pub fn set_workspace_root(root: Option<String>) {
+    paths::set_workspace_root(root);
+}
+
+/// Resolve a requested path, and when it lands outside the open folder, ask
+/// the user.
+///
+/// The dialog is drawn by the backend on purpose. The frontend already has its
+/// own confirmation flow, but a confirmation the webview renders is one a
+/// compromised webview can skip — and the strings being confirmed usually came
+/// from a model in the first place. This one the page cannot draw, cannot
+/// answer and cannot bypass.
+///
+/// The workspace root is deliberately not a wall: work outside it is allowed,
+/// it just has to be the user who allows it.
+async fn ensure_allowed(app: &tauri::AppHandle, requested: &str) -> Result<std::path::PathBuf, String> {
+    match paths::authorize(requested)? {
+        PathDecision::Allowed(p) => Ok(p),
+        PathDecision::NeedsGrant(p) => {
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            app.dialog()
+                .message(format!(
+                    "{}\n\nAllow Magnetar to work there?",
+                    paths::outside_message(&p)
+                ))
+                .title("Work outside the project folder?")
+                .kind(MessageDialogKind::Warning)
+                .buttons(MessageDialogButtons::OkCancelCustom(
+                    "Allow".into(),
+                    "Deny".into(),
+                ))
+                .show(move |granted| {
+                    let _ = tx.send(granted);
+                });
+            // A dialog that cannot report an answer is not an approval.
+            if rx.await.unwrap_or(false) {
+                paths::grant(&p);
+                Ok(p)
+            } else {
+                Err(format!("denied: {}", paths::outside_message(&p)))
+            }
+        }
+    }
+}
+
 // ---- Agent tools -----------------------------------------------------------
 
 #[tauri::command]
 pub async fn tool_read_file(
+    app: tauri::AppHandle,
     path: String,
     offset: Option<usize>,
     limit: Option<usize>,
 ) -> Result<tools::ReadResult, String> {
-    blocking(move || tools::read_file(&path, offset, limit)).await
+    let path = ensure_allowed(&app, &path).await?;
+    blocking(move || tools::read_file(&path.to_string_lossy(), offset, limit)).await
 }
 
 #[tauri::command]
-pub async fn tool_list_dir(path: String) -> Result<Vec<tools::DirEntry>, String> {
-    blocking(move || tools::list_dir(&path)).await
+pub async fn tool_list_dir(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<Vec<tools::DirEntry>, String> {
+    let path = ensure_allowed(&app, &path).await?;
+    blocking(move || tools::list_dir(&path.to_string_lossy())).await
 }
 
 #[tauri::command]
 pub async fn tool_grep(
+    app: tauri::AppHandle,
     pattern: String,
     path: Option<String>,
 ) -> Result<Vec<tools::GrepHit>, String> {
-    blocking(move || tools::grep(&pattern, path.as_deref().unwrap_or("."))).await
+    // "." used to mean the process working directory, which is wherever the
+    // app happened to be launched from — not the project. Resolving it against
+    // the workspace root is both the containment fix and the correct default.
+    let root = ensure_allowed(&app, path.as_deref().unwrap_or(".")).await?;
+    blocking(move || tools::grep(&pattern, &root.to_string_lossy())).await
 }
 
 #[tauri::command]
-pub async fn tool_write_file(path: String, content: String) -> Result<usize, String> {
-    blocking(move || tools::write_file(&path, &content)).await
+pub async fn tool_write_file(
+    app: tauri::AppHandle,
+    path: String,
+    content: String,
+) -> Result<usize, String> {
+    let path = ensure_allowed(&app, &path).await?;
+    blocking(move || tools::write_file(&path.to_string_lossy(), &content)).await
 }
 
 #[tauri::command]
@@ -740,17 +810,20 @@ pub async fn list_project_files(root: String) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-pub async fn tool_delete_file(path: String) -> Result<(), String> {
-    blocking(move || tools::delete_file(&path)).await
+pub async fn tool_delete_file(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let path = ensure_allowed(&app, &path).await?;
+    blocking(move || tools::delete_file(&path.to_string_lossy())).await
 }
 
 #[tauri::command]
 pub async fn tool_edit_file(
+    app: tauri::AppHandle,
     path: String,
     old_string: String,
     new_string: String,
 ) -> Result<tools::EditResult, String> {
-    blocking(move || tools::edit_file(&path, &old_string, &new_string)).await
+    let path = ensure_allowed(&app, &path).await?;
+    blocking(move || tools::edit_file(&path.to_string_lossy(), &old_string, &new_string)).await
 }
 
 #[tauri::command]
@@ -763,11 +836,12 @@ pub async fn tool_run_bash(
 }
 
 #[tauri::command]
-pub fn tool_attach_file(path: String) -> Result<String, String> {
-    if std::path::Path::new(&path).exists() {
-        Ok(format!("File {} successfully attached.", path))
+pub async fn tool_attach_file(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    let path = ensure_allowed(&app, &path).await?;
+    if path.exists() {
+        Ok(format!("File {} successfully attached.", path.display()))
     } else {
-        Err(format!("File not found: {}", path))
+        Err(format!("File not found: {}", path.display()))
     }
 }
 
@@ -777,7 +851,8 @@ pub fn tool_kill_bash(pid: Option<u32>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn extract_pdf_text(path: String) -> Result<String, String> {
+pub async fn extract_pdf_text(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    let path = ensure_allowed(&app, &path).await?;
     blocking(move || {
         pdf_extract::extract_text(&path).map_err(|e| format!("Failed to extract PDF: {}", e))
     })
@@ -786,8 +861,9 @@ pub async fn extract_pdf_text(path: String) -> Result<String, String> {
 
 /// Full file read for the code editor (no size cap).
 #[tauri::command]
-pub async fn editor_read_file(path: String) -> Result<String, String> {
-    blocking(move || tools::read_text(&path)).await
+pub async fn editor_read_file(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    let path = ensure_allowed(&app, &path).await?;
+    blocking(move || tools::read_text(&path.to_string_lossy())).await
 }
 
 // ---- Codebase index (BM25 retrieval) --------------------------------------

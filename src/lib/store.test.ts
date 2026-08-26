@@ -10,6 +10,14 @@ vi.mock("./db", () => ({
   }),
 }));
 
+// The workspace slice tells the backend which folder is open; that call is the
+// only reason the store touches the API layer.
+vi.mock("./api", () => ({
+  HAS_BACKEND: false,
+  api: { setWorkspaceRoot: vi.fn(async () => {}) },
+}));
+
+const { api } = await import("./api");
 const { useStore } = await import("./store");
 const { NEW_CHAT_TITLE } = await import("./store");
 
@@ -84,6 +92,19 @@ beforeEach(reset);
    domains still do so. These are exactly those actions. */
 
 describe("the folder is the unit of work", () => {
+  it("tells the backend which folder to contain paths against", () => {
+    const setWorkspaceRoot = vi.mocked(api.setWorkspaceRoot);
+    setWorkspaceRoot.mockClear();
+
+    useStore.getState().setWorkspaceRoot("/repo");
+    expect(setWorkspaceRoot).toHaveBeenCalledWith("/repo");
+
+    // Closing has to clear it too, or the last folder keeps authorising work
+    // after the user has left it.
+    useStore.getState().closeFolder();
+    expect(setWorkspaceRoot).toHaveBeenLastCalledWith(undefined);
+  });
+
   it("closing it clears the tabs, the unreviewed edits and the project", () => {
     const st = useStore.getState();
     st.setWorkspaceRoot("/repo");

@@ -22,9 +22,13 @@
 
 ### Security
 
-- Added a tested path-containment primitive that resolves `.`/`..` and symlinks
-  before deciding whether a path lands inside the workspace, including paths
-  that do not exist yet. Not yet enforced by the file tools.
+- Path containment is now enforced in the backend: the workspace root is held
+  in Rust, every file command resolves `.`/`..` and symlinks before acting, and
+  a path outside the open folder requires the user's approval in a native
+  dialog the webview cannot draw, answer or skip. Grants live in memory only and
+  are dropped when the folder changes.
+- `grep` with no path now searches the open project rather than whatever
+  directory the app was launched from.
 
 - Replaced `csp: null` with a deny-by-default content security policy, and
   guarded it with Rust tests so it cannot silently weaken. Verified against the

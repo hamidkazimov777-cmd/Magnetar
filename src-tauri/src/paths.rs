@@ -19,13 +19,10 @@
 //! either way, because `../../..` and a symlink pointing out of the tree have
 //! to be seen for what they are before anyone can decide anything about them.
 
-// Wired into the file tools in the next commit, together with the backend-held
-// workspace root and the grant record for outside paths. Landing the primitive
-// with its tests first keeps that change reviewable instead of arriving as one
-// large patch that mixes policy with plumbing.
-#![allow(dead_code)]
-
+use once_cell::sync::Lazy;
+use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
+use std::sync::Mutex;
 
 /// What a requested path turned out to be.
 #[derive(Debug, PartialEq, Eq)]
@@ -134,20 +131,98 @@ pub fn locate(root: &str, requested: &str) -> Result<Location, String> {
     })
 }
 
-/// Resolve a path that must be inside the workspace, refusing anything else.
+/* --------------------------------------------------------------------------
+   THE ROOT, AND WHAT THE USER HAS ALLOWED PAST IT
+
+   Both of these live in Rust rather than in the store. A containment check the
+   frontend can configure is not a containment check: the webview is the side
+   that gets compromised, and a grant it can mint for itself protects nobody.
+   -------------------------------------------------------------------------- */
+
+static WORKSPACE_ROOT: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
+
+/// Paths the user has explicitly allowed work outside the workspace on.
 ///
-/// The error names the resolved location rather than the spelling that was
-/// asked for: when a symlink or a `..` chain is what moved the target, the
-/// original string tells the reader nothing about why it was refused.
-pub fn require_inside(root: &str, requested: &str) -> Result<PathBuf, String> {
-    match locate(root, requested)? {
-        Location::Inside(p) => Ok(p),
-        Location::Outside(p) => Err(format!(
-            "outside the workspace: {} resolves to {} (an explicit grant is required)",
-            requested,
-            p.display()
-        )),
+/// Deliberately not persisted. A grant that survives a restart is a grant
+/// nobody remembers giving, and it would sit there authorising a folder the
+/// user approved once, weeks ago, for one file.
+static GRANTS: Lazy<Mutex<HashSet<PathBuf>>> = Lazy::new(|| Mutex::new(HashSet::new()));
+
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    // A poisoned lock here means another thread panicked mid-update. Refusing
+    // to work after that would disable the file tools entirely; the state is a
+    // path string and a set of paths, and neither can be left half-written.
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Point containment at a folder, or clear it when the folder is closed.
+/// Changing workspace drops every grant: they were given about the old one.
+pub fn set_workspace_root(root: Option<String>) {
+    let mut current = lock(&WORKSPACE_ROOT);
+    if current.as_deref() != root.as_deref() {
+        lock(&GRANTS).clear();
     }
+    *current = root;
+}
+
+pub fn workspace_root() -> Option<String> {
+    lock(&WORKSPACE_ROOT).clone()
+}
+
+/// Record that the user allowed this exact resolved location. A grant on a
+/// directory covers what is under it, so approving a folder once does not mean
+/// answering a dialog per file inside it.
+pub fn grant(resolved: &Path) {
+    lock(&GRANTS).insert(resolved.to_path_buf());
+}
+
+fn is_granted(resolved: &Path) -> bool {
+    lock(&GRANTS)
+        .iter()
+        .any(|granted| resolved == granted || resolved.starts_with(granted))
+}
+
+/// What the backend should do about a requested path.
+#[derive(Debug)]
+pub enum Decision {
+    /// Inside the workspace, or already covered by a grant.
+    Allowed(PathBuf),
+    /// Outside, and nobody has approved it yet. The caller must ask the user
+    /// — and must ask them, not the webview that made the request.
+    NeedsGrant(PathBuf),
+}
+
+/// Resolve a requested path and decide whether work on it may proceed.
+///
+/// With no workspace open there is nothing to contain against, so the path is
+/// allowed once resolved: refusing would make the app useless before a folder
+/// is chosen, and the resolution still strips `..` and follows symlinks.
+pub fn authorize(requested: &str) -> Result<Decision, String> {
+    let Some(root) = workspace_root() else {
+        let resolved = resolve_existing_prefix(&lexically_normalize(Path::new(requested)));
+        if requested.trim().is_empty() {
+            return Err("empty path".into());
+        }
+        return Ok(Decision::Allowed(resolved));
+    };
+
+    let located = locate(&root, requested)?;
+    let resolved = located.path().to_path_buf();
+    Ok(if located.is_inside() || is_granted(&resolved) {
+        Decision::Allowed(resolved)
+    } else {
+        Decision::NeedsGrant(resolved)
+    })
+}
+
+/// What the user is asked about, and what a refusal says afterwards.
+///
+/// It names the resolved location rather than the spelling that was requested:
+/// when a symlink or a chain of `..` is what moved the target, the original
+/// string tells the reader nothing about why they are being asked. Someone
+/// approving access needs to see the real destination.
+pub fn outside_message(resolved: &Path) -> String {
+    format!("{} is outside the open project folder", resolved.display())
 }
 
 #[cfg(test)]
@@ -224,7 +299,7 @@ mod tests {
         assert!(!loc.is_inside());
         assert!(!loc.path().to_string_lossy().contains(".."));
 
-        assert!(require_inside(&fx.root(), "../secrets.json").is_err());
+        assert!(!locate(&fx.root(), "../secrets.json").expect("locate").is_inside());
     }
 
     #[test]
@@ -246,9 +321,11 @@ mod tests {
         assert!(!loc.is_inside(), "a link out of the workspace is not inside it");
         assert_eq!(loc.path(), secret);
 
-        let err = require_inside(&fx.root(), "link.txt").expect_err("refused");
-        // The message must name where it actually lands, not the spelling.
-        assert!(err.contains("secret.txt"));
+        // What the user is asked about must name where it actually lands, not
+        // the spelling that was requested.
+        let asked = outside_message(loc.path());
+        assert!(asked.contains("secret.txt"));
+        assert!(!asked.contains("link.txt"));
     }
 
     #[test]
@@ -258,7 +335,9 @@ mod tests {
         outside.write("nested/target.txt", "x");
         std::os::unix::fs::symlink(outside.0.join("nested"), fx.0.join("escape")).expect("symlink");
 
-        assert!(require_inside(&fx.root(), "escape/target.txt").is_err());
+        assert!(!locate(&fx.root(), "escape/target.txt")
+            .expect("locate")
+            .is_inside());
     }
 
     #[test]
@@ -307,5 +386,87 @@ mod tests {
         let fx = Fixture::new();
         assert!(locate(&fx.root(), "   ").is_err());
         assert!(locate("/no/such/workspace/anywhere", "file.txt").is_err());
+    }
+
+    /// The root and the grant set are process-wide, so the tests that touch
+    /// them run one at a time.
+    static SERIAL: Mutex<()> = Mutex::new(());
+
+    fn serial() -> std::sync::MutexGuard<'static, ()> {
+        SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn allowed(d: &Decision) -> bool {
+        matches!(d, Decision::Allowed(_))
+    }
+
+    #[test]
+    fn without_a_workspace_there_is_nothing_to_contain_against() {
+        let _guard = serial();
+        set_workspace_root(None);
+        assert!(allowed(&authorize("/etc/hosts").expect("authorize")));
+        assert!(authorize("  ").is_err());
+        set_workspace_root(None);
+    }
+
+    #[test]
+    fn inside_is_allowed_and_outside_asks_first() {
+        let _guard = serial();
+        let fx = Fixture::new();
+        fx.write("src/main.rs", "");
+        set_workspace_root(Some(fx.root()));
+
+        assert!(allowed(&authorize("src/main.rs").expect("authorize")));
+        assert!(matches!(
+            authorize("../elsewhere.txt").expect("authorize"),
+            Decision::NeedsGrant(_)
+        ));
+        set_workspace_root(None);
+    }
+
+    #[test]
+    fn a_grant_covers_the_folder_it_was_given_for() {
+        let _guard = serial();
+        let fx = Fixture::new();
+        let outside = Fixture::new();
+        outside.write("nested/file.txt", "");
+        set_workspace_root(Some(fx.root()));
+
+        let target = outside.0.join("nested/file.txt");
+        assert!(matches!(
+            authorize(&target.to_string_lossy()).expect("authorize"),
+            Decision::NeedsGrant(_)
+        ));
+
+        grant(&outside.0);
+        assert!(allowed(&authorize(&target.to_string_lossy()).expect("authorize")));
+        // A sibling of the granted folder is not covered by it.
+        let sibling = format!("{}-other/file.txt", outside.root());
+        assert!(matches!(
+            authorize(&sibling).expect("authorize"),
+            Decision::NeedsGrant(_)
+        ));
+        set_workspace_root(None);
+    }
+
+    #[test]
+    fn changing_workspace_forgets_every_grant() {
+        let _guard = serial();
+        let fx = Fixture::new();
+        let outside = Fixture::new();
+        let target = outside.write("file.txt", "");
+        set_workspace_root(Some(fx.root()));
+        grant(&outside.0);
+        assert!(allowed(&authorize(&target.to_string_lossy()).expect("authorize")));
+
+        // Opening another folder must not carry the previous folder's
+        // permissions into it.
+        let next = Fixture::new();
+        set_workspace_root(Some(next.root()));
+        assert!(matches!(
+            authorize(&target.to_string_lossy()).expect("authorize"),
+            Decision::NeedsGrant(_)
+        ));
+        set_workspace_root(None);
     }
 }

@@ -108,6 +108,7 @@ pub fn run() {
             commands::tool_edit_file,
             commands::tool_run_bash,
             commands::tool_kill_bash,
+            commands::set_workspace_root,
             commands::tool_attach_file,
             commands::extract_pdf_text,
             commands::editor_read_file,

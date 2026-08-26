@@ -234,6 +234,12 @@ export const api = {
       "tool_read_file",
       { path, offset: offset ?? null, limit: limit ?? null },
     ),
+  /** Tell the backend which folder is open, so path containment has something
+   *  to contain against. A no-op outside the Tauri shell. */
+  setWorkspaceRoot: (root: string | undefined) =>
+    HAS_BACKEND
+      ? tauriInvoke<void>("set_workspace_root", { root: root ?? null })
+      : Promise.resolve(),
   toolListDir: (path: string) =>
     invoke<{ name: string; isDir: boolean }[]>("tool_list_dir", { path }),
   toolGrep: (pattern: string, path?: string) =>

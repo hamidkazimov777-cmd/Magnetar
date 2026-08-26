@@ -1,3 +1,5 @@
+import { api } from "../api";
+import { reportPromise } from "../errors";
 import type { Slice } from "./state";
 
 /* ==========================================================================
@@ -29,21 +31,28 @@ export interface WorkspaceSlice {
 
 export const createWorkspaceSlice: Slice<WorkspaceSlice> = (set) => ({
   recentFolders: [],
-  setWorkspaceRoot: (path) =>
+  setWorkspaceRoot: (path) => {
+    // The backend decides what is inside the workspace, so it has to be told
+    // what the workspace is. Told here rather than at the call sites, because
+    // a folder that opens without this is a folder with no containment at all.
+    void reportPromise(api.setWorkspaceRoot(path), "paths:set_workspace_root");
     set((s) => ({
       workspaceRoot: path,
       recentFolders: path
         ? [path, ...s.recentFolders.filter((p) => p !== path)].slice(0, 8)
         : s.recentFolders,
-    })),
-  closeFolder: () =>
+    }));
+  },
+  closeFolder: () => {
+    void reportPromise(api.setWorkspaceRoot(undefined), "paths:set_workspace_root");
     set({
       workspaceRoot: undefined,
       tabs: [],
       activeTabPath: undefined,
       changes: [],
       activeProjectId: undefined,
-    }),
+    });
+  },
 
   explorerVersion: 0,
   refreshExplorer: () => set((s) => ({ explorerVersion: s.explorerVersion + 1 })),
