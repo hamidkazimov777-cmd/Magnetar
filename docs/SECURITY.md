@@ -117,6 +117,22 @@ configured by the user or to a local provider.
    credential access or external network use.
 8. Add dependency/license and clean-machine reviews before publication.
 
+## Secret scanning
+
+`npm run scan:secrets` checks the working tree and, when it exists, the built
+bundle. Both matter and fail differently: the tree is where a key gets pasted
+into a config "just to test" and committed; the bundle is where one gets inlined
+by a build step nobody inspected. It also fails if a credential file is tracked
+by git at all.
+
+It is deliberately narrow — provider key prefixes, private-key headers, cloud
+key ids. A scanner that reports a hundred maybes is one people stop reading, so
+it looks only for shapes that are a credential or nothing. Matches are printed
+masked; the scanner never echoes what it found.
+
+It runs inside `npm run smoke` (after the build, so `dist/` is covered) and in
+CI. A finding means rotate first: removing the line does not unpublish the key.
+
 ## Security acceptance
 
 Step 2 is complete only when `SEC-01` proves offline/local operation and

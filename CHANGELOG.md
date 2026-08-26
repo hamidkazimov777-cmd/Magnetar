@@ -29,6 +29,9 @@
   are dropped when the folder changes.
 - `grep`, `run_bash` and `git` with no directory given now act on the open
   project rather than whatever directory the app was launched from.
+- Added `npm run scan:secrets`: scans the working tree and the built bundle for
+  provider keys, cloud credentials and private-key blocks, and fails if a
+  credential file is tracked by git. Runs in smoke and CI.
 - Added repository trust: a folder that has not been vouched for can be read
   but not written to, and no command runs in it. A banner offers to trust it;
   the choice is remembered per folder.

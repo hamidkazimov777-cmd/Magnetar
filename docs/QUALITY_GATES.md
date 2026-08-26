@@ -18,8 +18,13 @@ npm run typecheck
 npm run test:unit -- --run
 npm run build
 cargo test --manifest-path src-tauri/Cargo.toml
+npm run scan:secrets
 npm run smoke
 ```
+
+`npm run smoke` runs the secret scan itself, after the build, so it sees `dist/`
+as well as the working tree — a key inlined by a build step is invisible in the
+source.
 
 Live provider checks are opt-in only and must use a gitignored fixture. They are
 never required for an offline build.

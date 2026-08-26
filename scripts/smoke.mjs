@@ -47,6 +47,9 @@ let ok = true;
 ok = run("TypeScript (noEmit)", join(ROOT, "node_modules", ".bin", "tsc"), ["--noEmit"]) && ok;
 ok = run("Vite build", "npm", ["run", "build"]) && ok;
 ok = run("Rust tests", cargoBin(), ["test"], join(ROOT, "src-tauri")) && ok;
+// Runs after the build so it sees dist/ as well as the working tree: a key
+// inlined by a build step is invisible in the source.
+ok = run("Секреты", "node", ["scripts/scan-secrets.mjs"]) && ok;
 ok = run("Фикстура", "node", ["scripts/gen-fixture.mjs"]) && ok;
 
 console.log(bold("\nСтупень 2 — проверь в приложении (2–3 мин):"));
