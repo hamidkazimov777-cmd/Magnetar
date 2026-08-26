@@ -1,28 +1,28 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Files,
-  MessageSquare,
-  MessagesSquare,
-  Bot,
-  Clapperboard,
-  GitBranch,
+  Chats,
+  Discussion,
+  Agent as AgentIcon,
+  Generation,
+  Git,
   Search,
-  BrainCircuit,
-  History,
-  Zap,
-  KeyRound,
+  Memory,
+  Changes,
+  Problems,
+  Keys,
   Settings,
-  BookOpen,
+  Guide,
   Languages,
   Globe,
-  FolderGit2,
+  Projects,
   Check,
   Sun,
   Moon,
   Monitor,
   Info,
-  type LucideIcon,
-} from "lucide-react";
+  type IconType,
+} from "../icons";
 import { useStore, type SidePanel } from "../../lib/store";
 import { useT, LANGS } from "../../lib/i18n";
 import { LogoMark } from "../Logo";
@@ -64,19 +64,19 @@ export function ActivityBar({
     ),
   );
 
-  type RailItem = { id: SidePanel; icon: LucideIcon; label: string; hint: string };
+  type RailItem = { id: SidePanel; icon: IconType; label: string; hint: string };
 
   const codeGroup: RailItem[] = [
     { id: "explorer", icon: Files, label: t("navExplorer"), hint: t("hintExplorer") },
     { id: "search", icon: Search, label: t("navSearch"), hint: t("hintSearch") },
-    { id: "git", icon: GitBranch, label: t("navSourceControl"), hint: t("hintGit") },
-    { id: "problems", icon: Zap, label: t("problemsTitle"), hint: t("hintProblems") },
-    { id: "changes", icon: History, label: t("navChanges"), hint: t("hintChanges") },
+    { id: "git", icon: Git, label: t("navSourceControl"), hint: t("hintGit") },
+    { id: "problems", icon: Problems, label: t("problemsTitle"), hint: t("hintProblems") },
+    { id: "changes", icon: Changes, label: t("navChanges"), hint: t("hintChanges") },
   ];
 
   const projectGroup: RailItem[] = [
-    { id: "project", icon: BrainCircuit, label: t("navProject"), hint: t("hintProject") },
-    { id: "chats", icon: MessageSquare, label: t("navChats"), hint: t("hintChats") },
+    { id: "project", icon: Memory, label: t("navProject"), hint: t("hintProject") },
+    { id: "chats", icon: Chats, label: t("navChats"), hint: t("hintChats") },
   ];
 
   const railItem = (it: RailItem) => (
@@ -117,7 +117,7 @@ export function ActivityBar({
       <RailGroup label={t("agentPanel")}>
         <Hint text={t("trackChatHint")}>
           <RailButton
-            icon={MessagesSquare}
+            icon={Discussion}
             label={t("trackChat")}
             active={activeTrack === "chat"}
             onClick={() => switchTrack("chat")}
@@ -125,7 +125,7 @@ export function ActivityBar({
         </Hint>
         <Hint text={t("agentHint")}>
           <RailButton
-            icon={Bot}
+            icon={AgentIcon}
             label={t("agent")}
             active={activeTrack === "agent"}
             onClick={() => switchTrack("agent")}
@@ -133,7 +133,7 @@ export function ActivityBar({
         </Hint>
         <Hint text={t("trackGenerationHint")}>
           <RailButton
-            icon={Clapperboard}
+            icon={Generation}
             label={t("trackGeneration")}
             active={activeTrack === "generation"}
             onClick={() => switchTrack("generation")}
@@ -154,7 +154,7 @@ export function ActivityBar({
       <div className="flex w-full flex-col items-center gap-px border-t border-[var(--color-border)] py-1.5">
         <Hint text={t("hintProjectsPage")}>
           <RailButton
-            icon={FolderGit2}
+            icon={Projects}
             label={t("projects")}
             active={centerView === "projects"}
             onClick={() => setCenterView("projects")}
@@ -170,9 +170,9 @@ export function ActivityBar({
         </Hint>
         <ThemeMenu />
         <LanguageMenu />
-        <RailButton icon={BookOpen} label={t("guide")} onClick={onOpenGuide} />
+        <RailButton icon={Guide} label={t("guide")} onClick={onOpenGuide} />
         <RailButton
-          icon={KeyRound}
+          icon={Keys}
           label={t("settingsKeys")}
           onClick={onOpenSettings}
         />
@@ -237,7 +237,7 @@ function RailButton({
   onClick,
   badge = 0,
 }: {
-  icon: LucideIcon;
+  icon: IconType;
   label: string;
   active?: boolean;
   onClick: () => void;
@@ -282,7 +282,7 @@ function ThemeMenu() {
   const ref = useRef<HTMLDivElement>(null);
   useDismiss(ref, () => setOpen(false));
 
-  const options: { id: Theme; icon: LucideIcon; label: string }[] = [
+  const options: { id: Theme; icon: IconType; label: string }[] = [
     { id: "light", icon: Sun, label: t("themeLight") },
     { id: "dark", icon: Moon, label: t("themeDark") },
     { id: "system", icon: Monitor, label: t("themeSystem") },
