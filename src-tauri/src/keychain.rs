@@ -21,6 +21,20 @@
 //!
 //! Reading the old file is still allowed everywhere, since that is how existing
 //! keys get migrated into the Keychain and the file deleted.
+//!
+//! ## One item, not one per connection
+//!
+//! Every key used to be its own Keychain entry, which meant macOS asked about
+//! each one separately: seven connections, seven password prompts, every time
+//! the app was rebuilt. Observed behaviour, not theory — the app's designated
+//! requirement is certificate-based and stable across rebuilds, and macOS
+//! re-asked anyway.
+//!
+//! So the keys live in a single item, read once per run and cached. The
+//! protection is identical — one encrypted Keychain entry either way — and the
+//! interruption drops from once per key to once per launch. Old per-connection
+//! entries are folded in as they are found, and each is deleted only after the
+//! merged item has been written.
 
 use once_cell::sync::Lazy;
 use security_framework::passwords::{
@@ -33,6 +47,10 @@ use std::sync::Mutex;
 
 /// Keychain service name. Stable: changing it orphans every stored key.
 const SERVICE: &str = "com.hamidkazimov.magnetar";
+
+/// Account name of the single item holding every key. The leading underscores
+/// keep it from colliding with a connection id, which is a UUID.
+const BUNDLE_ACCOUNT: &str = "__magnetar_keys__";
 
 /// The debug-only fallback file. Named for what it is.
 const FILE_NAME: &str = "secrets.json";
@@ -130,9 +148,49 @@ fn persist(store: &Store) -> Result<(), String> {
     Ok(())
 }
 
+/// The merged item, read at most once per run. `None` means "not looked at
+/// yet"; an empty map means "looked, and there was nothing".
+static BUNDLE: Lazy<Mutex<Option<HashMap<String, String>>>> = Lazy::new(|| Mutex::new(None));
+
+fn read_bundle() -> HashMap<String, String> {
+    let mut cache = match BUNDLE.lock() {
+        Ok(c) => c,
+        Err(e) => e.into_inner(),
+    };
+    if let Some(found) = cache.as_ref() {
+        return found.clone();
+    }
+    let loaded = get_generic_password(SERVICE, BUNDLE_ACCOUNT)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<HashMap<String, String>>(&bytes).ok())
+        .unwrap_or_default();
+    *cache = Some(loaded.clone());
+    loaded
+}
+
+fn write_bundle(keys: &HashMap<String, String>) -> Result<(), String> {
+    let json = serde_json::to_vec(keys).map_err(|e| e.to_string())?;
+    set_generic_password(SERVICE, BUNDLE_ACCOUNT, &json).map_err(|e| e.to_string())?;
+    let mut cache = match BUNDLE.lock() {
+        Ok(c) => c,
+        Err(e) => e.into_inner(),
+    };
+    *cache = Some(keys.clone());
+    Ok(())
+}
+
+/// Merge one key into the stored set, without disturbing the others.
+///
+/// Pure, so the part that can silently lose six keys while saving a seventh is
+/// the part with tests on it.
+fn merged(mut keys: HashMap<String, String>, id: &str, key: &str) -> HashMap<String, String> {
+    keys.insert(id.to_string(), key.to_string());
+    keys
+}
+
 /// Store a key. Keychain first; a debug build may fall back to the file.
 pub fn set_key(connection_id: &str, key: &str) -> Result<(), String> {
-    let outcome = set_generic_password(SERVICE, connection_id, key.as_bytes())
+    let outcome = write_bundle(&merged(read_bundle(), connection_id, key))
         .err()
         .map(|e| e.to_string());
 
@@ -159,12 +217,24 @@ pub fn set_key(connection_id: &str, key: &str) -> Result<(), String> {
 
 /// Fetch a key, moving it into the Keychain if it is still in the old file.
 pub fn get_key(connection_id: &str) -> Result<Option<String>, String> {
-    if let Ok(bytes) = get_generic_password(SERVICE, connection_id) {
-        return Ok(Some(String::from_utf8_lossy(&bytes).into_owned()));
+    let bundle = read_bundle();
+    if let Some(key) = bundle.get(connection_id) {
+        return Ok(Some(key.clone()));
     }
 
-    // Not in the Keychain: it may predate this change. Reading the old file is
-    // allowed in every build, because that is how a key gets rescued out of it.
+    // An entry from before the keys were merged. Fold it in, and only drop the
+    // old one once the merged item has actually been written — a delete that
+    // runs before a failed write loses the key outright.
+    if let Ok(bytes) = get_generic_password(SERVICE, connection_id) {
+        let key = String::from_utf8_lossy(&bytes).into_owned();
+        if write_bundle(&merged(bundle, connection_id, &key)).is_ok() {
+            let _ = delete_generic_password(SERVICE, connection_id);
+        }
+        return Ok(Some(key));
+    }
+
+    // Not in the Keychain at all: it may predate this change. Reading the old
+    // file is allowed in every build, because that is how a key gets rescued.
     let mut store = STORE.lock().map_err(|_| "secret store lock failed")?;
     load(&mut store);
     let Some(key) = store.keys.get(connection_id).cloned() else {
@@ -172,7 +242,7 @@ pub fn get_key(connection_id: &str) -> Result<Option<String>, String> {
     };
 
     // Promote it, and only drop the plaintext copy once the Keychain has it.
-    if set_generic_password(SERVICE, connection_id, key.as_bytes()).is_ok() {
+    if write_bundle(&merged(read_bundle(), connection_id, &key)).is_ok() {
         store.keys.remove(connection_id);
         let _ = persist(&store);
     }
@@ -180,6 +250,11 @@ pub fn get_key(connection_id: &str) -> Result<Option<String>, String> {
 }
 
 pub fn delete_key(connection_id: &str) -> Result<(), String> {
+    let mut keys = read_bundle();
+    if keys.remove(connection_id).is_some() {
+        write_bundle(&keys)?;
+    }
+    // A pre-merge entry may still exist for this connection.
     let _ = delete_generic_password(SERVICE, connection_id);
     let mut store = STORE.lock().map_err(|_| "secret store lock failed")?;
     load(&mut store);
@@ -196,7 +271,9 @@ pub fn has_key(connection_id: &str) -> bool {
 /// Where this connection's key is actually kept. Shown in Settings so the user
 /// is told the truth rather than being left to assume the Keychain.
 pub fn storage_of(connection_id: &str) -> Storage {
-    if get_generic_password(SERVICE, connection_id).is_ok() {
+    if read_bundle().contains_key(connection_id)
+        || get_generic_password(SERVICE, connection_id).is_ok()
+    {
         return Storage::Keychain;
     }
     let Ok(mut store) = STORE.lock() else {
@@ -213,6 +290,33 @@ pub fn storage_of(connection_id: &str) -> Storage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn merging_a_key_leaves_the_others_alone() {
+        // The failure this guards against loses six keys while saving a
+        // seventh, and would look like the app forgetting a provider.
+        let mut existing = HashMap::new();
+        existing.insert("a".to_string(), "key-a".to_string());
+        existing.insert("b".to_string(), "key-b".to_string());
+
+        let after = merged(existing.clone(), "c", "key-c");
+        assert_eq!(after.len(), 3);
+        assert_eq!(after.get("a").map(String::as_str), Some("key-a"));
+        assert_eq!(after.get("c").map(String::as_str), Some("key-c"));
+
+        // Replacing one must not drop the rest either.
+        let replaced = merged(after, "a", "key-a2");
+        assert_eq!(replaced.len(), 3);
+        assert_eq!(replaced.get("a").map(String::as_str), Some("key-a2"));
+        assert_eq!(replaced.get("b").map(String::as_str), Some("key-b"));
+    }
+
+    #[test]
+    fn the_bundle_account_cannot_collide_with_a_connection_id() {
+        // Connection ids are UUIDs; this deliberately is not shaped like one.
+        assert!(BUNDLE_ACCOUNT.starts_with("__"));
+        assert!(!BUNDLE_ACCOUNT.contains('-'));
+    }
 
     #[test]
     fn a_release_build_never_writes_a_key_in_the_clear() {

@@ -25,6 +25,8 @@
 - Path containment and repository trust were inert after a restart: the
   workspace root is restored from local storage, but the backend only heard
   about it through a user action. The first signed run found this.
+- Provider keys are kept in a single Keychain item instead of one per
+  connection, so a rebuild costs one password prompt rather than one per key.
 - Dragging a file onto the window no longer asks permission to work outside the
   project folder: the drop is now observed by the backend, which grants it the
   same way the file picker does.

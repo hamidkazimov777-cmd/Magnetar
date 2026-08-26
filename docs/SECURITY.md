@@ -20,6 +20,12 @@ configured by the user or to a local provider.
   existing keys migrate into the Keychain and the plaintext copy is removed.
   Settings reports the real location per connection rather than claiming the
   Keychain unconditionally, which is what it did while the keys were in a file.
+  All keys live in a single Keychain item, read once per run and cached. The
+  protection is identical to one item per connection — the same encrypted store
+  either way — but macOS asks about each item separately, so seven connections
+  meant seven password prompts after every rebuild. Pre-merge entries are folded
+  in as they are found, and each is deleted only after the merged item has been
+  written.
 - SQLite stores provider metadata but should not store credential material.
 - File paths are authorized in the backend (see below). Shell and Git commands
   are now gated on their working directory and recorded, but a command is an
