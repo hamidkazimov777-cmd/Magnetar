@@ -682,6 +682,55 @@ mod tests {
         assert_eq!(left, 1);
     }
 
+    /// Rehearse a migration on a copy of a real database before it runs on the
+    /// original.
+    ///
+    /// Tests against a synthetic schema prove the logic; they cannot prove that
+    /// *this* database, with whatever a year of use put in it, survives. Point
+    /// `MAGNETAR_MIGRATE_FIXTURE` at a copy and this runs the real migration
+    /// against it, then checks nothing was lost.
+    ///
+    /// Skipped when unset, so it never depends on anyone's private data.
+    #[test]
+    fn an_existing_database_migrates_without_losing_rows() {
+        let Ok(fixture) = std::env::var("MAGNETAR_MIGRATE_FIXTURE") else {
+            return;
+        };
+        let conn = Connection::open(&fixture).expect("open fixture");
+
+        let before: Vec<(String, i64)> = PROJECT_SCOPED
+            .iter()
+            .map(|t| {
+                let owned: i64 = conn
+                    .query_row(
+                        &format!(
+                            "SELECT count(*) FROM {t} \
+                             WHERE project_id IN (SELECT id FROM projects)"
+                        ),
+                        [],
+                        |r| r.get(0),
+                    )
+                    .unwrap_or(0);
+                (t.to_string(), owned)
+            })
+            .collect();
+
+        migrate(&conn).expect("migrate the real database");
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+
+        // Every row that had a project still has one. Only orphans may go.
+        for (table, owned) in before {
+            let after: i64 = conn
+                .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))
+                .unwrap_or(0);
+            assert_eq!(after, owned, "{table} lost rows that belonged to a project");
+        }
+
+        let report = integrity(&conn).expect("integrity");
+        assert_eq!(report.structure, "ok");
+        assert_eq!(report.orphans, 0);
+    }
+
     #[test]
     fn a_healthy_database_reports_itself_healthy() {
         let conn = Connection::open_in_memory().unwrap();

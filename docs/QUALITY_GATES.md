@@ -31,13 +31,21 @@ never required for an offline build.
 
 ## Current baseline
 
-- Rust: 85 tests passed, covering tools, DB migrations, LSP framing, UTF-8
+- Rust: 86 tests passed, covering tools, DB migrations, LSP framing, UTF-8
   streaming, the workspace/memory round trip and the BM25 index (tokenising,
   skip rules, ranking, result budget and rebuild-on-root-change), plus the
   Step 2 security controls: path containment and symlink escape, the read-only
   and trust policy, credential redaction in the audit log, the content security
   policy and the capability file, plus the schema migration that gives a project
   ownership of its memory, the database health check and the backup.
+- Migration rehearsal: `MAGNETAR_MIGRATE_FIXTURE=<copy> cargo test
+  an_existing_database` runs the real migration against a copy of an existing
+  database and fails if any row that belonged to a project is lost. It skips
+  when the variable is unset, so it never depends on anyone's private data.
+  Make the copy with `VACUUM INTO`, not `cp`: on 2026-08-27 a plain file copy
+  of the live database contained 22 projects, 434 facts and no messages, while
+  `VACUUM INTO` of the same database gave 24, 495 and 7 — the difference was
+  sitting in the write-ahead log.
 - Frontend: 149 tests passed across 16 files, covering redaction, retry and
   cancellation, agent guards and text-tool-call recovery, memory prompt
   assembly and background-model selection, handoff/summarisation, fact
