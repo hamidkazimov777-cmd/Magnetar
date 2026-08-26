@@ -244,6 +244,12 @@ export const api = {
     HAS_BACKEND
       ? tauriInvoke<void>("set_workspace_root", { root: root ?? null })
       : Promise.resolve(),
+  /** Whether the open folder has been vouched for. */
+  workspaceTrusted: () =>
+    HAS_BACKEND ? tauriInvoke<boolean>("workspace_trusted") : Promise.resolve(true),
+  /** Allow changes and commands in the open folder, and remember it. */
+  trustWorkspace: () =>
+    HAS_BACKEND ? tauriInvoke<void>("trust_workspace") : Promise.resolve(),
   /** Turn read-only mode on or off. The backend enforces it; this only asks. */
   setReadOnly: (on: boolean) =>
     HAS_BACKEND ? tauriInvoke<void>("set_read_only", { on }) : Promise.resolve(),

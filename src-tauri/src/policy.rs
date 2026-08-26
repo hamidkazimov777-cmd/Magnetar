@@ -11,7 +11,11 @@
 //! the page is compromised, and "the UI hid the button" is not a control.
 
 use once_cell::sync::Lazy;
+use std::collections::HashSet;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 /// What a command is about to do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,6 +32,91 @@ pub enum Access {
 
 static READ_ONLY: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
 
+/* --------------------------------------------------------------------------
+   REPOSITORY TRUST
+
+   Opening a folder is not the same as vouching for what is in it. A repository
+   can carry build scripts, task definitions and tooling configuration that run
+   the moment something touches them, and cloning a stranger's project to read
+   it is an ordinary thing to do. Until someone says otherwise, an unfamiliar
+   folder gets to be read and nothing else.
+
+   Trust is remembered per folder — being asked again every morning about the
+   project you work in daily is how a prompt becomes something people click
+   through without reading.
+   -------------------------------------------------------------------------- */
+
+const TRUSTED_FILE: &str = "trusted-roots.json";
+
+static DIR: Lazy<Mutex<Option<PathBuf>>> = Lazy::new(|| Mutex::new(None));
+static TRUSTED: Lazy<Mutex<HashSet<PathBuf>>> = Lazy::new(|| Mutex::new(HashSet::new()));
+static CURRENT: Lazy<Mutex<Option<PathBuf>>> = Lazy::new(|| Mutex::new(None));
+
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Called once from `setup` with the app data directory.
+pub fn init(app_dir: &Path) {
+    *lock(&DIR) = Some(app_dir.to_path_buf());
+    let path = app_dir.join(TRUSTED_FILE);
+    let Ok(text) = std::fs::read_to_string(path) else { return };
+    if let Ok(list) = serde_json::from_str::<Vec<String>>(&text) {
+        *lock(&TRUSTED) = list.into_iter().map(PathBuf::from).collect();
+    }
+}
+
+fn persist_trusted(trusted: &HashSet<PathBuf>) {
+    let Some(dir) = lock(&DIR).clone() else { return };
+    let list: Vec<String> = trusted.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+    let Ok(json) = serde_json::to_string_pretty(&list) else { return };
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    if let Ok(mut f) = opts.open(dir.join(TRUSTED_FILE)) {
+        let _ = f.write_all(json.as_bytes());
+    }
+}
+
+/// Point trust at a folder, or clear it when the folder closes.
+pub fn set_workspace(root: Option<PathBuf>) {
+    *lock(&CURRENT) = root;
+}
+
+/// Whether the open folder may be changed and have commands run in it.
+///
+/// With no folder open there is nothing to distrust, and the app has to work
+/// before a project is chosen — so the answer is yes.
+pub fn trusted() -> bool {
+    match lock(&CURRENT).clone() {
+        None => true,
+        Some(root) => lock(&TRUSTED).contains(&root),
+    }
+}
+
+/// Record that the user vouched for the open folder.
+pub fn trust_workspace() -> Result<(), String> {
+    let Some(root) = lock(&CURRENT).clone() else {
+        return Err("no folder is open".into());
+    };
+    let mut trusted = lock(&TRUSTED);
+    trusted.insert(root);
+    persist_trusted(&trusted);
+    Ok(())
+}
+
+/// Withdraw trust from the open folder. Immediate: the next write is refused.
+pub fn distrust_workspace() {
+    let Some(root) = lock(&CURRENT).clone() else { return };
+    let mut trusted = lock(&TRUSTED);
+    trusted.remove(&root);
+    persist_trusted(&trusted);
+}
+
 pub fn set_read_only(on: bool) {
     READ_ONLY.store(on, Ordering::SeqCst);
 }
@@ -36,42 +125,62 @@ pub fn read_only() -> bool {
     READ_ONLY.load(Ordering::SeqCst)
 }
 
-/// Decide, given the mode, whether an access may proceed.
+/// Decide, given the modes, whether an access may proceed.
 ///
 /// Kept as a pure function of its inputs so the rule can be tested without
 /// standing up any global state, and so the rule reads as one expression
 /// instead of being spread across every call site.
-pub fn decide(access: Access, read_only: bool) -> Result<(), String> {
-    match access {
-        Access::Read => Ok(()),
-        // Execution is refused along with writing, deliberately. A shell
-        // command is opaque: `sh build.sh` cannot be shown to be read-only, so
-        // treating it as a read would make the mode a promise the app cannot
-        // keep.
-        Access::Write | Access::Execute if read_only => Err(format!(
-            "read-only mode is on: this would {}. Turn it off to continue.",
-            match access {
-                Access::Execute => "run a command",
-                _ => "change a file",
-            }
-        )),
-        _ => Ok(()),
+///
+/// Read-only is reported before trust when both apply: it is the one the user
+/// just chose, so it is the one that explains what they are seeing.
+pub fn decide(access: Access, read_only: bool, trusted: bool) -> Result<(), String> {
+    // Execution is grouped with writing, deliberately. A shell command is
+    // opaque: `sh build.sh` cannot be shown to be read-only, so treating it as
+    // a read would make both modes a promise the app cannot keep.
+    let what = match access {
+        Access::Read => return Ok(()),
+        Access::Execute => "run a command",
+        Access::Write => "change a file",
+    };
+
+    if read_only {
+        return Err(format!(
+            "read-only mode is on: this would {what}. Turn it off to continue."
+        ));
     }
+    if !trusted {
+        return Err(format!(
+            "this folder is not trusted: this would {what}. \
+             Trust the folder to allow changes and commands in it."
+        ));
+    }
+    Ok(())
 }
 
 /// The gate every mutating command goes through.
 pub fn require(access: Access) -> Result<(), String> {
-    decide(access, read_only())
+    decide(access, read_only(), trusted())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// The mode and the current folder are process-wide, so the tests that set
+    /// them run one at a time rather than racing each other.
+    static SERIAL: Mutex<()> = Mutex::new(());
+
+    fn serial() -> std::sync::MutexGuard<'static, ()> {
+        SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     #[test]
     fn reading_is_never_blocked() {
-        assert!(decide(Access::Read, true).is_ok());
-        assert!(decide(Access::Read, false).is_ok());
+        for read_only in [true, false] {
+            for trusted in [true, false] {
+                assert!(decide(Access::Read, read_only, trusted).is_ok());
+            }
+        }
     }
 
     #[test]
@@ -79,29 +188,89 @@ mod tests {
         // Running is refused with writing, not alongside reading: a command is
         // opaque, so allowing it would make the mode a promise that cannot be
         // kept.
-        assert!(decide(Access::Write, true).is_err());
-        assert!(decide(Access::Execute, true).is_err());
+        assert!(decide(Access::Write, true, true).is_err());
+        assert!(decide(Access::Execute, true, true).is_err());
     }
 
     #[test]
     fn everything_is_allowed_when_the_mode_is_off() {
         for access in [Access::Read, Access::Write, Access::Execute] {
-            assert!(decide(access, false).is_ok());
+            assert!(decide(access, false, true).is_ok());
         }
     }
 
     #[test]
     fn the_refusal_says_what_was_refused_and_how_to_proceed() {
-        let write = decide(Access::Write, true).expect_err("refused");
+        let write = decide(Access::Write, true, true).expect_err("refused");
         assert!(write.contains("change a file"));
         assert!(write.contains("Turn it off"));
 
-        let run = decide(Access::Execute, true).expect_err("refused");
+        let run = decide(Access::Execute, true, true).expect_err("refused");
         assert!(run.contains("run a command"));
+
+        let untrusted = decide(Access::Write, false, false).expect_err("refused");
+        assert!(untrusted.contains("not trusted"));
+        assert!(untrusted.contains("Trust the folder"));
+    }
+
+    #[test]
+    fn an_untrusted_folder_may_be_read_but_not_changed() {
+        assert!(decide(Access::Read, false, false).is_ok());
+        assert!(decide(Access::Write, false, false).is_err());
+        // Commands are refused too: a repository's own build script is exactly
+        // the thing that makes an unfamiliar folder worth distrusting.
+        assert!(decide(Access::Execute, false, false).is_err());
+    }
+
+    #[test]
+    fn read_only_is_the_reason_reported_when_both_apply() {
+        // The user just chose read-only, so that is the explanation that makes
+        // sense of what they are seeing; being told about trust instead would
+        // send them to fix the wrong thing.
+        let both = decide(Access::Write, true, false).expect_err("refused");
+        assert!(both.contains("read-only"));
+        assert!(!both.contains("not trusted"));
+    }
+
+    #[test]
+    fn with_no_folder_open_there_is_nothing_to_distrust() {
+        let _guard = serial();
+        set_workspace(None);
+        assert!(trusted());
+    }
+
+    #[test]
+    fn a_folder_is_untrusted_until_someone_says_otherwise() {
+        let _guard = serial();
+        set_workspace(Some(PathBuf::from("/tmp/magnetar-unknown-folder")));
+        assert!(!trusted());
+        trust_workspace().expect("trusted");
+        assert!(trusted());
+        distrust_workspace();
+        assert!(!trusted());
+        set_workspace(None);
+    }
+
+    #[test]
+    fn trusting_one_folder_says_nothing_about_another() {
+        let _guard = serial();
+        set_workspace(Some(PathBuf::from("/tmp/magnetar-trusted-a")));
+        trust_workspace().expect("trusted");
+        set_workspace(Some(PathBuf::from("/tmp/magnetar-trusted-b")));
+        assert!(!trusted());
+        set_workspace(None);
+    }
+
+    #[test]
+    fn trusting_nothing_is_an_error_rather_than_a_silent_success() {
+        let _guard = serial();
+        set_workspace(None);
+        assert!(trust_workspace().is_err());
     }
 
     #[test]
     fn the_mode_is_off_until_it_is_turned_on() {
+        let _guard = serial();
         // A security control that defaults on would be turned off once and
         // never thought about again; this one is a deliberate choice each time.
         assert!(!read_only());
@@ -109,6 +278,7 @@ mod tests {
         assert!(read_only());
         assert!(require(Access::Write).is_err());
         set_read_only(false);
+        set_workspace(None); // no folder: trust is not the thing under test here
         assert!(require(Access::Write).is_ok());
     }
 }

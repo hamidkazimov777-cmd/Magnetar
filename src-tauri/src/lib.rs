@@ -30,6 +30,7 @@ pub fn run() {
                 // has nowhere to write and every key lookup falls through.
                 keychain::init(&dir);
                 audit::init(&dir);
+                policy::init(&dir);
                 // The theme the frontend last persisted (see persist_window_theme).
                 dark = std::fs::read_to_string(dir.join("window-theme"))
                     .map(|s| s.trim() == "dark")
@@ -116,6 +117,9 @@ pub fn run() {
             commands::key_storage,
             commands::set_read_only,
             commands::read_only,
+            commands::trust_workspace,
+            commands::distrust_workspace,
+            commands::workspace_trusted,
             commands::tool_attach_file,
             commands::extract_pdf_text,
             commands::editor_read_file,

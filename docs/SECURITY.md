@@ -49,8 +49,15 @@ configured by the user or to a local provider.
 - Every file and process command now declares what it does — `Access::Read`,
   `Write` or `Execute` — at the command itself, so the classification is
   readable as a policy rather than appearing only where something is forbidden.
-- Repository trust mode is still absent. Opening an untrusted repository grants
-  it the same access as your own work.
+- Repository trust is implemented. A folder that has not been vouched for can
+  be read but not changed, and no command runs in it — a repository carries
+  build scripts and task definitions that execute as soon as something touches
+  them, and cloning a stranger's project to read it is an ordinary thing to do.
+  Trust is remembered per canonical folder path in `trusted-roots.json`
+  (mode 0600), because being asked every morning about the project you work in
+  daily is how a prompt becomes something people click through without reading.
+  When read-only and untrusted both apply, the refusal names read-only: it is
+  the one the user just chose, so it is the one that explains what they see.
 - A restrictive CSP is now configured in `src-tauri/tauri.conf.json` and guarded
   by `config_tests` in `src-tauri/src/lib.rs`, so it cannot silently return to
   `null` or gain `'unsafe-inline'`/`'unsafe-eval'` in `script-src`. Verified

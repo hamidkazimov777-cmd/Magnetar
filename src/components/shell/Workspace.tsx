@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { PanelRightOpen } from "../icons";
+import { PanelRightOpen, ShieldAlert } from "../icons";
 import { ActivityBar } from "./ActivityBar";
 import { StatusBar } from "./StatusBar";
 import { TerminalPanel } from "./TerminalPanel";
@@ -55,6 +55,10 @@ export function Workspace({
   // Generation takes over the centre as a studio; the chat panel steps aside.
   const showAgentPanel = agentPanelOpen && activeTrack !== "generation";
 
+  const workspaceRoot = useStore((s) => s.workspaceRoot);
+  const workspaceTrusted = useStore((s) => s.workspaceTrusted);
+  const trustWorkspace = useStore((s) => s.trustWorkspace);
+
   const [sidebarW, setSidebarW] = useState(248);
   const [agentW, setAgentW] = useState(420);
   const [termH, setTermH] = useState(260);
@@ -64,6 +68,17 @@ export function Workspace({
       <ActivityBar onOpenSettings={onOpenSettings} onOpenGuide={onOpenGuide} />
 
       <div className="flex min-w-0 flex-1 flex-col">
+        {workspaceRoot && !workspaceTrusted && (
+          <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface-raised,var(--color-surface))] px-3 py-2 text-[length:var(--fs-xs)]">
+            <ShieldAlert size={14} className="shrink-0 text-[var(--color-warning,var(--color-text-dim))]" />
+            <span className="min-w-0 flex-1 text-[var(--color-text-dim)]">
+              {t("trustBannerBody")}
+            </span>
+            <button onClick={trustWorkspace} className="btn btn-secondary btn-sm shrink-0">
+              {t("trustBannerAction")}
+            </button>
+          </div>
+        )}
         <div className="flex min-h-0 flex-1">
           {/* Primary side panel */}
           {sidebarOpen && (

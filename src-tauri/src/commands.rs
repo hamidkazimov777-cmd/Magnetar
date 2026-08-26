@@ -743,7 +743,35 @@ pub fn read_only() -> bool {
 /// boundary it can move is not a boundary.
 #[tauri::command]
 pub fn set_workspace_root(root: Option<String>) {
+    // Trust follows the folder, so both have to learn about it together.
+    // Canonicalised first: a folder reached through a symlink is the same
+    // folder, and trusting it twice under two names is how a "trusted" list
+    // starts disagreeing with itself.
+    let canonical = root
+        .as_ref()
+        .and_then(|r| std::path::Path::new(r).canonicalize().ok());
     paths::set_workspace_root(root);
+    policy::set_workspace(canonical);
+}
+
+/// Vouch for the open folder: allow changes and commands in it, and remember.
+///
+/// Remembered per folder because being asked every morning about the project
+/// you work in daily is how a prompt becomes something people click through
+/// without reading.
+#[tauri::command]
+pub fn trust_workspace() -> Result<(), String> {
+    policy::trust_workspace()
+}
+
+#[tauri::command]
+pub fn distrust_workspace() {
+    policy::distrust_workspace();
+}
+
+#[tauri::command]
+pub fn workspace_trusted() -> bool {
+    policy::trusted()
 }
 
 /// Resolve a requested path, and when it lands outside the open folder, ask

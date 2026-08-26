@@ -29,6 +29,9 @@
   are dropped when the folder changes.
 - `grep`, `run_bash` and `git` with no directory given now act on the open
   project rather than whatever directory the app was launched from.
+- Added repository trust: a folder that has not been vouched for can be read
+  but not written to, and no command runs in it. A banner offers to trust it;
+  the choice is remembered per folder.
 - Added read-only mode: the app can read the project but not change it or run
   commands. Enforced in Rust, toggled from the status bar, off by default.
 - Every file and process command declares whether it reads, writes or executes.

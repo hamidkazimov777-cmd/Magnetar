@@ -24,6 +24,15 @@ export interface WorkspaceSlice {
   gitStatus: Record<string, string>;
   setGitStatus: (map: Record<string, string>) => void;
 
+  /** Whether the user has vouched for the open folder.
+   *
+   *  Opening a folder is not vouching for what is in it: a repository carries
+   *  build scripts and tooling configuration that run as soon as something
+   *  touches them. Mirrored here for the UI; the backend refuses on its own. */
+  workspaceTrusted: boolean;
+  /** Allow changes and commands in the open folder, and remember the choice. */
+  trustWorkspace: () => void;
+
   /** State of the code-search index for the open folder. */
   indexState: { status: "unknown" | "building" | "ready" | "error"; files?: number; at?: number };
   setIndexState: (s: WorkspaceSlice["indexState"]) => void;
@@ -35,7 +44,16 @@ export const createWorkspaceSlice: Slice<WorkspaceSlice> = (set) => ({
     // The backend decides what is inside the workspace, so it has to be told
     // what the workspace is. Told here rather than at the call sites, because
     // a folder that opens without this is a folder with no containment at all.
-    void reportPromise(api.setWorkspaceRoot(path), "paths:set_workspace_root");
+    void reportPromise(
+      api
+        .setWorkspaceRoot(path)
+        // Ask rather than assume: a folder opened before may already be
+        // trusted, and re-asking about it every launch is how a prompt turns
+        // into something people click through without reading.
+        .then(() => api.workspaceTrusted())
+        .then((workspaceTrusted) => set({ workspaceTrusted })),
+      "paths:set_workspace_root",
+    );
     set((s) => ({
       workspaceRoot: path,
       recentFolders: path
@@ -45,6 +63,7 @@ export const createWorkspaceSlice: Slice<WorkspaceSlice> = (set) => ({
   },
   closeFolder: () => {
     void reportPromise(api.setWorkspaceRoot(undefined), "paths:set_workspace_root");
+    set({ workspaceTrusted: true }); // nothing open, nothing to distrust
     set({
       workspaceRoot: undefined,
       tabs: [],
@@ -52,6 +71,14 @@ export const createWorkspaceSlice: Slice<WorkspaceSlice> = (set) => ({
       changes: [],
       activeProjectId: undefined,
     });
+  },
+
+  workspaceTrusted: true,
+  trustWorkspace: () => {
+    void reportPromise(
+      api.trustWorkspace().then(() => set({ workspaceTrusted: true })),
+      "policy:trust_workspace",
+    );
   },
 
   explorerVersion: 0,

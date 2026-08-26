@@ -456,6 +456,9 @@ const ru: Dict = {
   gigaNote:
     "Russian Trusted Root CA уже встроен — просто вставьте ключ и работайте. OAuth идёт на порт 9443, токен кэшируется, запросы сериализуются (freemium — 1 за раз).",
   keychainNote: "Ключи хранятся локально в secrets.json (папка приложения, права 0600 — только вы). Файл не зашифрован: наружу ключи не уходят, но и защиты уровня Keychain у него нет.",
+  trustBannerBody:
+    "Эта папка открыта впервые. Пока вы её не подтвердите, Magnetar может читать код, но не менять файлы и не запускать команды — в репозитории могут быть скрипты сборки и задачи, которые выполняются сами.",
+  trustBannerAction: "Доверять этой папке",
   readOnlyOn: "Только чтение",
   readOnlyOff: "Изменения разрешены",
   hintReadOnly:
@@ -1077,6 +1080,9 @@ const en: Dict = {
   gigaNote:
     "The Russian Trusted Root CA is built in — just paste your key and go. OAuth uses port 9443; the token is cached; requests are serialized (freemium — 1 at a time).",
   keychainNote: "Keys are stored locally in secrets.json (app data dir, mode 0600 — owner only). The file is not encrypted: nothing leaves your machine, but it is not Keychain-grade protection either.",
+  trustBannerBody:
+    "This folder is new here. Until you vouch for it, Magnetar can read the code but cannot change files or run commands — a repository can carry build scripts and tasks that run on their own.",
+  trustBannerAction: "Trust this folder",
   readOnlyOn: "Read-only",
   readOnlyOff: "Changes allowed",
   hintReadOnly:
@@ -1690,6 +1696,9 @@ const es: Dict = {
   gigaNote:
     "El Russian Trusted Root CA ya está integrado — solo pega tu clave y listo. OAuth usa el puerto 9443; el token se cachea; las solicitudes se serializan (freemium — 1 a la vez).",
   keychainNote: "Las claves se guardan localmente en secrets.json (carpeta de la app, permisos 0600 — solo tú). El archivo no está cifrado: nada sale de tu equipo, pero no es protección al nivel del Keychain.",
+  trustBannerBody:
+    "Esta carpeta es nueva aquí. Hasta que la apruebes, Magnetar puede leer el código pero no cambiar archivos ni ejecutar comandos: un repositorio puede incluir scripts de compilación y tareas que se ejecutan solas.",
+  trustBannerAction: "Confiar en esta carpeta",
   readOnlyOn: "Solo lectura",
   readOnlyOff: "Cambios permitidos",
   hintReadOnly:

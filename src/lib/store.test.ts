@@ -17,6 +17,8 @@ vi.mock("./api", () => ({
   api: {
     setWorkspaceRoot: vi.fn(async () => {}),
     setReadOnly: vi.fn(async () => {}),
+    workspaceTrusted: vi.fn(async () => true),
+    trustWorkspace: vi.fn(async () => {}),
   },
 }));
 
@@ -125,6 +127,27 @@ describe("the folder is the unit of work", () => {
     expect(after.activeProjectId).toBeUndefined();
     // The folder is still offered on the welcome screen after it is closed.
     expect(after.recentFolders).toEqual(["/repo"]);
+  });
+
+  it("asks whether a newly opened folder is trusted, and mirrors the answer", async () => {
+    const workspaceTrusted = vi.mocked(api.workspaceTrusted);
+    workspaceTrusted.mockClear().mockResolvedValue(false);
+
+    useStore.getState().setWorkspaceRoot("/repo");
+    await vi.waitFor(() => expect(useStore.getState().workspaceTrusted).toBe(false));
+
+    // Vouching for it has to reach the backend: the store flag is a mirror, and
+    // the refusal happens in Rust.
+    const trustWorkspace = vi.mocked(api.trustWorkspace);
+    trustWorkspace.mockClear();
+    useStore.getState().trustWorkspace();
+    await vi.waitFor(() => expect(useStore.getState().workspaceTrusted).toBe(true));
+    expect(trustWorkspace).toHaveBeenCalled();
+
+    // With nothing open there is nothing to distrust.
+    useStore.getState().closeFolder();
+    expect(useStore.getState().workspaceTrusted).toBe(true);
+    workspaceTrusted.mockResolvedValue(true);
   });
 
   it("keeps recent folders newest-first, deduplicated and capped", () => {
