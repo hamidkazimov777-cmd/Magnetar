@@ -10,6 +10,7 @@ use crate::keychain;
 use crate::providers::{
     build_provider, AgentStep, ChatParams, Connection, ModelInfo, StreamEvent, ToolDef,
 };
+use crate::audit;
 use crate::paths::{self, Decision as PathDecision};
 use crate::tools;
 use once_cell::sync::Lazy;
@@ -828,11 +829,38 @@ pub async fn tool_edit_file(
 
 #[tauri::command]
 pub async fn tool_run_bash(
+    app: tauri::AppHandle,
     command: String,
     cwd: Option<String>,
     timeout_secs: Option<u64>,
 ) -> Result<tools::BashResult, String> {
-    blocking(move || tools::run_bash(&command, cwd.as_deref(), timeout_secs)).await
+    // A command is an opaque string: working out what `make deploy` will touch
+    // means running it. So containment applies to where the command *starts* —
+    // with no cwd it used to inherit the process working directory, which is
+    // wherever the app happened to be launched from — and the record below
+    // covers what containment cannot.
+    let requested = cwd.clone().unwrap_or_else(|| ".".into());
+    let dir = match ensure_allowed(&app, &requested).await {
+        Ok(dir) => dir.to_string_lossy().into_owned(),
+        Err(refusal) => {
+            audit::record("bash", &requested, &command, &refusal);
+            return Err(refusal);
+        }
+    };
+
+    let logged = command.clone();
+    let in_dir = dir.clone();
+    let result = blocking(move || tools::run_bash(&command, Some(&dir), timeout_secs)).await;
+    audit::record(
+        "bash",
+        &in_dir,
+        &logged,
+        &match &result {
+            Ok(r) => format!("exit {}", r.code),
+            Err(e) => format!("failed: {e}"),
+        },
+    );
+    result
 }
 
 #[tauri::command]
@@ -883,7 +911,37 @@ pub async fn index_search(
 }
 
 #[tauri::command]
-pub async fn git_exec(cwd: String, args: Vec<String>) -> Result<tools::BashResult, String> {
+pub async fn git_exec(
+    app: tauri::AppHandle,
+    cwd: String,
+    args: Vec<String>,
+) -> Result<tools::BashResult, String> {
+    // `git` takes arbitrary subcommands, including ones that write outside the
+    // repository (`git config --global`, `git push`), so it goes through the
+    // same gate and the same record as a shell command.
+    let logged = format!("git {}", args.join(" "));
+    let cwd = match ensure_allowed(&app, &cwd).await {
+        Ok(dir) => dir.to_string_lossy().into_owned(),
+        Err(refusal) => {
+            audit::record("git", &cwd, &logged, &refusal);
+            return Err(refusal);
+        }
+    };
+    let in_dir = cwd.clone();
+    let outcome = git_exec_inner(cwd, args).await;
+    audit::record(
+        "git",
+        &in_dir,
+        &logged,
+        &match &outcome {
+            Ok(r) => format!("exit {}", r.code),
+            Err(e) => format!("failed: {e}"),
+        },
+    );
+    outcome
+}
+
+async fn git_exec_inner(cwd: String, args: Vec<String>) -> Result<tools::BashResult, String> {
     blocking(move || tools::git_exec(&cwd, args)).await
 }
 

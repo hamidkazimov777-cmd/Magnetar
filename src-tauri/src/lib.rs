@@ -1,3 +1,4 @@
+mod audit;
 mod canon;
 mod commands;
 mod db;
@@ -28,6 +29,7 @@ pub fn run() {
                 // The secret store needs the same directory; without this it
                 // has nowhere to write and every key lookup falls through.
                 keychain::init(&dir);
+                audit::init(&dir);
                 // The theme the frontend last persisted (see persist_window_theme).
                 dark = std::fs::read_to_string(dir.join("window-theme"))
                     .map(|s| s.trim() == "dark")

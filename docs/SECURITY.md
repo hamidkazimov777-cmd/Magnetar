@@ -16,12 +16,11 @@ configured by the user or to a local provider.
   the code can migrate legacy Keychain entries once. This is weaker than the
   required production posture and must be replaced in Step 2.
 - SQLite stores provider metadata but should not store credential material.
-- File paths are now authorized in the backend (see below). Shell commands are
-  not: `tool_run_bash` still receives a command string and runs it, so anything
-  containment forbids through a file tool remains reachable through a shell
-  command. Bringing bash under the same policy is the next Step 2 slice, and
-  until it lands path containment should be read as a meaningful narrowing, not
-  a closed boundary.
+- File paths are authorized in the backend (see below). Shell and Git commands
+  are now gated on their working directory and recorded, but a command is an
+  opaque string: containment can say where `bash` starts, not where it goes, and
+  a command is free to `cd` elsewhere. That residual reach is covered by the
+  audit record rather than by prevention, and must be read that way.
 - `read_file` currently reads the complete file before slicing, so large-file
   memory use is a known risk.
 - Path resolution now exists as a tested Rust primitive (`src-tauri/src/paths.rs`):
@@ -53,9 +52,14 @@ configured by the user or to a local provider.
   vulnerabilities in DOMPurify pulled by Monaco. The available fix would force
   a breaking Monaco downgrade, so dependency remediation needs a deliberate
   compatibility decision and security review.
-- Bash and Git have output/time limits and process-group handling, but the
-  policy still needs a uniform audit record, cancellation contract and explicit
-  external-path authorization.
+- Bash and Git have output/time limits and process-group handling. They now
+  also resolve their working directory through the same containment gate as the
+  file tools — with no directory given they run in the open project rather than
+  wherever the app was launched from — and every invocation, including a refused
+  one, is appended to `audit.log` in the app data directory (mode 0600, rotated
+  at 2 MB, one generation kept). Credentials are stripped before anything is
+  written: the log is precisely where a pasted key would otherwise land. There
+  is no UI for reading the log yet.
 
 ## Required controls
 
