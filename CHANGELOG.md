@@ -18,6 +18,8 @@
   2 moderate/low DOMPurify issues pulled through Monaco.
 - Removed redundant dynamic-import warnings; only the known Monaco chunk-size
   warning remains. Networked audit identifies DOMPurify issues via Monaco.
+- Routed store persistence and hydration failures through the shared redacted
+  error reporter instead of silently swallowing DB errors.
 - Removed the confirmed unreachable duplicate `new_project` agent case.
 - Made the smoke fixture portable by defaulting it to the OS temp directory.
 - Added shared redacted error normalization/reporting and a frontend/Rust CI workflow.

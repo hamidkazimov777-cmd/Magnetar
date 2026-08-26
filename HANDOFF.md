@@ -4674,6 +4674,24 @@ OK с одним chunk-size warning. Rust и smoke уже зелёные на т
 ошибок и cancellation/retry tests. Затем перейти к Step 2: Keychain-only
 production secrets и backend authorization/path containment.
 
+### Запись 107 — 2026-08-26 — Codex — Step 1: DB persistence observability
+
+Все основные фоновые DB writes в `src/lib/store.ts` теперь проходят через
+`reportPromise`: session/message/project/connection/fact/decision/divergence/
+proposal persistence, migration и delete paths. Startup hydrate и memory
+loading catches используют `reportError` с redaction, затем сохраняют безопасную
+деталь в memory log/startup state. UI остаётся write-through и не блокирует чат.
+
+Проверено: `npm run typecheck` OK, Vitest 4 файла / 11 тестов OK, `git diff
+--check` OK. Требует финальной проверки этого среза production build; smoke и
+Rust остаются зелёными на предыдущем import-cleanup baseline.
+
+#### Следующий шаг
+
+Прогнать build/smoke после store changes, затем закрыть оставшиеся memory/LSP
+silent catches и добавить cancellation/retry tests. Step 2 security hardening
+начинать только после этого.
+
 ### Запись 104 — 2026-08-26 — Codex — Step 1: CI и единый error layer
 
 Добавлены CI и начальный общий слой ошибок:

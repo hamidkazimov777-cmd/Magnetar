@@ -5,6 +5,7 @@ import type { Lang } from "./i18n";
 import { applyTheme, type Theme } from "./theme";
 import type { ChatMessage, Connection, ModelInfo, Session, Track } from "./types";
 import { providerForBaseUrl } from "./generation";
+import { reportError, reportPromise } from "./errors";
 
 /** Which panel the activity bar shows in the primary (left) sidebar. */
 export type SidePanel =
@@ -117,7 +118,8 @@ function metaOf(s: Session): SessionMetaRow {
   };
 }
 
-const persistMeta = (s: Session) => void db.saveSession(metaOf(s)).catch(() => {});
+const persistMeta = (s: Session) =>
+  void reportPromise(db.saveSession(metaOf(s)), "db:save_session");
 
 interface State {
   connections: Connection[];
@@ -530,8 +532,8 @@ export const useStore = create<State>()(
           } else {
             // migrate whatever was persisted in localStorage
             for (const c of get().connections) {
-              void db
-                .saveConnection({
+              void reportPromise(
+                db.saveConnection({
                   id: c.id,
                   name: c.name,
                   kind: c.kind,
@@ -539,8 +541,9 @@ export const useStore = create<State>()(
                   scope: c.scope ?? null,
                   caPath: c.caPath ?? null,
                   createdAt: Date.now(),
-                })
-                .catch(() => {});
+                }),
+                "db:migrate_connection",
+              );
             }
           }
 
@@ -585,7 +588,7 @@ export const useStore = create<State>()(
             };
           });
         } catch (e) {
-          set({ hydrated: true, startupError: String(e) });
+          set({ hydrated: true, startupError: reportError(e, "db:hydrate").message });
         }
       },
 
@@ -607,10 +610,11 @@ export const useStore = create<State>()(
         } catch (e) {
           // Never silent: a swallowed failure here looks exactly like a project
           // that has no memory, and that is indistinguishable from a bug.
+          const error = reportError(e, "db:list_facts");
           get().logMemory({
             kind: "audit",
             status: "error",
-            detail: `facts: ${String(e).slice(0, 160)}`,
+            detail: `facts: ${error.message.slice(0, 160)}`,
             projectId,
           });
         }
@@ -618,7 +622,7 @@ export const useStore = create<State>()(
 
       saveFacts: (rows) => {
         if (!rows.length) return;
-        void db.saveFacts(rows).catch(() => {});
+        void reportPromise(db.saveFacts(rows), "db:save_facts");
         set((s) => {
           const next = { ...s.facts };
           for (const f of rows) {
@@ -632,7 +636,7 @@ export const useStore = create<State>()(
       },
 
       deleteFact: (projectId, id) => {
-        void db.deleteFact(id).catch(() => {});
+        void reportPromise(db.deleteFact(id), "db:delete_fact");
         set((s) => ({
           facts: {
             ...s.facts,
@@ -654,17 +658,18 @@ export const useStore = create<State>()(
           const rows = await db.listDivergences(projectId);
           set((s) => ({ divergences: { ...s.divergences, [projectId]: rows } }));
         } catch (e) {
+          const error = reportError(e, "db:list_divergences");
           get().logMemory({
             kind: "audit",
             status: "error",
-            detail: `divergences: ${String(e).slice(0, 160)}`,
+            detail: `divergences: ${error.message.slice(0, 160)}`,
             projectId,
           });
         }
       },
 
       saveDivergence: (d) => {
-        void db.saveDivergence(d).catch(() => {});
+        void reportPromise(db.saveDivergence(d), "db:save_divergence");
         set((s) => {
           const list = s.divergences[d.projectId] ?? [];
           const at = list.findIndex((x) => x.id === d.id);
@@ -685,17 +690,18 @@ export const useStore = create<State>()(
           const rows = await db.listDecisions(projectId);
           set((s) => ({ decisions: { ...s.decisions, [projectId]: rows } }));
         } catch (e) {
+          const error = reportError(e, "db:list_decisions");
           get().logMemory({
             kind: "audit",
             status: "error",
-            detail: `decisions: ${String(e).slice(0, 160)}`,
+            detail: `decisions: ${error.message.slice(0, 160)}`,
             projectId,
           });
         }
       },
 
       saveDecision: (d) => {
-        void db.saveDecision(d).catch(() => {});
+        void reportPromise(db.saveDecision(d), "db:save_decision");
         set((s) => {
           const list = s.decisions[d.projectId] ?? [];
           const at = list.findIndex((x) => x.id === d.id);
@@ -710,7 +716,7 @@ export const useStore = create<State>()(
       },
 
       deleteDecision: (projectId, id) => {
-        void db.deleteDecision(id).catch(() => {});
+        void reportPromise(db.deleteDecision(id), "db:delete_decision");
         set((s) => ({
           decisions: {
             ...s.decisions,
@@ -726,17 +732,18 @@ export const useStore = create<State>()(
           const rows = await db.listProposals(projectId);
           set((s) => ({ proposals: { ...s.proposals, [projectId]: rows } }));
         } catch (e) {
+          const error = reportError(e, "db:list_proposals");
           get().logMemory({
             kind: "audit",
             status: "error",
-            detail: `proposals: ${String(e).slice(0, 160)}`,
+            detail: `proposals: ${error.message.slice(0, 160)}`,
             projectId,
           });
         }
       },
 
       saveProposal: (p) => {
-        void db.saveProposal(p).catch(() => {});
+        void reportPromise(db.saveProposal(p), "db:save_proposal");
         set((s) => {
           const list = s.proposals[p.projectId] ?? [];
           const at = list.findIndex((x) => x.id === p.id);
@@ -773,7 +780,7 @@ export const useStore = create<State>()(
         }),
 
       addProject: (p) => {
-        void db.saveProject(p).catch(() => {});
+        void reportPromise(db.saveProject(p), "db:save_project");
         set((s) => ({ projects: [p, ...s.projects], activeProjectId: p.id }));
       },
 
@@ -781,17 +788,17 @@ export const useStore = create<State>()(
         const p = get().projects.find((x) => x.id === id);
         if (!p || !name.trim()) return;
         const next = { ...p, name: name.trim(), updatedAt: now() };
-        void db.saveProject(next).catch(() => {});
+        void reportPromise(db.saveProject(next), "db:rename_project");
         set((s) => ({ projects: s.projects.map((x) => (x.id === id ? next : x)) }));
       },
 
       updateProject: (p) => {
-        void db.saveProject(p).catch(() => {});
+        void reportPromise(db.saveProject(p), "db:update_project");
         set((s) => ({ projects: s.projects.map((x) => (x.id === p.id ? p : x)) }));
       },
 
       deleteProject: (id) => {
-        void db.deleteProject(id).catch(() => {});
+        void reportPromise(db.deleteProject(id), "db:delete_project");
         set((s) => {
           const projects = s.projects.filter((x) => x.id !== id);
           return {
@@ -866,8 +873,8 @@ export const useStore = create<State>()(
           connections: [...s.connections, { ...c, id }],
           activeConnectionId: s.activeConnectionId ?? id,
         }));
-        void db
-          .saveConnection({
+        void reportPromise(
+          db.saveConnection({
             id,
             name: c.name,
             kind: c.kind,
@@ -875,13 +882,14 @@ export const useStore = create<State>()(
             scope: c.scope ?? null,
             caPath: c.caPath ?? null,
             createdAt: Date.now(),
-          })
-          .catch(() => {});
+          }),
+          "db:save_connection",
+        );
         return id;
       },
 
       removeConnection: (id) => {
-        void db.deleteConnection(id).catch(() => {});
+        void reportPromise(db.deleteConnection(id), "db:delete_connection");
         set((s) => {
           const connections = s.connections.filter((c) => c.id !== id);
           return {
@@ -1032,7 +1040,7 @@ export const useStore = create<State>()(
       },
 
       deleteSession: (id) => {
-        void db.deleteSession(id).catch(() => {});
+        void reportPromise(db.deleteSession(id), "db:delete_session");
         set((s) => {
           const sessions = s.sessions.filter((x) => x.id !== id);
           return {
@@ -1074,16 +1082,17 @@ export const useStore = create<State>()(
           // Persist non-empty messages right away; empty assistant placeholders
           // get written when their stream completes (see persistMessage).
           if (m.content)
-            void db
-              .upsertMessage({
+            void reportPromise(
+              db.upsertMessage({
                 id,
                 sessionId,
                 role: m.role,
                 content: m.content,
                 model: m.model ?? null,
                 createdAt,
-              })
-              .catch(() => {});
+              }),
+              "db:upsert_message",
+            );
         }
         return id;
       },
@@ -1129,9 +1138,8 @@ export const useStore = create<State>()(
         }));
 
         // Mirror the truncation into the canon, then rewrite the edited row.
-        void db
-          .deleteMessagesFrom(sessionId, messageId)
-          .then(() =>
+        void reportPromise(
+          db.deleteMessagesFrom(sessionId, messageId).then(() =>
             db.upsertMessage({
               id: edited.id,
               sessionId,
@@ -1140,8 +1148,9 @@ export const useStore = create<State>()(
               model: edited.model ?? null,
               createdAt: edited.createdAt,
             }),
-          )
-          .catch(() => {});
+          ),
+          "db:edit_message",
+        );
 
         return messages;
       },
@@ -1299,16 +1308,17 @@ export const useStore = create<State>()(
         const sess = get().sessions.find((x) => x.id === sessionId);
         const msg = sess?.messages.find((m) => m.id === messageId);
         if (!msg) return;
-        void db
-          .upsertMessage({
+        void reportPromise(
+          db.upsertMessage({
             id: msg.id,
             sessionId,
             role: msg.role,
             content: msg.content,
             model: msg.model ?? null,
             createdAt: msg.createdAt,
-          })
-          .catch(() => {});
+          }),
+          "db:persist_message",
+        );
       },
     }),
     {
