@@ -4,6 +4,7 @@ import {
   FolderGit2,
   Cpu,
   TerminalSquare,
+  Eye,
   Bot,
   Command,
   Zap,
@@ -25,6 +26,8 @@ export function StatusBar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const activeTrack = useStore((s) => s.activeTrack);
   const switchTrack = useStore((s) => s.switchTrack);
   const terminalOpen = useStore((s) => s.terminalOpen);
+  const readOnly = useStore((s) => s.readOnly);
+  const setReadOnly = useStore((s) => s.setReadOnly);
   const toggleTerminal = useStore((s) => s.toggleTerminal);
   const setSidePanel = useStore((s) => s.setSidePanel);
   const explorerVersion = useStore((s) => s.explorerVersion);
@@ -130,6 +133,14 @@ export function StatusBar({ onOpenSettings }: { onOpenSettings: () => void }) {
           label={t("terminalTitle")}
           onClick={() => toggleTerminal()}
           tone={terminalOpen ? "accent" : undefined}
+        />
+      </Hint>
+      <Hint text={t("hintReadOnly")} side="top">
+        <Item
+          icon={Eye}
+          label={readOnly ? t("readOnlyOn") : t("readOnlyOff")}
+          onClick={() => setReadOnly(!readOnly)}
+          tone={readOnly ? "warning" : undefined}
         />
       </Hint>
       <Item

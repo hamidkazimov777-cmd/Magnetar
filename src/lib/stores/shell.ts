@@ -1,3 +1,5 @@
+import { api } from "../api";
+import { reportPromise } from "../errors";
 import type { Lang } from "../i18n";
 import { applyTheme, type Theme } from "../theme";
 import { DEFAULT_PREFS, type CenterView, type Prefs, type SidePanel } from "./shared";
@@ -31,6 +33,16 @@ export interface ShellSlice {
   setSubsSafariUa: (providerId: string, on: boolean) => void;
 
   /** False until the user finishes (or skips) the first-launch walkthrough. */
+  /** Read-only mode: the app may look at the project but not change it.
+   *
+   *  Mirrored here for the UI only. The backend holds the real switch and
+   *  refuses writes and shell commands itself, so a compromised page cannot
+   *  turn it off by flipping a boolean in the store. Not persisted: leaving it
+   *  on across launches would make it a setting nobody notices rather than a
+   *  choice somebody makes. */
+  readOnly: boolean;
+  setReadOnly: (on: boolean) => void;
+
   onboarded: boolean;
   setOnboarded: (v: boolean) => void;
   sidePanel: SidePanel;
@@ -63,6 +75,12 @@ export const createShellSlice: Slice<ShellSlice> = (set) => ({
   subsSafariUa: { gemini: true },
   setSubsSafariUa: (providerId, on) =>
     set((s) => ({ subsSafariUa: { ...s.subsSafariUa, [providerId]: on } })),
+
+  readOnly: false,
+  setReadOnly: (on) => {
+    void reportPromise(api.setReadOnly(on), "policy:set_read_only");
+    set({ readOnly: on });
+  },
 
   onboarded: false,
   setOnboarded: (v) => set({ onboarded: v }),

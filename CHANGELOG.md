@@ -29,6 +29,11 @@
   are dropped when the folder changes.
 - `grep`, `run_bash` and `git` with no directory given now act on the open
   project rather than whatever directory the app was launched from.
+- Added read-only mode: the app can read the project but not change it or run
+  commands. Enforced in Rust, toggled from the status bar, off by default.
+- Every file and process command declares whether it reads, writes or executes.
+- `npm run build:app` builds and signs in one step, so an unsigned rebuild can
+  no longer reset the Keychain's permission.
 - Provider keys are stored in the macOS Keychain again, and existing keys
   migrate out of `secrets.json` on first read. A release build refuses to write
   a key to disk in the clear; the plaintext file survives only as a debug

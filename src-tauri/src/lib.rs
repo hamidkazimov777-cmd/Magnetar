@@ -6,6 +6,7 @@ mod index;
 mod keychain;
 mod lsp;
 mod paths;
+mod policy;
 mod providers;
 mod pty;
 mod tools;
@@ -113,6 +114,8 @@ pub fn run() {
             commands::read_file_base64,
             commands::pick_attachments,
             commands::key_storage,
+            commands::set_read_only,
+            commands::read_only,
             commands::tool_attach_file,
             commands::extract_pdf_text,
             commands::editor_read_file,

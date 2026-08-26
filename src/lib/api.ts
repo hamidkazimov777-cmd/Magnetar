@@ -244,6 +244,9 @@ export const api = {
     HAS_BACKEND
       ? tauriInvoke<void>("set_workspace_root", { root: root ?? null })
       : Promise.resolve(),
+  /** Turn read-only mode on or off. The backend enforces it; this only asks. */
+  setReadOnly: (on: boolean) =>
+    HAS_BACKEND ? tauriInvoke<void>("set_read_only", { on }) : Promise.resolve(),
   /** Where a connection's key is actually stored, so the UI can say so rather
    *  than implying protection the build did not provide. */
   keyStorage: (connectionId: string) =>

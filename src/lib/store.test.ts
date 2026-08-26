@@ -14,7 +14,10 @@ vi.mock("./db", () => ({
 // only reason the store touches the API layer.
 vi.mock("./api", () => ({
   HAS_BACKEND: false,
-  api: { setWorkspaceRoot: vi.fn(async () => {}) },
+  api: {
+    setWorkspaceRoot: vi.fn(async () => {}),
+    setReadOnly: vi.fn(async () => {}),
+  },
 }));
 
 const { api } = await import("./api");
@@ -326,6 +329,22 @@ describe("memory keeps its own queue honest", () => {
 });
 
 describe("the shell", () => {
+  it("asks the backend to enter read-only mode, and mirrors it for the UI", () => {
+    const setReadOnly = vi.mocked(api.setReadOnly);
+    setReadOnly.mockClear();
+    useStore.setState({ readOnly: false });
+
+    useStore.getState().setReadOnly(true);
+    // The store flag is only a mirror: the refusal happens in Rust, so the
+    // backend has to be told or the mode is decoration.
+    expect(setReadOnly).toHaveBeenCalledWith(true);
+    expect(useStore.getState().readOnly).toBe(true);
+
+    useStore.getState().setReadOnly(false);
+    expect(setReadOnly).toHaveBeenLastCalledWith(false);
+    expect(useStore.getState().readOnly).toBe(false);
+  });
+
   it("collapses the sidebar when the open panel's icon is clicked again", () => {
     const st = useStore.getState();
     st.setSidePanel("git");

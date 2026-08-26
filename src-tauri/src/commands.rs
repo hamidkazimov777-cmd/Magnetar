@@ -12,6 +12,7 @@ use crate::providers::{
 };
 use crate::audit;
 use crate::paths::{self, Decision as PathDecision};
+use crate::policy::{self, Access};
 use crate::tools;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
@@ -718,6 +719,23 @@ pub fn delete_messages_from(session_id: String, message_id: String) -> Result<()
 }
 
 
+// ---- Modes -----------------------------------------------------------------
+
+/// Turn read-only mode on or off.
+///
+/// Held in Rust, not in the store: a switch the webview owns is one that stops
+/// existing the moment the page is compromised, and a hidden button is not a
+/// control.
+#[tauri::command]
+pub fn set_read_only(on: bool) {
+    policy::set_read_only(on);
+}
+
+#[tauri::command]
+pub fn read_only() -> bool {
+    policy::read_only()
+}
+
 // ---- Path authorization ----------------------------------------------------
 
 /// Tell the backend which folder is open. Containment is decided here rather
@@ -778,6 +796,7 @@ pub async fn tool_read_file(
     offset: Option<usize>,
     limit: Option<usize>,
 ) -> Result<tools::ReadResult, String> {
+    policy::require(Access::Read)?;
     let path = ensure_allowed(&app, &path).await?;
     blocking(move || tools::read_file(&path.to_string_lossy(), offset, limit)).await
 }
@@ -787,6 +806,7 @@ pub async fn tool_list_dir(
     app: tauri::AppHandle,
     path: String,
 ) -> Result<Vec<tools::DirEntry>, String> {
+    policy::require(Access::Read)?;
     let path = ensure_allowed(&app, &path).await?;
     blocking(move || tools::list_dir(&path.to_string_lossy())).await
 }
@@ -797,6 +817,7 @@ pub async fn tool_grep(
     pattern: String,
     path: Option<String>,
 ) -> Result<Vec<tools::GrepHit>, String> {
+    policy::require(Access::Read)?;
     // "." used to mean the process working directory, which is wherever the
     // app happened to be launched from — not the project. Resolving it against
     // the workspace root is both the containment fix and the correct default.
@@ -810,6 +831,7 @@ pub async fn tool_write_file(
     path: String,
     content: String,
 ) -> Result<usize, String> {
+    policy::require(Access::Write)?;
     let path = ensure_allowed(&app, &path).await?;
     blocking(move || tools::write_file(&path.to_string_lossy(), &content)).await
 }
@@ -821,6 +843,7 @@ pub async fn list_project_files(root: String) -> Result<Vec<String>, String> {
 
 #[tauri::command]
 pub async fn tool_delete_file(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    policy::require(Access::Write)?;
     let path = ensure_allowed(&app, &path).await?;
     blocking(move || tools::delete_file(&path.to_string_lossy())).await
 }
@@ -832,6 +855,7 @@ pub async fn tool_edit_file(
     old_string: String,
     new_string: String,
 ) -> Result<tools::EditResult, String> {
+    policy::require(Access::Write)?;
     let path = ensure_allowed(&app, &path).await?;
     blocking(move || tools::edit_file(&path.to_string_lossy(), &old_string, &new_string)).await
 }
@@ -843,6 +867,7 @@ pub async fn tool_run_bash(
     cwd: Option<String>,
     timeout_secs: Option<u64>,
 ) -> Result<tools::BashResult, String> {
+    policy::require(Access::Execute)?;
     // A command is an opaque string: working out what `make deploy` will touch
     // means running it. So containment applies to where the command *starts* —
     // with no cwd it used to inherit the process working directory, which is
@@ -921,6 +946,7 @@ pub async fn pick_attachments(
 /// Going through the same gate as every other file command fixes both.
 #[tauri::command]
 pub async fn read_file_base64(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    policy::require(Access::Read)?;
     const MAX_BYTES: u64 = 25 * 1024 * 1024;
     let path = ensure_allowed(&app, &path).await?;
     blocking(move || {
@@ -943,6 +969,7 @@ pub async fn read_file_base64(app: tauri::AppHandle, path: String) -> Result<Str
 
 #[tauri::command]
 pub async fn tool_attach_file(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    policy::require(Access::Read)?;
     let path = ensure_allowed(&app, &path).await?;
     if path.exists() {
         Ok(format!("File {} successfully attached.", path.display()))
@@ -958,6 +985,7 @@ pub fn tool_kill_bash(pid: Option<u32>) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn extract_pdf_text(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    policy::require(Access::Read)?;
     let path = ensure_allowed(&app, &path).await?;
     blocking(move || {
         pdf_extract::extract_text(&path).map_err(|e| format!("Failed to extract PDF: {}", e))
@@ -968,6 +996,7 @@ pub async fn extract_pdf_text(app: tauri::AppHandle, path: String) -> Result<Str
 /// Full file read for the code editor (no size cap).
 #[tauri::command]
 pub async fn editor_read_file(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    policy::require(Access::Read)?;
     let path = ensure_allowed(&app, &path).await?;
     blocking(move || tools::read_text(&path.to_string_lossy())).await
 }
@@ -994,6 +1023,7 @@ pub async fn git_exec(
     cwd: String,
     args: Vec<String>,
 ) -> Result<tools::BashResult, String> {
+    policy::require(Access::Execute)?;
     // `git` takes arbitrary subcommands, including ones that write outside the
     // repository (`git config --global`, `git push`), so it goes through the
     // same gate and the same record as a shell command.

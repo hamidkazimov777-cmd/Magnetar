@@ -39,8 +39,18 @@ configured by the user or to a local provider.
   Grants are asked for in a **native dialog drawn by Rust**, so a compromised
   webview can neither skip the question nor answer it, and are kept in memory
   only — a grant never survives a restart or a change of folder.
-- Repository trust, read-only mode and per-capability authorization are still
-  absent from the backend.
+- Read-only mode is implemented in the backend: `policy::require` gates every
+  file and process command, and the switch is held in Rust so a compromised page
+  cannot turn it off. Execution is refused alongside writing, deliberately — a
+  shell command is opaque, so treating `sh build.sh` as a read would make the
+  mode a promise the app cannot keep. It defaults off and is not persisted: a
+  control that survives launches becomes a setting nobody notices instead of a
+  choice somebody makes.
+- Every file and process command now declares what it does — `Access::Read`,
+  `Write` or `Execute` — at the command itself, so the classification is
+  readable as a policy rather than appearing only where something is forbidden.
+- Repository trust mode is still absent. Opening an untrusted repository grants
+  it the same access as your own work.
 - A restrictive CSP is now configured in `src-tauri/tauri.conf.json` and guarded
   by `config_tests` in `src-tauri/src/lib.rs`, so it cannot silently return to
   `null` or gain `'unsafe-inline'`/`'unsafe-eval'` in `script-src`. Verified
@@ -86,7 +96,9 @@ configured by the user or to a local provider.
    symlink escapes and external paths by default; explicit user grants are
    scoped and auditable.
 4. Enforce read/write/execute/network capabilities in Rust commands, not just
-   in React. Repository trust and read-only mode must be backend decisions.
+   in React (read/write/execute done; network is not yet a declared capability).
+   Read-only mode is a backend decision (done); repository trust is not yet
+   implemented.
 5. Run shell commands with bounded timeout, process group cancellation,
    output budgets, non-interactive defaults, confirmation for risky commands,
    and an append-only local audit record without sensitive arguments.
