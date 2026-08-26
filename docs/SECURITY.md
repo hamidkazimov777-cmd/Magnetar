@@ -12,9 +12,14 @@ configured by the user or to a local provider.
 
 ## Observed implementation
 
-- Provider credentials are currently in app-data `secrets.json` with mode 0600;
-  the code can migrate legacy Keychain entries once. This is weaker than the
-  required production posture and must be replaced in Step 2.
+- Provider credentials are stored in the macOS Keychain. A release build will
+  not write a key to disk in the clear under any circumstance: if the Keychain
+  refuses, the operation fails with an explanation instead of silently
+  downgrading protection. The 0600 `secrets.json` remains only as a
+  **debug-build fallback**, and reading it is still allowed everywhere so that
+  existing keys migrate into the Keychain and the plaintext copy is removed.
+  Settings reports the real location per connection rather than claiming the
+  Keychain unconditionally, which is what it did while the keys were in a file.
 - SQLite stores provider metadata but should not store credential material.
 - File paths are authorized in the backend (see below). Shell and Git commands
   are now gated on their working directory and recorded, but a command is an
@@ -72,9 +77,9 @@ configured by the user or to a local provider.
 
 ## Required controls
 
-1. Store secrets only in macOS Keychain for production builds. Dev fallback,
-   if retained, must be compile-time/dev-only, clearly labeled, and never used
-   by a release artifact.
+1. Store secrets only in macOS Keychain for production builds (done). The dev
+   fallback is compile-time gated on `debug_assertions`, labeled in the UI, and
+   cannot be reached by a release artifact.
 2. Redact secrets before logs, error strings, prompt assembly, tool traces,
    crash reports, screenshots and exports. Scan diffs and release bundles.
 3. Canonicalize workspace roots and every requested path. Deny traversal,

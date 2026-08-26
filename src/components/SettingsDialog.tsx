@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Check, KeyRound, Loader2, Plus, Trash2, Play } from "./icons";
-import { api } from "../lib/api";
+import { api, type KeyStorage } from "../lib/api";
 import { useStore } from "../lib/store";
 import {
   ANTHROPIC_BASE,
@@ -40,7 +40,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [caPath, setCaPath] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [keyed, setKeyed] = useState<Record<string, boolean>>({});
+  /** Not a boolean: a key in the debug fallback file is stored, but it is not
+   *  in the Keychain, and the difference is exactly what the user needs told. */
+  const [keyed, setKeyed] = useState<Record<string, KeyStorage>>({});
   const [testing, setTesting] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<Record<string, string>>({});
 
@@ -58,7 +60,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     (async () => {
       const entries = await Promise.all(
-        connections.map(async (c) => [c.id, await api.hasApiKey(c.id)] as const),
+        connections.map(async (c) => [c.id, await api.keyStorage(c.id)] as const),
       );
       setKeyed(Object.fromEntries(entries));
     })();
@@ -352,13 +354,19 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                     <span
                       className={cn(
                         "flex items-center gap-1 text-[length:var(--fs-xs)]",
-                        keyed[c.id]
+                        keyed[c.id] === "keychain"
                           ? "text-[var(--color-accent-strong)]"
-                          : "text-[var(--color-text-dim)]",
+                          : keyed[c.id] === "plaintextfile"
+                            ? "text-[var(--color-warning,var(--color-text-dim))]"
+                            : "text-[var(--color-text-dim)]",
                       )}
                     >
-                      {keyed[c.id] ? <Check size={13} /> : <KeyRound size={13} />}
-                      {keyed[c.id] ? t("keyInKeychain") : t("noKey")}
+                      {keyed[c.id] === "keychain" ? <Check size={13} /> : <KeyRound size={13} />}
+                      {keyed[c.id] === "keychain"
+                        ? t("keyInKeychain")
+                        : keyed[c.id] === "plaintextfile"
+                          ? t("keyInPlaintextFile")
+                          : t("noKey")}
                     </span>
                     <button
                       onClick={() =>

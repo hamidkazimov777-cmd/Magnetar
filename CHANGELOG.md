@@ -29,6 +29,11 @@
   are dropped when the folder changes.
 - `grep`, `run_bash` and `git` with no directory given now act on the open
   project rather than whatever directory the app was launched from.
+- Provider keys are stored in the macOS Keychain again, and existing keys
+  migrate out of `secrets.json` on first read. A release build refuses to write
+  a key to disk in the clear; the plaintext file survives only as a debug
+  fallback. Settings now reports where a key actually is instead of always
+  saying "Keychain".
 - Attachment reads and the attachment file picker moved into backend commands,
   so they answer to path containment like every other file operation. The `fs`
   plugin is no longer granted, registered or shipped.

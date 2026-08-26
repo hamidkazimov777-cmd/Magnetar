@@ -14,6 +14,10 @@ function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   return tauriInvoke<T>(cmd, args);
 }
 
+/** Where a provider key is kept. `plaintextfile` only ever occurs in a debug
+ *  build: a release refuses to write a key to disk in the clear. */
+export type KeyStorage = "keychain" | "plaintextfile" | "none";
+
 export interface ToolDef {
   name: string;
   description: string;
@@ -240,6 +244,10 @@ export const api = {
     HAS_BACKEND
       ? tauriInvoke<void>("set_workspace_root", { root: root ?? null })
       : Promise.resolve(),
+  /** Where a connection's key is actually stored, so the UI can say so rather
+   *  than implying protection the build did not provide. */
+  keyStorage: (connectionId: string) =>
+    invoke<KeyStorage>("key_storage", { connectionId }),
   /** Open the system file picker in the backend. Choosing a file is what
    *  grants access to it, so the picker cannot live in the webview. */
   pickAttachments: (extensions: string[]) =>

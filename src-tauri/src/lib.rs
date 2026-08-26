@@ -112,6 +112,7 @@ pub fn run() {
             commands::set_workspace_root,
             commands::read_file_base64,
             commands::pick_attachments,
+            commands::key_storage,
             commands::tool_attach_file,
             commands::extract_pdf_text,
             commands::editor_read_file,

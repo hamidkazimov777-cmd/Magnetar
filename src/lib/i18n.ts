@@ -456,7 +456,8 @@ const ru: Dict = {
   gigaNote:
     "Russian Trusted Root CA уже встроен — просто вставьте ключ и работайте. OAuth идёт на порт 9443, токен кэшируется, запросы сериализуются (freemium — 1 за раз).",
   keychainNote: "Ключи хранятся локально в secrets.json (папка приложения, права 0600 — только вы). Файл не зашифрован: наружу ключи не уходят, но и защиты уровня Keychain у него нет.",
-  keyInKeychain: "Ключ сохранён",
+  keyInKeychain: "Ключ в Keychain",
+  keyInPlaintextFile: "Ключ в файле (только для отладки)",
   noKey: "Нет ключа",
   errFillNameKey: "Заполните название и ключ.",
   errNeedBaseUrl: "Нужен base URL.",
@@ -1072,7 +1073,8 @@ const en: Dict = {
   gigaNote:
     "The Russian Trusted Root CA is built in — just paste your key and go. OAuth uses port 9443; the token is cached; requests are serialized (freemium — 1 at a time).",
   keychainNote: "Keys are stored locally in secrets.json (app data dir, mode 0600 — owner only). The file is not encrypted: nothing leaves your machine, but it is not Keychain-grade protection either.",
-  keyInKeychain: "Key saved",
+  keyInKeychain: "Key in Keychain",
+  keyInPlaintextFile: "Key in a file (debug builds only)",
   noKey: "No key",
   errFillNameKey: "Fill in name and key.",
   errNeedBaseUrl: "Base URL is required.",
@@ -1680,7 +1682,8 @@ const es: Dict = {
   gigaNote:
     "El Russian Trusted Root CA ya está integrado — solo pega tu clave y listo. OAuth usa el puerto 9443; el token se cachea; las solicitudes se serializan (freemium — 1 a la vez).",
   keychainNote: "Las claves se guardan localmente en secrets.json (carpeta de la app, permisos 0600 — solo tú). El archivo no está cifrado: nada sale de tu equipo, pero no es protección al nivel del Keychain.",
-  keyInKeychain: "Clave guardada",
+  keyInKeychain: "Clave en el Llavero",
+  keyInPlaintextFile: "Clave en un archivo (solo compilaciones de depuración)",
   noKey: "Sin clave",
   errFillNameKey: "Rellena nombre y clave.",
   errNeedBaseUrl: "Se requiere el Base URL.",

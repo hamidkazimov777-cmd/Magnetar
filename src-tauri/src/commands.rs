@@ -284,6 +284,15 @@ pub fn has_api_key(connection_id: String) -> Result<bool, String> {
     Ok(keychain::has_key(&connection_id))
 }
 
+/// Where this connection's key is actually kept.
+///
+/// Surfaced so Settings can state the truth instead of letting the user assume
+/// the Keychain: a debug build that fell back to a file must say so.
+#[tauri::command]
+pub fn key_storage(connection_id: String) -> keychain::Storage {
+    keychain::storage_of(&connection_id)
+}
+
 // ---- Provider calls --------------------------------------------------------
 
 /// Resolve the saved API key off the main thread: `get_key` does file I/O and,
