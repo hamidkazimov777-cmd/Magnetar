@@ -49,6 +49,8 @@ fi
 
 if [ "$STABLE" = "1" ]; then
   echo
-  echo "✅ Signed. On the next Keychain prompt choose \"Always Allow\" —"
-  echo "   it will now be remembered across rebuilds."
+  echo "✅ Signed. On the Keychain prompt choose \"Always Allow\"."
+  echo "   It holds for this build: reopening the app will not ask again."
+  echo "   A rebuild asks once more — macOS re-asks even though the signature"
+  echo "   is unchanged. One prompt, not one per key."
 fi
