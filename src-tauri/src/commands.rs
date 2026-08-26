@@ -962,6 +962,48 @@ pub async fn pick_attachments(
     Ok(out)
 }
 
+/// Ask where to save something, and grant what the user chooses.
+///
+/// Same reasoning as `pick_attachments`: naming a destination in the system
+/// dialog is the permission. The dialog runs here so the grant rests on the
+/// user's choice rather than on the frontend reporting what they chose.
+#[tauri::command]
+pub async fn pick_save_path(
+    app: tauri::AppHandle,
+    suggested_name: String,
+    extensions: Vec<String>,
+) -> Result<Option<String>, String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let refs: Vec<&str> = extensions.iter().map(|s| s.as_str()).collect();
+    app.dialog()
+        .file()
+        .set_file_name(suggested_name)
+        .add_filter("Magnetar", &refs)
+        .save_file(move |chosen| {
+            let _ = tx.send(chosen);
+        });
+
+    let Some(chosen) = rx.await.unwrap_or(None) else {
+        return Ok(None); // cancelled
+    };
+    let path = chosen.into_path().map_err(|e| e.to_string())?;
+    paths::grant(&path);
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+/// What a health check found. Reported, never repaired automatically.
+#[tauri::command]
+pub async fn db_integrity() -> Result<crate::db::Integrity, String> {
+    blocking(|| crate::db::with_conn(crate::db::integrity)).await
+}
+
+/// Write a consistent copy of the whole database somewhere the user chose.
+#[tauri::command]
+pub async fn db_backup(app: tauri::AppHandle, dest: String) -> Result<u64, String> {
+    let dest = ensure_allowed(&app, &dest).await?;
+    blocking(move || crate::db::with_conn(|c| crate::db::backup_to(c, &dest))).await
+}
+
 /// Read a file as base64 for the composer's attachments.
 ///
 /// This used to be `readFile` from the fs plugin, which answers to Tauri's own

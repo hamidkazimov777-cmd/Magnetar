@@ -459,6 +459,19 @@ const ru: Dict = {
   trustBannerBody:
     "Эта папка открыта впервые. Пока вы её не подтвердите, Magnetar может читать код, но не менять файлы и не запускать команды — в репозитории могут быть скрипты сборки и задачи, которые выполняются сами.",
   trustBannerAction: "Доверять этой папке",
+  memImport: "Импортировать память",
+  memImportHint:
+    "Читает файл экспорта и добавляет факты и решения в открытый проект. Ничего не перезаписывает: совпадающие пропускаются, и импорт скажет, сколько пропустил. Проверки не переносятся — их делали на другой машине.",
+  memImportDone: "Добавлено: фактов {facts}, решений {decisions}; пропущено {skipped}",
+  dbCheck: "Проверить базу",
+  dbCheckHint:
+    "Спрашивает у SQLite, цела ли база, и считает записи, потерявшие проект. Только сообщает — чинить автоматически нельзя, это превратит поправимую проблему в окончательную.",
+  dbCheckOk: "База цела · фактов {facts}, решений {decisions}, сообщений {messages}",
+  dbCheckBad: "Проблема: {structure}; записей без проекта: {orphans}. Сделайте копию до любых действий.",
+  dbBackup: "Копия базы",
+  dbBackupHint:
+    "Пишет цельную копию всей базы одним файлом — сессии, память, решения. Файл открывается сам по себе, без приложения.",
+  dbBackupDone: "Копия сохранена · {size} МБ",
   readOnlyOn: "Только чтение",
   readOnlyOff: "Изменения разрешены",
   hintReadOnly:
@@ -1083,6 +1096,19 @@ const en: Dict = {
   trustBannerBody:
     "This folder is new here. Until you vouch for it, Magnetar can read the code but cannot change files or run commands — a repository can carry build scripts and tasks that run on their own.",
   trustBannerAction: "Trust this folder",
+  memImport: "Import memory",
+  memImportHint:
+    "Reads an export file and adds its facts and decisions to the open project. It never overwrites: matching entries are skipped, and the import says how many. Verifications are not carried over — they were run on another machine.",
+  memImportDone: "Added {facts} facts, {decisions} decisions; skipped {skipped}",
+  dbCheck: "Check database",
+  dbCheckHint:
+    "Asks SQLite whether the database is sound, and counts rows that lost their project. It only reports — repairing automatically would turn a recoverable problem into a finished one.",
+  dbCheckOk: "Database is sound · {facts} facts, {decisions} decisions, {messages} messages",
+  dbCheckBad: "Problem: {structure}; rows with no project: {orphans}. Make a copy before doing anything.",
+  dbBackup: "Back up database",
+  dbBackupHint:
+    "Writes a consistent copy of the whole database as one file — sessions, memory, decisions. It opens on its own, without the app.",
+  dbBackupDone: "Backup saved · {size} MB",
   readOnlyOn: "Read-only",
   readOnlyOff: "Changes allowed",
   hintReadOnly:
@@ -1699,6 +1725,19 @@ const es: Dict = {
   trustBannerBody:
     "Esta carpeta es nueva aquí. Hasta que la apruebes, Magnetar puede leer el código pero no cambiar archivos ni ejecutar comandos: un repositorio puede incluir scripts de compilación y tareas que se ejecutan solas.",
   trustBannerAction: "Confiar en esta carpeta",
+  memImport: "Importar memoria",
+  memImportHint:
+    "Lee un archivo de exportación y añade sus hechos y decisiones al proyecto abierto. Nunca sobrescribe: las entradas coincidentes se omiten y la importación dice cuántas. Las verificaciones no se trasladan: se hicieron en otra máquina.",
+  memImportDone: "Añadidos {facts} hechos, {decisions} decisiones; omitidos {skipped}",
+  dbCheck: "Comprobar base de datos",
+  dbCheckHint:
+    "Pregunta a SQLite si la base de datos está intacta y cuenta las filas que perdieron su proyecto. Solo informa: repararla automáticamente convertiría un problema recuperable en uno definitivo.",
+  dbCheckOk: "Base de datos intacta · {facts} hechos, {decisions} decisiones, {messages} mensajes",
+  dbCheckBad: "Problema: {structure}; filas sin proyecto: {orphans}. Haga una copia antes de nada.",
+  dbBackup: "Copia de la base",
+  dbBackupHint:
+    "Escribe una copia consistente de toda la base en un archivo: sesiones, memoria, decisiones. Se abre por sí solo, sin la app.",
+  dbBackupDone: "Copia guardada · {size} MB",
   readOnlyOn: "Solo lectura",
   readOnlyOff: "Cambios permitidos",
   hintReadOnly:

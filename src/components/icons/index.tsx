@@ -365,6 +365,14 @@ export const Download: IconType = (p) => (
     <path d="M5 19h14" />
   </G>
 );
+/** The mirror of Download: memory coming back in. */
+export const Upload: IconType = (p) => (
+  <G {...p}>
+    <path d="M12 20V10" />
+    <path d="m7 14 5-5 5 5" />
+    <path d="M5 5h14" />
+  </G>
+);
 export const Trash2: IconType = (p) => (
   <G {...p}>
     <path d="M4 6.5h16" />

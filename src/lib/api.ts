@@ -257,6 +257,23 @@ export const api = {
    *  than implying protection the build did not provide. */
   keyStorage: (connectionId: string) =>
     invoke<KeyStorage>("key_storage", { connectionId }),
+  /** Ask where to save something. Choosing the destination is the permission,
+   *  so the dialog belongs in the backend like the open picker. */
+  pickSavePath: (suggestedName: string, extensions: string[]) =>
+    invoke<string | null>("pick_save_path", { suggestedName, extensions }),
+  /** What a database health check found. */
+  dbIntegrity: () =>
+    invoke<{
+      structure: string;
+      orphans: number;
+      projects: number;
+      facts: number;
+      decisions: number;
+      sessions: number;
+      messages: number;
+    }>("db_integrity"),
+  /** Write a consistent copy of the whole database. Returns its size. */
+  dbBackup: (dest: string) => invoke<number>("db_backup", { dest }),
   /** Open the system file picker in the backend. Choosing a file is what
    *  grants access to it, so the picker cannot live in the webview. */
   pickAttachments: (extensions: string[]) =>

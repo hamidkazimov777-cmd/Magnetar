@@ -430,6 +430,63 @@ pub fn purge_project(conn: &Connection, id: &str) -> Result<usize, String> {
     Ok(before as usize)
 }
 
+/// What a health check found. Reported rather than repaired: a database that
+/// has lost pages needs a person deciding what to do, not an automatic rewrite
+/// that turns a recoverable problem into a finished one.
+#[derive(serde::Serialize)]
+pub struct Integrity {
+    /// SQLite's own verdict. "ok" means the file structure is sound.
+    pub structure: String,
+    /// Rows pointing at a project that no longer exists. Should be zero now
+    /// that the schema declares the relationship.
+    pub orphans: i64,
+    /// Row counts, so a "my memory disappeared" report has a number in it.
+    pub projects: i64,
+    pub facts: i64,
+    pub decisions: i64,
+    pub sessions: i64,
+    pub messages: i64,
+}
+
+pub fn integrity(conn: &Connection) -> Result<Integrity, String> {
+    let structure: String = conn
+        .query_row("PRAGMA integrity_check", [], |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+    let orphans: i64 = conn
+        .query_row("SELECT count(*) FROM pragma_foreign_key_check", [], |r| r.get(0))
+        .unwrap_or(0);
+    let count = |t: &str| -> i64 {
+        conn.query_row(&format!("SELECT count(*) FROM {t}"), [], |r| r.get(0))
+            .unwrap_or(0)
+    };
+    Ok(Integrity {
+        structure,
+        orphans,
+        projects: count("projects"),
+        facts: count("memory_facts"),
+        decisions: count("decisions"),
+        sessions: count("sessions"),
+        messages: count("messages"),
+    })
+}
+
+/// Write a consistent copy of the whole database to `dest`.
+///
+/// `VACUUM INTO` rather than copying the file: the live database is in WAL
+/// mode, so the `.sqlite` on disk is only part of the story and a plain copy
+/// can miss committed data or catch a write mid-flight. This produces a single
+/// self-contained file that opens on its own.
+pub fn backup_to(conn: &Connection, dest: &std::path::Path) -> Result<u64, String> {
+    if dest.exists() {
+        // VACUUM INTO refuses an existing file, and silently overwriting
+        // someone's previous backup is not this function's decision to make.
+        return Err(format!("{} already exists", dest.display()));
+    }
+    conn.execute("VACUUM INTO ?1", [dest.to_string_lossy().as_ref()])
+        .map_err(|e| e.to_string())?;
+    std::fs::metadata(dest).map(|m| m.len()).map_err(|e| e.to_string())
+}
+
 fn add_column(conn: &Connection, stmt: &str) -> Result<(), String> {
     if let Err(e) = conn.execute(stmt, []) {
         let msg = e.to_string();
@@ -615,6 +672,48 @@ mod tests {
             .query_row("SELECT count(*) FROM memory_facts", [], |r| r.get(0))
             .unwrap();
         assert_eq!(left, 1);
+    }
+
+    #[test]
+    fn a_healthy_database_reports_itself_healthy() {
+        let conn = Connection::open_in_memory().unwrap();
+        old_schema(&conn);
+        unowned_memory_tables(&conn);
+        migrate(&conn).unwrap();
+
+        let report = integrity(&conn).expect("integrity");
+        assert_eq!(report.structure, "ok");
+        assert_eq!(report.orphans, 0, "the migration removed the orphan");
+        assert_eq!(report.projects, 1);
+        assert_eq!(report.facts, 1);
+    }
+
+    #[test]
+    fn a_backup_is_a_file_that_opens_on_its_own() {
+        let conn = Connection::open_in_memory().unwrap();
+        old_schema(&conn);
+        unowned_memory_tables(&conn);
+        migrate(&conn).unwrap();
+
+        let dest = std::env::temp_dir()
+            .join(format!("magnetar-backup-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&dest);
+
+        let bytes = backup_to(&conn, &dest).expect("backup");
+        assert!(bytes > 0);
+
+        // The point of a backup is that it can be read back without the app
+        // that wrote it.
+        let restored = Connection::open(&dest).expect("open backup");
+        let facts: i64 = restored
+            .query_row("SELECT count(*) FROM memory_facts", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(facts, 1);
+
+        // Refuses to overwrite: a backup that quietly replaces the previous one
+        // is one backup, not two.
+        assert!(backup_to(&conn, &dest).is_err());
+        let _ = std::fs::remove_file(&dest);
     }
 
     #[test]

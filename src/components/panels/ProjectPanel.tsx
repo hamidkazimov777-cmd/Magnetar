@@ -12,6 +12,7 @@ import {
   Check,
   X,
   Save,
+  Upload,
   Link2,
   Database,
   Loader2,
@@ -26,7 +27,7 @@ import { useT } from "../../lib/i18n";
 import { api } from "../../lib/api";
 import { flushHandoffToMemory } from "../../lib/memory";
 import { verifyProjectFacts } from "../../lib/verify";
-import { exportMemorySnapshot } from "../../lib/exportMemory";
+import { exportMemorySnapshot, importMemorySnapshot } from "../../lib/exportMemory";
 import { EmptyState } from "../ui/EmptyState";
 import { MemoryLog } from "./MemoryLog";
 import { pickWorkspaceFolder } from "./ExplorerPanel";
@@ -340,6 +341,131 @@ function ExportMemoryButton() {
           <span className="truncate">{done ?? t("memExport")}</span>
         </button>
       </Hint>
+
+      <Hint text={t("memImportHint")}>
+        <button
+          className="btn btn-secondary btn-sm mt-1.5 w-full"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              const plan = await importMemorySnapshot();
+              if (plan) {
+                // Say what was skipped as well as what landed: an import that
+                // reports only its successes is one you cannot trust twice.
+                setDone(
+                  t("memImportDone")
+                    .replace("{facts}", String(plan.facts.length))
+                    .replace("{decisions}", String(plan.decisions.length))
+                    .replace("{skipped}", String(plan.skipped.length)),
+                );
+                setTimeout(() => setDone(null), 6000);
+              }
+            } catch (e) {
+              setDone(String(e).replace(/^Error:\s*/, "").slice(0, 80));
+              setTimeout(() => setDone(null), 6000);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <Upload size={13} />
+          <span className="truncate">{t("memImport")}</span>
+        </button>
+      </Hint>
+
+      <DatabaseHealth />
+    </div>
+  );
+}
+
+/** The database behind everything, and a copy of it.
+ *
+ *  Both are here rather than in Settings because this is where a person is
+ *  when they are worried about their memory. A backup offered on a page nobody
+ *  visits when something looks wrong is a backup nobody has.
+ */
+function DatabaseHealth() {
+  const t = useT();
+  const [state, setState] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const say = (text: string, ms = 6000) => {
+    setState(text.slice(0, 90));
+    setTimeout(() => setState(null), ms);
+  };
+
+  return (
+    <div className="mt-1.5">
+      {state && (
+        <p
+          role="status"
+          className="mb-1.5 rounded-[var(--radius-sm)] bg-[var(--color-surface)] px-2 py-1 text-[length:var(--fs-xs)] text-[var(--color-text-dim)]"
+        >
+          {state}
+        </p>
+      )}
+      <div className="flex gap-1.5">
+      <Hint text={t("dbCheckHint")}>
+        <button
+          className="btn btn-secondary btn-sm flex-1"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              const r = await api.dbIntegrity();
+              const healthy = r.structure === "ok" && r.orphans === 0;
+              say(
+                healthy
+                  ? t("dbCheckOk")
+                      .replace("{facts}", String(r.facts))
+                      .replace("{decisions}", String(r.decisions))
+                      .replace("{messages}", String(r.messages))
+                  : t("dbCheckBad")
+                      .replace("{structure}", r.structure)
+                      .replace("{orphans}", String(r.orphans)),
+                healthy ? 6000 : 20000,
+              );
+            } catch (e) {
+              say(String(e));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <ShieldCheck size={13} />
+          <span className="truncate">{t("dbCheck")}</span>
+        </button>
+      </Hint>
+
+      <Hint text={t("dbBackupHint")}>
+        <button
+          className="btn btn-secondary btn-sm flex-1"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+              const dest = await api.pickSavePath(`magnetar-backup-${stamp}.sqlite`, ["sqlite"]);
+              if (dest) {
+                const bytes = await api.dbBackup(dest);
+                say(
+                  t("dbBackupDone").replace("{size}", (bytes / (1024 * 1024)).toFixed(1)),
+                );
+              }
+            } catch (e) {
+              say(String(e).replace(/^Error:\s*/, ""));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <Save size={13} />
+          <span className="truncate">{t("dbBackup")}</span>
+        </button>
+      </Hint>
+
+      </div>
     </div>
   );
 }
