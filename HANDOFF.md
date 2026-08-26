@@ -4240,3 +4240,33 @@ cargo check+test 20/0), приложение пересобрано в `/Applica
 4. (Идея) Настоящий seamless «Продолжить» кнопкой на баннере лимита с
    сохранением контекста инструментов — если Hamid захочет.
 5. Публикация (этап 5) — когда Hamid купит Apple Developer; обвязка готова.
+
+### Запись 91 — 2026-08-26 — Opus 4.8 — UI-идентичность: свои иконки (рельс)
+
+Первый шаг столпа «свои иконки» из `product-vision.md`. Собран **собственный
+набор глифов** в едином почерке (сетка 24, скруглённые концы, геометрия,
+монохром) — чтобы хром читался как *эта* среда, а не generic AI-приложение в
+чужом icon-pack. Проверки зелёные (tsc, build), рельс проверен вживую в
+веб-превью (скриншот), приложение пересобрано в `/Applications`.
+
+- **`src/components/icons/index.tsx`** (новый): ~21 иконка с API как у lucide
+  (`size`/`strokeWidth`/`className` + любые SVG-пропсы), общий каркас `Glyph`
+  (currentColor stroke, rounded), тип `IconType`. Набор: Discussion (два
+  пузыря), Agent (голова с антенной), Generation (спарк), Info, Files, Search,
+  Git, Problems (молния), Changes (реверс-дуга), Memory (чип), Chats, Projects,
+  Globe, Sun/Moon/Monitor, Languages, Guide, Keys, Settings (слайдеры), Check.
+- **`ActivityBar.tsx`**: импорты lucide → наш набор; тип `LucideIcon` →
+  `IconType` (RailItem, RailButton, ThemeMenu). Дропин без изменения кнопок.
+- **Остальные поверхности** (Composer, панели, StudioView, Message, диалоги) по-
+  прежнему на lucide — рельс как самая заметная поверхность взял идентичность
+  первым. Раскатка на прочие места — следующими заходами, если Hamid одобрит
+  почерк (виджет-превью показан).
+
+#### Следующий шаг
+
+1. Если почерк зашёл — раскатить свои иконки на Composer/панели/StudioView/
+   StatusBar (та же схема: заменить lucide-импорты на `../icons`, добить
+   недостающие глифы — Send/Paperclip/Stop/Copy/Trash/Folder/ChevronDown и т.д.).
+2. Больше провайдеров генерации (Replicate/Google/ElevenLabs).
+3. Изоляция перф-оркестрации (Performance-столп).
+4. Публикация (этап 5) — когда Hamid купит Apple Developer.
