@@ -4270,3 +4270,41 @@ cargo check+test 20/0), приложение пересобрано в `/Applica
 2. Больше провайдеров генерации (Replicate/Google/ElevenLabs).
 3. Изоляция перф-оркестрации (Performance-столп).
 4. Публикация (этап 5) — когда Hamid купит Apple Developer.
+
+### Запись 92 — 2026-08-26 — Opus 4.8 — Старт-полировка: мерцание, сплэш, Michroma, меню
+
+Четыре пункта фидбека Hamid (после Записи 91). Проверки зелёные (tsc, cargo
+check, build), рельс/сплэш/Michroma проверены в веб-превью, приложение
+пересобрано в `/Applications`.
+
+1. **Мерцание темы при запуске** (Rust + `theme.ts`): при старте `lib.rs` читает
+   файл `window-theme` из app-data и красит нативное окно (чёрное/белое)
+   `win.set_background_color()` **до** загрузки вебвью — раньше кадр вспыхивал
+   противоположной темой. Фронт пишет файл на каждую смену темы через новую
+   команду `persist_window_theme` (она же перекрашивает живое окно). ⚠️ Первый
+   запуск после установки файла ещё нет → дефолт светлый; после первого
+   `applyTheme` пишется, дальше корректно. Color = `tauri::window::Color`.
+2. **Сплэш плавнее** (`Splash.tsx` + `index.css`): анимация ускорена (знак
+   зачернён к ~1.2с), затем `data-exiting` → opacity-fade 0.3с, `onDone` в 1.6с.
+   Нет «простоя» на готовом лого и резкого скачка в приложение.
+3. **Michroma для MAGNETAR** (`@fontsource/michroma`, `main.tsx`): широкий
+   геометрический «космический» шрифт только для вордмарка. Класс `.wordmark`
+   (`font-family: Michroma`, letter-spacing 0.14em) на сплэше и WelcomeView.
+4. **Нативные `<select>` → наш стиль**: `StudioSelect` вынесен в
+   `ui/Select.tsx` (+`disabled`, `className`); StudioView теперь импортирует его,
+   и он же заменил два нативных `<select>` в SettingsView («Модель для фоновых
+   задач»). Больше нативных селектов в проекте нет.
+
+#### Следующий шаг
+
+1. **Иконки везде** (просьба Hamid «доделай везде») — БОЛЬШОЙ заход: 44 файла на
+   lucide, нужно ~50 доп. глифов в набор `src/components/icons/` (Send, Stop,
+   Paperclip, Copy, X, Pencil, Trash2, Plus/Minus, Chevron*, ArrowUp, Folder,
+   FileText, Bot, Sparkles, Loader, RotateCcw, TriangleAlert, Cpu, Sliders,
+   Music, Image, Clapperboard, Gauge, Timer, Eye, Play/Pause, Search, GitBranch,
+   и т.д.), затем замена импортов по всем поверхностям (Composer, StatusBar,
+   ModelSwitcher, StudioView, панели, Message, диалоги). Делать surface-by-
+   surface с проверкой галереей-виджетом, чтобы держать качество и не сломать.
+2. Больше провайдеров генерации (Replicate/Google/ElevenLabs).
+3. Изоляция перф-оркестрации.
+4. Публикация (этап 5) — Apple Developer.
