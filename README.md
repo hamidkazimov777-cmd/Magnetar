@@ -222,8 +222,8 @@ subscriptions bridge, light and dark themes, RU/EN/ES interface.
 - Search is an in-memory BM25 index capped at 5,000 files
 - Backend path authorization, trust/read-only mode, durable agent runs,
   checkpoints/rollback, DAP debugger, MCP and inline completion are incomplete
-- The production build still reports an unreachable duplicate case and large
-  Monaco-related chunks
+- The production build keeps Monaco in a lazy ~3.96 MB chunk; the initial
+  route is ~408.75 KB gzip and the lazy-asset warning remains visible
 - Embedded browser sign-in for Google-backed services needs a compatibility
   toggle, and some sites behave better in a real browser
 

@@ -24,7 +24,6 @@ import "./index.css";
 import { useStore } from "./lib/store";
 import { applyTheme, watchSystemTheme } from "./lib/theme";
 import { applyHljsTheme } from "./lib/hljs-theme";
-import { setMonacoTheme } from "./lib/monaco";
 
 // Paint the persisted theme before React's first render so there is no flash of
 // the wrong palette. Zustand's persist middleware rehydrates synchronously.
@@ -34,7 +33,6 @@ function syncTheme() {
   if (resolved === lastResolved) return;
   lastResolved = resolved;
   applyHljsTheme(resolved);
-  setMonacoTheme(resolved);
 }
 syncTheme();
 useStore.subscribe(syncTheme);

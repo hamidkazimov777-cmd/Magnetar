@@ -30,8 +30,9 @@ never required for an offline build.
 - Frontend: 13 tests passed across 5 files, including redaction, retry and
   cancellation paths.
 - Frontend production build: passed.
-- Build warning: large Monaco-related chunks (largest observed ~3.96 MB).
-  Duplicate agent and redundant dynamic-import warnings were removed in Step 1.
+- Build warning: the lazy Monaco engine chunk is ~3.96 MB; the initial route is
+  ~1.4 MB raw / 408.75 KB gzip. Duplicate agent and redundant dynamic-import
+  warnings were removed in Step 1; the lazy asset budget remains explicit.
 - Smoke script exists; its fixture defaults to the OS temp directory and can be
   overridden with `MAGNETAR_FIXTURE_DIR`. Some UI checks remain manual.
 - CI workflow now runs frontend typecheck/unit/build and macOS Rust test/check;

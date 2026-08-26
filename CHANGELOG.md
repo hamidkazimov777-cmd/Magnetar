@@ -25,3 +25,5 @@
 - Added shared redacted error normalization/reporting and a frontend/Rust CI workflow.
 - Added bounded transient retry with AbortSignal cancellation coverage; routed
   background memory, graph and LSP failures through redacted reporting.
+- Moved the editor route and Monaco engine out of the initial workspace chunk;
+  initial entry is ~408.75 KB gzip, with the lazy Monaco budget documented.

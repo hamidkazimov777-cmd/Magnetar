@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { PanelRightOpen } from "../icons";
 import { ActivityBar } from "./ActivityBar";
 import { StatusBar } from "./StatusBar";
@@ -10,7 +10,6 @@ import { GitPanel } from "../panels/GitPanel";
 import { ChangesPanel } from "../panels/ChangesPanel";
 import { ProblemsPanel } from "../panels/ProblemsPanel";
 import { ProjectPanel } from "../panels/ProjectPanel";
-import { EditorArea } from "../editor/EditorArea";
 import { StudioView } from "../StudioView";
 import { ChatView } from "../ChatView";
 import { SettingsView } from "../SettingsView";
@@ -28,6 +27,12 @@ const SIDEBAR_MIN = 190;
 const SIDEBAR_MAX = 460;
 const AGENT_MIN = 320;
 const AGENT_MAX = 720;
+
+// Monaco is the largest optional surface. Keep it out of the initial workspace
+// route so chat/project onboarding can become useful before editor assets load.
+const EditorArea = lazy(() =>
+  import("../editor/EditorArea").then(({ EditorArea: component }) => ({ default: component })),
+);
 
 /** The single workspace screen: activity rail → primary panel → center (editor
  *  or a full page) → agent panel, with a terminal dock and a status bar.
@@ -95,7 +100,17 @@ export function Workspace({
               className="flex min-h-0 flex-1 flex-col overflow-hidden"
             >
               <ErrorBoundary surface={t("workspace")}>
-                {centerView === "editor" && <EditorArea />}
+                {centerView === "editor" && (
+                  <Suspense
+                    fallback={
+                      <div className="flex h-full items-center justify-center text-sm text-[var(--color-text-dim)]">
+                        Loading editor…
+                      </div>
+                    }
+                  >
+                    <EditorArea />
+                  </Suspense>
+                )}
                 {centerView === "studio" && <StudioView />}
                 {centerView === "settings" && <SettingsView />}
                 {centerView === "projects" && <ProjectsView />}

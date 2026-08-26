@@ -43,9 +43,11 @@ Key facts found in code:
   requirement and is a Step 2 blocker.
 - `src-tauri/tauri.conf.json` currently has `csp: null`; this is a release
   blocker.
-- `npm run build` passes but reports dynamic-import chunking warnings and chunks
-  up to about 3.96 MB. The duplicate `new_project` case was fixed in Step 1.
-- Rust tests pass 20/20. There is no frontend unit-test script in `package.json`.
+- Initial audit: `npm run build` passed but reported dynamic-import chunking
+  warnings and chunks up to about 3.96 MB. Step 1 removed the duplicate case
+  and redundant dynamic imports, then moved Monaco out of the initial route.
+- Rust tests pass 20/20. Initial audit had no frontend unit-test script; Step 1
+  added Vitest and CI coverage.
 
 ## Feature parity matrix
 
@@ -98,7 +100,7 @@ target or intentionally manual. Test IDs are mapped to quality gates below.
 | Step | Scope | Exit gate |
 |---:|---|---|
 | 0 | Baseline, matrix, quality/security/release docs | This commit; baseline commands and gaps recorded |
-| 1 | Warnings, frontend test harness, error reporting, smoke portability, CI | Clean typecheck/build/tests; no known compiler/build warnings |
+| 1 | Warnings, frontend test harness, error reporting, smoke portability, CI | Clean typecheck/tests and reviewed build output; Monaco is lazy and its asset budget is explicit |
 | 2 | Keychain, containment, trust/read-only, permission model, CSP, secret scan | Security tests and clean-machine review |
 | 3 | Canon migrations, FKs, cleanup, backup/import, integrity/recovery | Migration and crash-recovery tests |
 | 4 | Professional editor workflow and settings/keybindings | `IDE-*` acceptance suite |
@@ -116,8 +118,8 @@ target or intentionally manual. Test IDs are mapped to quality gates below.
 
 ## Next step
 
-Step 1 is in progress: duplicate case, portable fixture, frontend test harness,
-CI, unified error reporting, background DB/memory/LSP reporting and the
-cancellation/retry contract are complete. Remaining Step 1 work is to decide
-the Monaco chunk budget/code-split treatment without hiding the warning. Step 2
-security hardening starts only after that review.
+Step 1 is complete: duplicate case, portable fixture, frontend test harness,
+CI, unified error reporting, background DB/memory/LSP reporting, the
+cancellation/retry contract and Monaco lazy loading are verified. The remaining
+3.96 MB Monaco warning is a documented lazy-asset budget, not hidden by Vite's
+threshold. Step 2 security hardening is now in progress.

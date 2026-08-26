@@ -65,6 +65,13 @@ export function EditorArea() {
     };
   }, [tabs.length]);
 
+  // Theme synchronization stays on the editor route; loading the theme module
+  // from main.tsx would pull Monaco's multi-megabyte engine into the first chunk.
+  useEffect(() => {
+    if (!monacoReady) return;
+    void loadMonaco().then((m) => m.editor.setTheme(monacoThemeFor(resolvedTheme)));
+  }, [monacoReady, resolvedTheme]);
+
   // Load the active file's content once per path.
   useEffect(() => {
     if (!active || active.kind === "diff") return;

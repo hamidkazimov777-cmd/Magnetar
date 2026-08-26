@@ -4754,3 +4754,16 @@ chunk-size warning: Monaco initial chunks около 3.96 MB; npm audit advisori
 
 Step 1 всё ещё partial до решения по chunk budget. Step 2 security hardening
 (Keychain-only storage, backend authorization/path containment, CSP) не начат.
+
+### Запись 110 — 2026-08-26 — Codex — Step 1 завершён, Step 2 начат
+
+Editor route теперь загружается через React lazy/Suspense, а theme sync больше
+не тянет Monaco из `main.tsx`. Production build показывает initial entry около
+1.4 MB raw / 408.75 KB gzip и отдельный lazy Monaco chunk около 3.96 MB.
+Chunk-size warning не скрывался настройкой Vite; lazy-asset budget записан в
+quality gates и README.
+
+Проверено после code-split: `npm run build` OK, typecheck OK. Step 1 закрыт.
+Следующий этап — Step 2 security hardening: Keychain-only production secrets,
+canonical workspace containment, trust/read-only policy, backend command auth,
+CSP и secret-scan tests. Apple Developer/publication по-прежнему не затрагивать.
