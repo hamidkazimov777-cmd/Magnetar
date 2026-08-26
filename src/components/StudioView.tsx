@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
-import { readFile } from "@tauri-apps/plugin-fs";
 import {
   Image as ImageIcon,
   Clapperboard,
@@ -54,14 +52,6 @@ interface Ref {
   name: string;
   mime: string;
   data: string; // base64
-}
-
-function arrayBufferToBase64(bytes: Uint8Array) {
-  let binary = "";
-  const CHUNK = 0x8000; // stay under the argument limit on big files
-  for (let i = 0; i < bytes.length; i += CHUNK)
-    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-  return btoa(binary);
 }
 
 function imageMime(path: string): string {
@@ -196,21 +186,17 @@ export function StudioView() {
 
   const handleAttach = async () => {
     try {
-      const selected = await open({
-        multiple: true,
-        filters: [
-          { name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] },
-        ],
-      });
-      if (!Array.isArray(selected)) return;
+      const selected = await api.pickAttachments([
+        "png", "jpg", "jpeg", "webp", "gif",
+      ]);
+      if (!selected.length) return;
       const next: Ref[] = [];
       for (const file of selected) {
-        const bytes = await readFile(file);
         next.push({
           id: crypto.randomUUID(),
           name: file.split(/[/\\]/).pop() || file,
           mime: imageMime(file),
-          data: arrayBufferToBase64(bytes),
+          data: await api.readFileBase64(file),
         });
       }
       if (next.length) setRefs((r) => [...r, ...next]);

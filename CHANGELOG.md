@@ -29,6 +29,11 @@
   are dropped when the folder changes.
 - `grep`, `run_bash` and `git` with no directory given now act on the open
   project rather than whatever directory the app was launched from.
+- Attachment reads and the attachment file picker moved into backend commands,
+  so they answer to path containment like every other file operation. The `fs`
+  plugin is no longer granted, registered or shipped.
+- Fixed: dragging an image into the composer could not be read, because the
+  runtime file-scope grant only covers a path chosen through the picker.
 - Shell and Git invocations are recorded to a local, owner-only `audit.log`,
   with credentials stripped before writing. Refused commands are recorded too.
 

@@ -240,6 +240,13 @@ export const api = {
     HAS_BACKEND
       ? tauriInvoke<void>("set_workspace_root", { root: root ?? null })
       : Promise.resolve(),
+  /** Open the system file picker in the backend. Choosing a file is what
+   *  grants access to it, so the picker cannot live in the webview. */
+  pickAttachments: (extensions: string[]) =>
+    invoke<string[]>("pick_attachments", { extensions }),
+  /** Read a file as base64 for attachments, through the backend path gate. */
+  readFileBase64: (path: string) =>
+    invoke<string>("read_file_base64", { path }),
   toolListDir: (path: string) =>
     invoke<{ name: string; isDir: boolean }[]>("tool_list_dir", { path }),
   toolGrep: (pattern: string, path?: string) =>

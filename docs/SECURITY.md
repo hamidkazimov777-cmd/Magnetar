@@ -45,9 +45,18 @@ configured by the user or to a local provider.
   Monaco needs — still work. `img-src`/`media-src` keep `https:` only because
   generation providers return a remote URL for the finished asset; Step 13
   moves assets to disk and should then drop it.
-- Webview isolation and the Tauri capability set are not yet reviewed: the
-  capability file still grants `fs:default`, and no Tauri command performs
-  authorization of its own.
+- The Tauri capability set has been reviewed and reduced. A correction to an
+  earlier note in this file: `fs:default` was never broad — it grants read
+  access to the app's own directories only, and arbitrary files became readable
+  because the dialog plugin adds each *picked* path to the fs scope at runtime.
+  The real problem was that this was a second policy running beside path
+  containment, deciding the same question by different rules and leaving no
+  audit record — and it did not cover drag-and-drop, which is not a pick.
+  Attachment reads and the file picker are now backend commands subject to
+  containment, the fs plugin is granted nothing and is no longer registered or
+  shipped, and a test keeps `fs:` out of the capability file.
+- Webview isolation for the embedded browser window is still unreviewed, and no
+  Tauri command performs per-capability authorization of its own.
 - `npm audit --omit=dev --audit-level=high` currently reports 2 moderate/low
   vulnerabilities in DOMPurify pulled by Monaco. The available fix would force
   a breaking Monaco downgrade, so dependency remediation needs a deliberate

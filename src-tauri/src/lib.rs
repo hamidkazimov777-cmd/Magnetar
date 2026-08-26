@@ -15,7 +15,6 @@ mod workspace;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -111,6 +110,8 @@ pub fn run() {
             commands::tool_run_bash,
             commands::tool_kill_bash,
             commands::set_workspace_root,
+            commands::read_file_base64,
+            commands::pick_attachments,
             commands::tool_attach_file,
             commands::extract_pdf_text,
             commands::editor_read_file,
@@ -185,6 +186,32 @@ mod config_tests {
             .and_then(|v| v.as_str())
             .unwrap_or_else(|| panic!("{name} is declared"))
             .to_string()
+    }
+
+    fn capabilities() -> Vec<String> {
+        let raw = include_str!("../capabilities/default.json");
+        let conf: serde_json::Value = serde_json::from_str(raw).expect("capabilities parse");
+        conf["permissions"]
+            .as_array()
+            .expect("permissions is a list")
+            .iter()
+            .map(|v| v.as_str().unwrap_or_default().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn the_webview_is_granted_no_filesystem_access_of_its_own() {
+        // Every file the frontend touches goes through a Tauri command that
+        // resolves the path and, outside the workspace, asks the user. Granting
+        // the fs plugin as well would put a second policy beside that one,
+        // answering the same question with different rules and no audit record.
+        let perms = capabilities();
+        assert!(
+            !perms.iter().any(|p| p.starts_with("fs:")),
+            "the fs plugin must stay ungranted: {perms:?}"
+        );
+        // Reading a folder or saving an export still needs the file dialogs.
+        assert!(perms.iter().any(|p| p == "dialog:default"));
     }
 
     #[test]

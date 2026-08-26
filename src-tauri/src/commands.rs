@@ -863,6 +863,75 @@ pub async fn tool_run_bash(
     result
 }
 
+/// Open the system file picker and grant what the user chooses.
+///
+/// The picker runs here rather than in the webview because choosing a file *is*
+/// the authorization: a person selecting `~/Desktop/photo.png` in the system
+/// dialog has said what they want far more clearly than any second prompt could
+/// ask them. Doing it in the backend means the grant can be recorded on the
+/// strength of that choice, instead of the frontend asking to be trusted about
+/// what the user picked.
+#[tauri::command]
+pub async fn pick_attachments(
+    app: tauri::AppHandle,
+    extensions: Vec<String>,
+) -> Result<Vec<String>, String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let refs: Vec<&str> = extensions.iter().map(|s| s.as_str()).collect();
+    app.dialog()
+        .file()
+        .add_filter("Attachments", &refs)
+        .pick_files(move |chosen| {
+            let _ = tx.send(chosen);
+        });
+
+    let Some(chosen) = rx.await.unwrap_or(None) else {
+        return Ok(Vec::new()); // the user cancelled
+    };
+
+    let mut out = Vec::with_capacity(chosen.len());
+    for file in chosen {
+        let path = file.into_path().map_err(|e| e.to_string())?;
+        // Grant the file itself, not its folder: picking one image is not
+        // permission to read everything sitting next to it.
+        paths::grant(&path);
+        out.push(path.to_string_lossy().into_owned());
+    }
+    Ok(out)
+}
+
+/// Read a file as base64 for the composer's attachments.
+///
+/// This used to be `readFile` from the fs plugin, which answers to Tauri's own
+/// scope rather than to path containment — two policies deciding the same
+/// question, and only one of them auditable. It also meant a dragged-in file
+/// could not be read at all: the dialog plugin grants scope for a *picked*
+/// path, and a drop is not a pick, so dragging an image into the composer went
+/// through a permission the app never granted.
+///
+/// Going through the same gate as every other file command fixes both.
+#[tauri::command]
+pub async fn read_file_base64(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    const MAX_BYTES: u64 = 25 * 1024 * 1024;
+    let path = ensure_allowed(&app, &path).await?;
+    blocking(move || {
+        let size = std::fs::metadata(&path).map_err(|e| format!("{}: {e}", path.display()))?.len();
+        // Attachments are inlined into a prompt as base64, which is a third
+        // larger again. A refusal with the size in it is far more use than a
+        // provider error about the request body.
+        if size > MAX_BYTES {
+            return Err(format!(
+                "{} is {:.1} MB; attachments are limited to 25 MB",
+                path.display(),
+                size as f64 / (1024.0 * 1024.0)
+            ));
+        }
+        let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        Ok(base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes))
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn tool_attach_file(app: tauri::AppHandle, path: String) -> Result<String, String> {
     let path = ensure_allowed(&app, &path).await?;

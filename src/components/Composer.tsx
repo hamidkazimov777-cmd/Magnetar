@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowUp, Square, Paperclip, X, FileText } from "./icons";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { open } from "@tauri-apps/plugin-dialog";
-import { readFile } from "@tauri-apps/plugin-fs";
 import { useT } from "../lib/i18n";
 import { cn } from "../lib/cn";
 import { api } from "../lib/api";
@@ -10,14 +8,6 @@ import { useStore } from "../lib/store";
 import { SLASH_COMMANDS, projectFiles, rankFiles } from "../lib/mentions";
 import { AutocompletePopup, type AutocompleteItem } from "./composer/AutocompletePopup";
 import type { Attachment } from "../lib/types";
-
-function arrayBufferToBase64(bytes: Uint8Array) {
-  let binary = "";
-  const CHUNK = 0x8000; // avoid blowing the argument limit on big files
-  for (let i = 0; i < bytes.length; i += CHUNK)
-    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-  return btoa(binary);
-}
 
 function getMimeType(path: string): string {
   const ext = path.split(".").pop()?.toLowerCase();
@@ -227,13 +217,12 @@ export function Composer({
           extractedText,
         });
       } else if (mime.startsWith("image/")) {
-        const contents = await readFile(file);
         next.push({
           id: crypto.randomUUID(),
           type: "image",
           mimeType: mime,
           name,
-          data: arrayBufferToBase64(contents),
+          data: await api.readFileBase64(file),
         });
       } else {
         // Anything else is treated as text: dropping a log or a source file
@@ -260,13 +249,10 @@ export function Composer({
 
   const handleAttach = async () => {
     try {
-      const selected = await open({
-        multiple: true,
-        filters: [
-          { name: "Images & PDF", extensions: ["png", "jpg", "jpeg", "webp", "gif", "pdf"] },
-        ],
-      });
-      if (Array.isArray(selected)) await ingestPaths(selected);
+      const selected = await api.pickAttachments([
+        "png", "jpg", "jpeg", "webp", "gif", "pdf",
+      ]);
+      if (selected.length) await ingestPaths(selected);
     } catch {
       /* the user cancelled the dialog */
     }

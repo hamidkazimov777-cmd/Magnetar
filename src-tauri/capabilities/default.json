@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
+  "description": "Capability for the main window. Deliberately minimal: the frontend reaches the filesystem only through Tauri commands that go through path containment, so the fs plugin is granted nothing.",
   "windows": [
     "main"
   ],
@@ -13,8 +13,6 @@
     "core:window:allow-set-focus",
     "opener:default",
     "dialog:default",
-    "fs:default",
-    "opener:allow-open-url",
     "core:window:allow-unminimize",
     "core:window:allow-minimize"
   ]
