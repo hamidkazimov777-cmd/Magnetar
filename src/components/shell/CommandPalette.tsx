@@ -6,7 +6,6 @@ import {
   GitBranch,
   BrainCircuit,
   ListTodo,
-  Network,
   Clock,
   Globe,
   Settings,
@@ -88,7 +87,6 @@ export function CommandPalette({
       { id: "project", group: "cmdGroupNav", label: t("navProject"), icon: BrainCircuit, run: go("project") },
       { id: "projects", group: "cmdGroupNav", label: t("projects"), icon: FolderGit2, run: page("projects") },
       { id: "roadmap", group: "cmdGroupNav", label: t("roadmap"), icon: ListTodo, run: page("roadmap") },
-      { id: "knowledge", group: "cmdGroupNav", label: t("knowledgeGraph"), icon: Network, run: page("knowledge") },
       { id: "timeline", group: "cmdGroupNav", label: t("timeline"), icon: Clock, run: page("timeline") },
       { id: "subs", group: "cmdGroupNav", label: t("subscriptions"), icon: Globe, run: page("subscriptions") },
     ];

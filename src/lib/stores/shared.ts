@@ -28,7 +28,6 @@ export type CenterView =
   | "settings"
   | "projects"
   | "roadmap"
-  | "knowledge"
   | "timeline"
   | "subscriptions";
 

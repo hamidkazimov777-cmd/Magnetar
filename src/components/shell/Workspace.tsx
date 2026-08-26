@@ -15,7 +15,6 @@ import { ChatView } from "../ChatView";
 import { SettingsView } from "../SettingsView";
 import { ProjectsView } from "../ProjectsView";
 import { RoadmapView } from "../RoadmapView";
-import { KnowledgeGraphView } from "../KnowledgeGraphView";
 import { TimelineView } from "../TimelineView";
 import { SubscriptionsView } from "../SubscriptionsView";
 import { useStore } from "../../lib/store";
@@ -130,7 +129,6 @@ export function Workspace({
                 {centerView === "settings" && <SettingsView />}
                 {centerView === "projects" && <ProjectsView />}
                 {centerView === "roadmap" && <RoadmapView />}
-                {centerView === "knowledge" && <KnowledgeGraphView />}
                 {centerView === "timeline" && <TimelineView />}
                 {centerView === "subscriptions" && <SubscriptionsView />}
               </ErrorBoundary>

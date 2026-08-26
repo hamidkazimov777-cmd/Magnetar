@@ -122,24 +122,14 @@ describe("building what actually goes to the provider", () => {
     expect(listKnowledgeNodes).not.toHaveBeenCalled();
   });
 
-  it("includes only the graph nodes the recent messages actually mention", async () => {
-    useStore.setState({ projects: [project()] });
-    listKnowledgeNodes.mockResolvedValue([
-      { id: "n1", title: "Leases", nodeType: "concept", summary: "file claims" },
-      { id: "n2", title: "Billing", nodeType: "concept", summary: "never" },
-    ] as never);
-    const { system } = await buildOutgoing(
-      session({ projectId: "p1", messages: [msg("m1", "user", "how do leases work?")] }),
-      "m1",
-    );
-    expect(system).toContain("Leases");
-    expect(system).not.toContain("Billing");
-  });
-
-  it("still returns a usable prompt when the graph lookup fails", async () => {
+  it("does not consult the knowledge graph", async () => {
+    // It was a third representation of the same conversation, retrieved by
+    // substring-matching node titles against the last three messages. Facts
+    // already carry provenance and a verification state; the graph carried
+    // neither, and nothing that reads memory is better off for it.
     useStore.setState({ projects: [project({ techStack: "Rust" })] });
-    listKnowledgeNodes.mockRejectedValue(new Error("db closed"));
     const { system } = await buildOutgoing(session({ projectId: "p1" }), "m1");
+    expect(listKnowledgeNodes).not.toHaveBeenCalled();
     expect(system).toContain("Rust");
   });
 });

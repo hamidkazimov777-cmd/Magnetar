@@ -3,7 +3,6 @@ import {
   BrainCircuit,
   FolderGit2,
   ListTodo,
-  Network,
   Clock,
   Plus,
   FileText,
@@ -67,7 +66,6 @@ export function ProjectPanel() {
   const surfaces: { id: CenterView; icon: IconType; label: string }[] = [
     { id: "projects", icon: FileText, label: t("memoryFacts") },
     { id: "roadmap", icon: ListTodo, label: t("roadmap") },
-    { id: "knowledge", icon: Network, label: t("knowledgeGraph") },
     { id: "timeline", icon: Clock, label: t("timeline") },
   ];
 

@@ -97,7 +97,7 @@ export const createShellSlice: Slice<ShellSlice> = (set) => ({
   setCenterView: (v) =>
     set(
       // Project pages need a project selected — surface the picker with them.
-      v === "projects" || v === "roadmap" || v === "knowledge" || v === "timeline"
+      v === "projects" || v === "roadmap" || v === "timeline"
         ? { centerView: v, sidePanel: "project", sidebarOpen: true }
         : { centerView: v },
     ),

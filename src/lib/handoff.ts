@@ -1,5 +1,4 @@
 import { api } from "./api";
-import { db } from "./db";
 import { useStore } from "./store";
 import { buildMemorySection, cheapModel } from "./memory";
 import { ensureProjectFacts, newFact, projectFacts } from "./facts";
@@ -44,25 +43,6 @@ export async function buildOutgoing(
     const lastUser = [...msgs].reverse().find((m) => m.role === "user")?.content ?? "";
     const memory = buildMemorySection(session, lastUser);
     if (memory) parts.push(memory);
-
-    // Knowledge Graph Subgraph
-    try {
-      const nodes = await db.listKnowledgeNodes(session.projectId!);
-      if (nodes.length > 0) {
-        // Very basic retrieval: just include nodes whose title appears in recent messages
-        const recentText = msgs.slice(-3).map(m => m.content).join(" ").toLowerCase();
-        const relevantNodes = nodes.filter(n => recentText.includes(n.title.toLowerCase()));
-        
-        if (relevantNodes.length > 0) {
-          parts.push(`\n## Related Knowledge (Subgraph)`);
-          relevantNodes.forEach(n => {
-            parts.push(`- **${n.title}** (${n.nodeType}): ${n.summary || "No summary"}`);
-          });
-        }
-      }
-    } catch (error) {
-      reportError(error, "handoff.graph.retrieve");
-    }
   }
 
   if (session.summary && session.summaryUpToId) {
@@ -153,10 +133,6 @@ export async function maybeSummarize(
     void reportPromise(
       maybeExtractProjectBrain(transcript, session.projectId, useConn, useModel),
       "memory.projectBrain",
-    );
-    void reportPromise(
-      maybeBuildKnowledgeGraph(transcript, session.projectId, useConn, useModel),
-      "memory.knowledgeGraph",
     );
   }
 }
@@ -270,84 +246,3 @@ async function maybeExtractProjectBrain(
   }
 }
 
-async function maybeBuildKnowledgeGraph(transcript: string, projectId: string, conn: Connection, model: string) {
-  const instruction: ChatMessage = {
-    id: "kg",
-    role: "user",
-    content: `Analyze this conversation transcript and extract key named entities, concepts, or files (Knowledge Nodes) and their relationships (Knowledge Edges).
-Format your response as a JSON object with keys: "nodes" (array of {title: string, nodeType: string, summary: string}) and "edges" (array of {source: string, target: string, relation: string}).
-Keep the extraction minimal and focused on important architecture, tools, or domain concepts.
-\n\n---\n${transcript}`,
-    createdAt: 0,
-  };
-
-  try {
-    const res = await api.complete(conn, model, [instruction], "You are an expert knowledge graph builder. Always return raw JSON.");
-    
-    let parsed: { nodes?: any[], edges?: any[] } | null = null;
-    try {
-      parsed = JSON.parse(res.trim().replace(/^```json/, "").replace(/```$/, ""));
-    } catch {
-      useStore.getState().logMemory({
-        kind: "graph",
-        status: "error",
-        detail: "memErrParse",
-        projectId,
-        model,
-      });
-      return;
-    }
-
-    if (!parsed) return;
-
-    if (parsed.nodes && Array.isArray(parsed.nodes)) {
-      for (const n of parsed.nodes) {
-        if (n.title && n.nodeType) {
-          // Use the title as the ID for simpler edge mapping
-          const id = n.title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-          await db.saveKnowledgeNode({
-            id,
-            projectId,
-            title: n.title,
-            nodeType: n.nodeType,
-            summary: n.summary || "",
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-          }).catch((error) => reportError(error, "memory.knowledgeNode"));
-        }
-      }
-
-      if (parsed.edges && Array.isArray(parsed.edges)) {
-        for (const e of parsed.edges) {
-          if (e.source && e.target && e.relation) {
-            const sourceId = e.source.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-            const targetId = e.target.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-            await db.saveKnowledgeEdge({
-              source: sourceId,
-              target: targetId,
-              relation: e.relation,
-            }).catch((error) => reportError(error, "memory.knowledgeEdge"));
-          }
-        }
-      }
-
-      if (parsed.nodes.length)
-        useStore.getState().logMemory({
-          kind: "graph",
-          status: "ok",
-          detail: String(parsed.nodes.length),
-          projectId,
-          model,
-        });
-    }
-  } catch (e) {
-    const error = reportError(e, "memory.knowledgeGraph");
-    useStore.getState().logMemory({
-      kind: "graph",
-      status: "error",
-      detail: error.message,
-      projectId,
-      model,
-    });
-  }
-}
