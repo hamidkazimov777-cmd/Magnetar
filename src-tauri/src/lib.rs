@@ -26,6 +26,22 @@ pub fn run() {
                 // The secret store needs the same directory; without this it
                 // has nowhere to write and every key lookup falls through.
                 keychain::init(&dir);
+
+                // Paint the native window in the saved theme colour before the
+                // webview shows anything — otherwise launch flashes the opposite
+                // theme (white before a dark app, and vice versa) for a frame.
+                // The frontend writes this file whenever the theme changes.
+                let dark = std::fs::read_to_string(dir.join("window-theme"))
+                    .map(|s| s.trim() == "dark")
+                    .unwrap_or(false);
+                if let Some(win) = app.get_webview_window("main") {
+                    let color = if dark {
+                        tauri::window::Color(0, 0, 0, 255)
+                    } else {
+                        tauri::window::Color(255, 255, 255, 255)
+                    };
+                    let _ = win.set_background_color(Some(color));
+                }
             }
             Ok(())
         })
@@ -87,6 +103,7 @@ pub fn run() {
             commands::save_divergence,
             commands::list_proposals,
             commands::save_proposal,
+            commands::persist_window_theme,
             commands::list_generations,
             commands::save_generation,
             commands::delete_generation,

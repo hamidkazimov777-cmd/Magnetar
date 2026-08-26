@@ -14,6 +14,10 @@ import "@fontsource/onest/cyrillic-700.css";
 // JetBrains Mono for code — bundled locally (offline), Latin + Cyrillic.
 import "@fontsource/jetbrains-mono/latin-400.css";
 import "@fontsource/jetbrains-mono/latin-700.css";
+
+// Michroma — the wide, geometric "space" face used only for the MAGNETAR
+// wordmark (splash + welcome). Latin-only, single weight; offline.
+import "@fontsource/michroma/latin-400.css";
 import "@fontsource/jetbrains-mono/cyrillic-400.css";
 import "@fontsource/jetbrains-mono/cyrillic-700.css";
 import "./index.css";

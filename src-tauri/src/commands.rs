@@ -159,6 +159,27 @@ pub fn save_proposal(proposal: Proposal) -> Result<(), String> {
     workspace::save_proposal(proposal)
 }
 
+/// Remember the resolved theme so the next launch paints the native window in
+/// the right colour before the webview loads (kills the launch flash), and
+/// recolour the live window now so an in-session theme switch sticks too.
+#[tauri::command]
+pub fn persist_window_theme(app: tauri::AppHandle, dark: bool) -> Result<(), String> {
+    use tauri::Manager;
+    if let Ok(dir) = app.path().app_data_dir() {
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = std::fs::write(dir.join("window-theme"), if dark { "dark" } else { "light" });
+    }
+    if let Some(win) = app.get_webview_window("main") {
+        let color = if dark {
+            tauri::window::Color(0, 0, 0, 255)
+        } else {
+            tauri::window::Color(255, 255, 255, 255)
+        };
+        let _ = win.set_background_color(Some(color));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn list_generations() -> Result<Vec<Generation>, String> {
     workspace::list_generations()

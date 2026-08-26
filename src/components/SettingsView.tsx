@@ -14,6 +14,7 @@ import { useStore, DEFAULT_PREFS } from "../lib/store";
 import { useT, LANGS } from "../lib/i18n";
 import { cn } from "../lib/cn";
 import { api } from "../lib/api";
+import { Select } from "./ui/Select";
 
 /** Real settings: how the agent behaves and how the editor looks. Connections
  *  and API keys stay in their own dialog (they are security-sensitive). */
@@ -322,11 +323,9 @@ function BackgroundModelPicker({
 
   return (
     <div className="mt-2 space-y-2">
-      <select
-        className="input"
+      <Select
         value={connId}
-        onChange={(e) => {
-          const id = e.target.value;
+        onChange={(id) => {
           setConnId(id);
           setError(null);
           if (!id) {
@@ -335,37 +334,31 @@ function BackgroundModelPicker({
           }
           if (!models[id]?.length) void load(id);
         }}
-      >
-        <option value="">{t("prefMemoryModelAuto")}</option>
-        {connections.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name}
-          </option>
-        ))}
-      </select>
+        options={[
+          { value: "", label: t("prefMemoryModelAuto") },
+          ...connections.map((c) => ({ value: c.id, label: c.name })),
+        ]}
+      />
 
       {connId && (
         <div className="flex items-center gap-2">
-          <select
-            className="input min-w-0 flex-1"
+          <Select
+            className="min-w-0 flex-1"
             value={pinned?.connectionId === connId ? pinned.model : ""}
             disabled={loading || list.length === 0}
-            onChange={(e) =>
-              e.target.value
-                ? onChange({ connectionId: connId, model: e.target.value })
+            placeholder={loading ? t("loading") : list.length ? t("prefMemoryModelPick") : "—"}
+            onChange={(m) =>
+              m
+                ? onChange({ connectionId: connId, model: m })
                 : onChange(undefined)
             }
-          >
-            <option value="">
-              {loading ? t("loading") : list.length ? t("prefMemoryModelPick") : "—"}
-            </option>
-            {list.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.id}
-                {modelStatus[`${connId}::${m.id}`] === "denied" ? ` — ${t("modelDenied")}` : ""}
-              </option>
-            ))}
-          </select>
+            options={list.map((m) => ({
+              value: m.id,
+              label:
+                m.id +
+                (modelStatus[`${connId}::${m.id}`] === "denied" ? ` — ${t("modelDenied")}` : ""),
+            }))}
+          />
           <button
             className="btn btn-secondary btn-sm shrink-0"
             disabled={loading}

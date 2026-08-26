@@ -71,10 +71,7 @@ export function WelcomeView({
       <div className="relative mx-auto flex w-full max-w-[600px] flex-col px-8 py-16">
         <div className="flex flex-col items-center text-center">
           <LogoMark size={72} />
-          <h1
-            className="mt-6 text-[length:var(--fs-2xl)] font-medium uppercase"
-            style={{ letterSpacing: "0.22em" }}
-          >
+          <h1 className="wordmark mt-6 text-[length:var(--fs-2xl)] font-normal">
             Magnetar
           </h1>
           <p className="mt-2 text-[length:var(--fs-xs)] uppercase tracking-[0.18em] text-[var(--color-text-mute)]">

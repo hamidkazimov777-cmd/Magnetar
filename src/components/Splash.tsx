@@ -1,16 +1,30 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 /** Launch screen: the mark draws itself like an invisible pen inking a line —
  *  the thin diagonal beam first, then the main form — then the shape fills in,
- *  and the name fades up. One continuous gesture, ~1.2s. Click to skip. */
+ *  and the name fades up. One continuous gesture that then dissolves smoothly
+ *  into the app — no idle pause, no hard cut. Click to skip. */
 export function Splash({ onDone }: { onDone: () => void }) {
+  const [exiting, setExiting] = useState(false);
+
   useEffect(() => {
-    const timer = setTimeout(onDone, 2000);
-    return () => clearTimeout(timer);
+    // Start fading the moment the mark is inked (~1.3s), then hand off once the
+    // fade finishes — so there is no dead time sitting on a finished logo.
+    const fade = setTimeout(() => setExiting(true), 1300);
+    const done = setTimeout(onDone, 1600);
+    return () => {
+      clearTimeout(fade);
+      clearTimeout(done);
+    };
   }, [onDone]);
 
   return (
-    <div className="splash-root" onClick={onDone} data-tauri-drag-region>
+    <div
+      className="splash-root"
+      data-exiting={exiting}
+      onClick={onDone}
+      data-tauri-drag-region
+    >
       <div className="splash-center">
         <svg
           className="splash-mark"
@@ -38,7 +52,7 @@ export function Splash({ onDone }: { onDone: () => void }) {
             />
           </g>
         </svg>
-        <div className="splash-word">Magnetar</div>
+        <div className="splash-word wordmark">Magnetar</div>
       </div>
     </div>
   );

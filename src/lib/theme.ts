@@ -1,3 +1,5 @@
+import { invoke } from "@tauri-apps/api/core";
+
 /** Light is the product default. "system" follows the OS, and is only ever
  *  chosen explicitly by the user — a fresh install starts light. */
 export type Theme = "light" | "dark" | "system";
@@ -21,6 +23,9 @@ export function applyTheme(theme: Theme): ResolvedTheme {
   const root = document.documentElement;
   root.setAttribute("data-theme", resolved);
   root.style.colorScheme = resolved;
+  // Tell the native shell which colour to paint the window on next launch, so
+  // startup never flashes the opposite theme before the webview appears.
+  void invoke("persist_window_theme", { dark: resolved === "dark" }).catch(() => {});
   return resolved;
 }
 

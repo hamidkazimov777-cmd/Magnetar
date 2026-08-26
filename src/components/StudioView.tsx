@@ -14,8 +14,6 @@ import {
   SlidersHorizontal,
   Minus,
   Plus,
-  ChevronDown,
-  Check,
   X,
   Trash2,
 } from "lucide-react";
@@ -30,6 +28,7 @@ import {
 } from "../lib/generation";
 import { buildGenerationContext } from "../lib/memory";
 import { cn } from "../lib/cn";
+import { Select } from "./ui/Select";
 
 /* ==========================================================================
    GENERATION STUDIO
@@ -497,7 +496,8 @@ export function StudioView() {
           <aside className="w-[210px] shrink-0 overflow-auto border-l border-[var(--color-border)] bg-[var(--color-surface)] p-3">
             <Section icon={Cpu} title={t("studioModel")}>
               {genConns.length > 1 && (
-                <StudioSelect
+                <Select
+                  className="mb-1.5"
                   value={conn?.id ?? ""}
                   onChange={(id) => {
                     const p = providerFor(
@@ -509,7 +509,7 @@ export function StudioView() {
                   options={genConns.map((c) => ({ value: c.id, label: c.name }))}
                 />
               )}
-              <StudioSelect
+              <Select
                 value={activeModel ?? ""}
                 onChange={(m) => conn && setActive(conn.id, m)}
                 options={modelOptions.map((m) => ({ value: m, label: m }))}
@@ -537,7 +537,7 @@ export function StudioView() {
                     ))}
                   </div>
                 ) : p.type === "select" ? (
-                  <StudioSelect
+                  <Select
                     value={String(params[p.key] ?? "")}
                     onChange={(val) => setParams((v) => ({ ...v, [p.key]: val }))}
                     options={(p.options ?? []).map((o) => ({ value: o, label: o }))}
@@ -587,73 +587,6 @@ function Section({
   );
 }
 
-/** A dropdown in the app's own style — the native <select> read as a stray
- *  macOS control against the monochrome chrome. */
-function StudioSelect({
-  value,
-  onChange,
-  options,
-  placeholder,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-  placeholder?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [open]);
-
-  const current = options.find((o) => o.value === value);
-  return (
-    <div ref={ref} className="relative mb-1.5">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-1.5 rounded-[var(--r-md)] border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-[length:var(--fs-sm)] text-[var(--color-text)] transition-colors hover:border-[var(--color-border-strong)]"
-      >
-        <span className="min-w-0 flex-1 truncate text-left">
-          {current?.label ?? (
-            <span className="text-[var(--color-text-mute)]">{placeholder ?? "—"}</span>
-          )}
-        </span>
-        <ChevronDown size={13} className="shrink-0 text-[var(--color-text-mute)]" />
-      </button>
-      {open && (
-        <div className="anim-in absolute right-0 top-full z-30 mt-1 max-h-64 w-max min-w-full max-w-[340px] overflow-auto rounded-[var(--r-md)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-1 shadow-[var(--e-3)]">
-          {options.length === 0 && (
-            <div className="px-2 py-1.5 text-[length:var(--fs-xs)] text-[var(--color-text-mute)]">
-              {placeholder ?? "—"}
-            </div>
-          )}
-          {options.map((o) => (
-            <button
-              key={o.value}
-              onClick={() => {
-                onChange(o.value);
-                setOpen(false);
-              }}
-              className="flex w-full items-start gap-2 rounded-[var(--r-sm)] px-2 py-1.5 text-left text-[length:var(--fs-sm)] hover:bg-[var(--color-surface-2)]"
-            >
-              {/* Full name — fal ids like …/kling-video/v2/master must be
-                  readable to tell v2.0 from v2.5. */}
-              <span className="min-w-0 flex-1 break-all">{o.label}</span>
-              {o.value === value && (
-                <Check size={12} className="mt-0.5 shrink-0 text-[var(--color-ai)]" />
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function Stepper({
   value,
