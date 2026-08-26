@@ -1,4 +1,4 @@
-import { Bot, Check, Loader2, Square, TriangleAlert, X } from "lucide-react";
+import { Bot, Check, Loader2, Square, TriangleAlert, X } from "./icons";
 import { useStore } from "../lib/store";
 import { cn } from "../lib/cn";
 import { useT } from "../lib/i18n";

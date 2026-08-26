@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "./icons";
 import { useStore } from "../lib/store";
 import { useT } from "../lib/i18n";
 import { FACT_KINDS, newFact } from "../lib/facts";

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, ListTodo, CheckCircle2, Circle, ArrowRightCircle, Trash2 } from "lucide-react";
+import { Plus, ListTodo, CheckCircle2, Circle, ArrowRightCircle, Trash2 } from "./icons";
 import { db } from "../lib/db";
 import { useStore } from "../lib/store";
 import { useT } from "../lib/i18n";

@@ -16,7 +16,7 @@ import {
   Plus,
   X,
   Trash2,
-} from "lucide-react";
+} from "./icons";
 import { useStore } from "../lib/store";
 import { useT } from "../lib/i18n";
 import { api } from "../lib/api";

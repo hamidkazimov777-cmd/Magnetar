@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Save, Trash2, Check, BrainCircuit, Sparkles } from "lucide-react";
+import { Save, Trash2, Check, BrainCircuit, Sparkles } from "./icons";
 import { useStore } from "../lib/store";
 import { useT } from "../lib/i18n";
 import { cn } from "../lib/cn";

@@ -25,7 +25,7 @@ import {
   Moon,
   Monitor,
   FileCode2,
-} from "lucide-react";
+} from "../icons";
 import { useStore, NEW_CHAT_TITLE, type CenterView, type SidePanel } from "../../lib/store";
 import { useT, LANGS } from "../../lib/i18n";
 import { pickWorkspaceFolder } from "../panels/ExplorerPanel";

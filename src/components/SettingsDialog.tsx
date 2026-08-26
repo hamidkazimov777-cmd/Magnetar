@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, KeyRound, Loader2, Plus, Trash2, Play } from "lucide-react";
+import { Check, KeyRound, Loader2, Plus, Trash2, Play } from "./icons";
 import { api } from "../lib/api";
 import { useStore } from "../lib/store";
 import {

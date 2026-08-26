@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Clock } from "lucide-react";
+import { Clock } from "./icons";
 import { db } from "../lib/db";
 import { useStore } from "../lib/store";
 import { useT } from "../lib/i18n";

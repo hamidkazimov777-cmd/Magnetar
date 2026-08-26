@@ -2,7 +2,7 @@ import { memo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
-import { Bot, Check, Copy, FileText, Pencil, X } from "lucide-react";
+import { Bot, Check, Copy, FileText, Pencil, X } from "./icons";
 import { cn } from "../lib/cn";
 import { useStore } from "../lib/store";
 import { useT } from "../lib/i18n";

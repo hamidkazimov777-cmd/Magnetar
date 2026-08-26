@@ -9,7 +9,7 @@ import {
   Wrench,
   MessageSquareCode,
   RotateCcw,
-} from "lucide-react";
+} from "./icons";
 import { api } from "../lib/api";
 import { useStore } from "../lib/store";
 import { flushHandoffToMemory } from "../lib/memory";

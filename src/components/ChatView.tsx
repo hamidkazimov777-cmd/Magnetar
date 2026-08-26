@@ -14,7 +14,7 @@ import {
   Square,
   FolderPlus,
   FolderOpen,
-} from "lucide-react";
+} from "./icons";
 import { api } from "../lib/api";
 import { useStore } from "../lib/store";
 import { buildCatalog, recommend, type Recommendation } from "../lib/adaptive";

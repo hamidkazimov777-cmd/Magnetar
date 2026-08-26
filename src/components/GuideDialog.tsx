@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { X } from "./icons";
 import { useStore } from "../lib/store";
 import type { Lang } from "../lib/i18n";
 import { LogoMark } from "./Logo";

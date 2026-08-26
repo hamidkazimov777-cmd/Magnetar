@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { MessageSquare, Plus, Search, Trash2, Pencil, Check, X,
   Bot,
   Clapperboard,
-} from "lucide-react";
+} from "../icons";
 import { useStore, NEW_CHAT_TITLE } from "../../lib/store";
 import { useT } from "../../lib/i18n";
 import { EmptyState } from "../ui/EmptyState";

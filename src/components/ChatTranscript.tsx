@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef } from "react";
-import { TriangleAlert, X, RotateCcw } from "lucide-react";
+import { TriangleAlert, X, RotateCcw } from "./icons";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useStore } from "../lib/store";
 import { useT } from "../lib/i18n";

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Network, Database, ArrowRight } from "lucide-react";
+import { Network, Database, ArrowRight } from "./icons";
 import { db } from "../lib/db";
 import { useStore } from "../lib/store";
 import { useT } from "../lib/i18n";

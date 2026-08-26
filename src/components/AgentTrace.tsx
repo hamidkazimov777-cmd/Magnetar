@@ -20,14 +20,14 @@ import {
   Users,
   ShieldAlert,
   FolderPlus,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+} from "./icons";
+import type { IconType } from "./icons";
 import { summarizeArgs, type AgentToolEvent } from "../lib/agent";
 import { api } from "../lib/api";
 import { useT } from "../lib/i18n";
 import { cn } from "../lib/cn";
 
-const ICONS: Record<string, LucideIcon> = {
+const ICONS: Record<string, IconType> = {
   read_file: FileText,
   list_dir: FolderTree,
   grep: Search,

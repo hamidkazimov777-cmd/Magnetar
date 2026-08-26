@@ -19,8 +19,8 @@ import {
   ShieldCheck,
   GitCompare,
   Download,
-  type LucideIcon,
-} from "lucide-react";
+  type IconType,
+} from "../icons";
 import { useStore, type CenterView } from "../../lib/store";
 import { useT } from "../../lib/i18n";
 import { api } from "../../lib/api";
@@ -63,7 +63,7 @@ export function ProjectPanel() {
   };
 
   // The four memory surfaces, in the order they answer "what do you know?".
-  const surfaces: { id: CenterView; icon: LucideIcon; label: string }[] = [
+  const surfaces: { id: CenterView; icon: IconType; label: string }[] = [
     { id: "projects", icon: FileText, label: t("memoryFacts") },
     { id: "roadmap", icon: ListTodo, label: t("roadmap") },
     { id: "knowledge", icon: Network, label: t("knowledgeGraph") },

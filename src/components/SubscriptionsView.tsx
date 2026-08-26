@@ -8,7 +8,7 @@ import {
   ExternalLink,
   ShieldCheck,
   Plus,
-} from "lucide-react";
+} from "./icons";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useStore } from "../lib/store";

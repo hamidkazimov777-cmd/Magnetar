@@ -6,7 +6,7 @@ import {
   CheckCheck,
   Loader2,
   History,
-} from "lucide-react";
+} from "../icons";
 import { api } from "../../lib/api";
 import { useStore, type FileChange } from "../../lib/store";
 import { useT } from "../../lib/i18n";

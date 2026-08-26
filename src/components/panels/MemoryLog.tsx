@@ -1,4 +1,4 @@
-import { Check, TriangleAlert, MinusCircle, Eraser } from "lucide-react";
+import { Check, TriangleAlert, MinusCircle, Eraser } from "../icons";
 import { useStore } from "../../lib/store";
 import { useT } from "../../lib/i18n";
 import type { MemoryEvent, MemoryEventKind } from "../../lib/types";

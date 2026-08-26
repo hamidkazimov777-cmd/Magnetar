@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { TriangleAlert, RotateCcw } from "lucide-react";
+import { TriangleAlert, RotateCcw } from "../icons";
 import { translate } from "../../lib/i18n";
 import { useStore } from "../../lib/store";
 

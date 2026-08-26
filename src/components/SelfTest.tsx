@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, X, Loader2, FlaskConical } from "lucide-react";
+import { Check, X, Loader2, FlaskConical } from "./icons";
 import { api, type ToolDef } from "../lib/api";
 import { useStore } from "../lib/store";
 import { useT } from "../lib/i18n";

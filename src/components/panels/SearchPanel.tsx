@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Loader2, FileCode2, FolderGit2, Replace } from "lucide-react";
+import { Search, Loader2, FileCode2, FolderGit2, Replace } from "../icons";
 import { api } from "../../lib/api";
 import { useStore } from "../../lib/store";
 import { useT } from "../../lib/i18n";

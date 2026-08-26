@@ -1,4 +1,4 @@
-import { GitCompare, Check, X } from "lucide-react";
+import { GitCompare, Check, X } from "./icons";
 import { useStore } from "../lib/store";
 import { useT } from "../lib/i18n";
 import { applyDivergence, dismissDivergence } from "../lib/divergence";

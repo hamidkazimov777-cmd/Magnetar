@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronRight, Sparkles } from "lucide-react";
+import { ChevronRight, Sparkles } from "./icons";
 import { cn } from "../lib/cn";
 import { useT } from "../lib/i18n";
 import type { ChatMessage } from "../lib/types";

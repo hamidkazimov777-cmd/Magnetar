@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { X } from "./components/icons";
 import { Workspace } from "./components/shell/Workspace";
 import { CommandPalette } from "./components/shell/CommandPalette";
 import { WelcomeView } from "./components/WelcomeView";

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { FileCode2, Slash, CornerDownLeft } from "lucide-react";
+import { FileCode2, Slash, CornerDownLeft } from "../icons";
 import { useT } from "../../lib/i18n";
 import { cn } from "../../lib/cn";
 

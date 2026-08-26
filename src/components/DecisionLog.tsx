@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { GitCommit, Plus, Trash2, User, Sparkles } from "lucide-react";
+import { GitCommit, Plus, Trash2, User, Sparkles } from "./icons";
 import { useStore } from "../lib/store";
 import { useT } from "../lib/i18n";
 import { decisionFiles, recordDecision } from "../lib/decisions";

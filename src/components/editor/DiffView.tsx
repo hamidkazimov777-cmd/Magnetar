@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { DiffEditor } from "@monaco-editor/react";
-import { Loader2 } from "lucide-react";
+import { Loader2 } from "../icons";
 import { api } from "../../lib/api";
 import { useStore } from "../../lib/store";
 import { useT } from "../../lib/i18n";

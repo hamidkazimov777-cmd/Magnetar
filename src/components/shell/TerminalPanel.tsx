@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import { Eraser, RotateCcw, ChevronDown, TerminalSquare } from "lucide-react";
+import { Eraser, RotateCcw, ChevronDown, TerminalSquare } from "../icons";
 import { api } from "../../lib/api";
 import { useStore } from "../../lib/store";
 import { useT } from "../../lib/i18n";

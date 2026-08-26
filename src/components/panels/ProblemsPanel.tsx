@@ -9,7 +9,7 @@ import {
   ChevronRight,
   ChevronDown,
   Zap,
-} from "lucide-react";
+} from "../icons";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useStore } from "../../lib/store";
 import { useT } from "../../lib/i18n";

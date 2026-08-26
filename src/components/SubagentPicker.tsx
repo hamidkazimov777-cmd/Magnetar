@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Loader2, RefreshCw, Search, Users, X } from "lucide-react";
+import { Check, Loader2, RefreshCw, Search, Users, X } from "./icons";
 import { useStore } from "../lib/store";
 import { useT } from "../lib/i18n";
 import { api } from "../lib/api";

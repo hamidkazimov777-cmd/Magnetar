@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Editor, { type OnMount } from "@monaco-editor/react";
-import { X, Save, FileCode2, GitCompare, Loader2 } from "lucide-react";
+import { X, Save, FileCode2, GitCompare, Loader2 } from "../icons";
 import { api } from "../../lib/api";
 import { useStore, type EditorTab } from "../../lib/store";
 import { syncCheckMarkers } from "../../lib/markers";

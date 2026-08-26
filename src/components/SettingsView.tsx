@@ -9,7 +9,7 @@ import {
   Sun,
   Moon,
   Monitor,
-} from "lucide-react";
+} from "./icons";
 import { useStore, DEFAULT_PREFS } from "../lib/store";
 import { useT, LANGS } from "../lib/i18n";
 import { cn } from "../lib/cn";

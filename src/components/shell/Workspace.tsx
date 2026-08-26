@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { PanelRightOpen } from "lucide-react";
+import { PanelRightOpen } from "../icons";
 import { ActivityBar } from "./ActivityBar";
 import { StatusBar } from "./StatusBar";
 import { TerminalPanel } from "./TerminalPanel";

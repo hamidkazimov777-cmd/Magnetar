@@ -1,4 +1,4 @@
-import type { LucideIcon } from "lucide-react";
+import type { IconType } from "../icons";
 
 /** Header for every full-width page in the center area.
  *
@@ -11,7 +11,7 @@ export function PageHeader({
   subtitle,
   actions,
 }: {
-  icon: LucideIcon;
+  icon: IconType;
   title: string;
   subtitle?: string;
   actions?: React.ReactNode;

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Check } from "lucide-react";
+import { ChevronDown, Check } from "../icons";
 import { cn } from "../../lib/cn";
 
 /** The app's own dropdown. A native <select> renders as a stray macOS control

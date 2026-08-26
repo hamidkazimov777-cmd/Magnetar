@@ -16,7 +16,7 @@ import {
   FolderOpen as FolderOpenIcon,
   FolderX,
   Clock,
-} from "lucide-react";
+} from "../icons";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api } from "../../lib/api";
 import { useStore } from "../../lib/store";

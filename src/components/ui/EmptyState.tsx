@@ -1,4 +1,4 @@
-import type { LucideIcon } from "lucide-react";
+import type { IconType } from "../icons";
 
 /** The single empty-state treatment used by every panel and view in the app:
  *  icon, title, one line of guidance, and — crucially — a way forward. */
@@ -9,7 +9,7 @@ export function EmptyState({
   action,
   secondaryAction,
 }: {
-  icon?: LucideIcon;
+  icon?: IconType;
   title: string;
   text?: string;
   action?: { label: string; onClick: () => void };

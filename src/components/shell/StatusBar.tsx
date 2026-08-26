@@ -7,7 +7,7 @@ import {
   Bot,
   Command,
   Zap,
-} from "lucide-react";
+} from "../icons";
 import { api } from "../../lib/api";
 import { useStore } from "../../lib/store";
 import { useT } from "../../lib/i18n";
