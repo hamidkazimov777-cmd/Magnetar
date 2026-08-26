@@ -8,10 +8,10 @@ export function Splash({ onDone }: { onDone: () => void }) {
   const [exiting, setExiting] = useState(false);
 
   useEffect(() => {
-    // Start fading the moment the mark is inked (~1.3s), then hand off once the
-    // fade finishes — so there is no dead time sitting on a finished logo.
-    const fade = setTimeout(() => setExiting(true), 1300);
-    const done = setTimeout(onDone, 1600);
+    // Nothing animates in, so just hold the brand a beat, then fade the whole
+    // screen into the app. Short and even — no waiting on a drawing logo.
+    const fade = setTimeout(() => setExiting(true), 650);
+    const done = setTimeout(onDone, 950);
     return () => {
       clearTimeout(fade);
       clearTimeout(done);

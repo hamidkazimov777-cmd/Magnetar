@@ -10,17 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [
-      {
-        "title": "Magnetar",
-        "width": 1080,
-        "height": 760,
-        "minWidth": 720,
-        "minHeight": 520,
-        "titleBarStyle": "Overlay",
-        "hiddenTitle": true
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }

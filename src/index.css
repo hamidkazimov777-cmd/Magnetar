@@ -804,21 +804,18 @@
     text-transform: uppercase;
     letter-spacing: 0.14em;
   }
+  /* No draw animation, by request: the mark and the MAGNETAR wordmark are just
+     there — shown at once, held briefly, then the whole screen fades into the
+     app (see .splash-root[data-exiting]). No inking, no stagger, no delay. */
   .splash-word {
     margin-top: var(--sp-6);
     font-size: var(--fs-lg);
     font-weight: 400;
     color: #111827;
-    opacity: 0;
-    animation: splash-word 0.4s ease 0.85s forwards;
   }
   :root[data-theme="dark"] .splash-word {
     color: #f3f4f6;
   }
-
-  /* The mark draws itself: an invisible pen inks the outline — the thin
-     diagonal beam first, then the main form — then the shape fills in. One
-     continuous gesture, ~1.2s, no spin or scale. */
   .splash-mark {
     width: 150px;
     height: auto;
@@ -829,57 +826,7 @@
     color: #f3f4f6;
   }
   .splash-mark path {
-    fill: transparent;
-    stroke: currentColor;
-    stroke-width: 80;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    stroke-dasharray: 1;
-    stroke-dashoffset: 1;
-  }
-  .splash-mark .p1 {
-    animation: splash-draw 0.5s cubic-bezier(0.6, 0, 0.35, 1) forwards,
-      splash-ink 0.4s ease 0.85s forwards;
-  }
-  .splash-mark .p2 {
-    animation: splash-draw 0.6s cubic-bezier(0.6, 0, 0.35, 1) 0.3s forwards,
-      splash-ink 0.4s ease 0.85s forwards;
-  }
-  .splash-mark .p3 {
-    animation: splash-draw 0.6s cubic-bezier(0.6, 0, 0.35, 1) 0.45s forwards,
-      splash-ink 0.4s ease 0.85s forwards;
-  }
-  @keyframes splash-draw {
-    to {
-      stroke-dashoffset: 0;
-    }
-  }
-  @keyframes splash-ink {
-    to {
-      fill: currentColor;
-    }
-  }
-  @keyframes splash-word {
-    from {
-      opacity: 0;
-      transform: translateY(4px);
-    }
-    to {
-      opacity: 1;
-      transform: none;
-    }
-  }
-  /* Motion-averse: skip the draw, show the finished mark. */
-  @media (prefers-reduced-motion: reduce) {
-    .splash-mark path {
-      fill: currentColor;
-      stroke-dashoffset: 0;
-      animation: none;
-    }
-    .splash-word {
-      opacity: 1;
-      animation: none;
-    }
+    fill: currentColor;
   }
 
   /* The agent's narration voice: smaller, italic, dimmer prose — its thinking

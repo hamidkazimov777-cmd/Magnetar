@@ -19,6 +19,7 @@ pub fn run() {
         .setup(|app| {
             use tauri::Manager;
             // Initialize the local canon DB in the app data dir.
+            let mut dark = false;
             if let Ok(dir) = app.path().app_data_dir() {
                 if let Err(e) = db::init(&dir) {
                     eprintln!("db init failed: {e}");
@@ -26,23 +27,32 @@ pub fn run() {
                 // The secret store needs the same directory; without this it
                 // has nowhere to write and every key lookup falls through.
                 keychain::init(&dir);
-
-                // Paint the native window in the saved theme colour before the
-                // webview shows anything — otherwise launch flashes the opposite
-                // theme (white before a dark app, and vice versa) for a frame.
-                // The frontend writes this file whenever the theme changes.
-                let dark = std::fs::read_to_string(dir.join("window-theme"))
+                // The theme the frontend last persisted (see persist_window_theme).
+                dark = std::fs::read_to_string(dir.join("window-theme"))
                     .map(|s| s.trim() == "dark")
                     .unwrap_or(false);
-                if let Some(win) = app.get_webview_window("main") {
-                    let color = if dark {
-                        tauri::window::Color(0, 0, 0, 255)
-                    } else {
-                        tauri::window::Color(255, 255, 255, 255)
-                    };
-                    let _ = win.set_background_color(Some(color));
-                }
             }
+
+            // Create the main window here rather than in tauri.conf so its native
+            // background is the saved theme colour from the very first frame.
+            // wry only disables the WebView's default white background when a
+            // background colour is set AT CREATION — setting it later (in setup,
+            // after the config window already exists) still let one white frame
+            // through, which was the launch flash. Colours match index.html and
+            // the splash exactly (pure black / white).
+            let color = if dark {
+                tauri::window::Color(0, 0, 0, 255)
+            } else {
+                tauri::window::Color(255, 255, 255, 255)
+            };
+            tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::default())
+                .title("Magnetar")
+                .inner_size(1080.0, 760.0)
+                .min_inner_size(720.0, 520.0)
+                .title_bar_style(tauri::TitleBarStyle::Overlay)
+                .hidden_title(true)
+                .background_color(color)
+                .build()?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
