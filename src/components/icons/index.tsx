@@ -365,6 +365,14 @@ export const Download: IconType = (p) => (
     <path d="M5 19h14" />
   </G>
 );
+/** A tab held in place. */
+export const Pin: IconType = (p) => (
+  <G {...p}>
+    <path d="M9 4h6" />
+    <path d="M10 4v6l-3 3.5V15h10v-1.5L14 10V4" />
+    <path d="M12 15v5" />
+  </G>
+);
 /** The mirror of Download: memory coming back in. */
 export const Upload: IconType = (p) => (
   <G {...p}>

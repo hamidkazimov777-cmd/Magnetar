@@ -459,6 +459,10 @@ const ru: Dict = {
   trustBannerBody:
     "Эта папка открыта впервые. Пока вы её не подтвердите, Magnetar может читать код, но не менять файлы и не запускать команды — в репозитории могут быть скрипты сборки и задачи, которые выполняются сами.",
   trustBannerAction: "Доверять этой папке",
+  editorPin: "Закрепить вкладку",
+  editorUnpin: "Открепить",
+  prefAutosave: "Автосохранение",
+  prefAutosaveHint: "Сохранять файл через секунду после того, как правки прекратились. По умолчанию выключено: включённое незаметно означает, что редактор начинает менять файлы на диске без вашей просьбы.",
   searchStop: "Остановить",
   searchStopped: "Поиск остановлен",
   searchTruncated: "Показаны первые {count} — уточните запрос, чтобы увидеть остальное",
@@ -1104,6 +1108,10 @@ const en: Dict = {
   trustBannerBody:
     "This folder is new here. Until you vouch for it, Magnetar can read the code but cannot change files or run commands — a repository can carry build scripts and tasks that run on their own.",
   trustBannerAction: "Trust this folder",
+  editorPin: "Pin tab",
+  editorUnpin: "Unpin",
+  prefAutosave: "Autosave",
+  prefAutosaveHint: "Write the file a second after the edits stop. Off by default: turning it on silently would mean the editor starts changing files on disk without being asked.",
   searchStop: "Stop",
   searchStopped: "Search stopped",
   searchTruncated: "Showing the first {count} — narrow the query to see the rest",
@@ -1741,6 +1749,10 @@ const es: Dict = {
   trustBannerBody:
     "Esta carpeta es nueva aquí. Hasta que la apruebes, Magnetar puede leer el código pero no cambiar archivos ni ejecutar comandos: un repositorio puede incluir scripts de compilación y tareas que se ejecutan solas.",
   trustBannerAction: "Confiar en esta carpeta",
+  editorPin: "Fijar pestaña",
+  editorUnpin: "Soltar",
+  prefAutosave: "Autoguardado",
+  prefAutosaveHint: "Guarda el archivo un segundo después de que cesen las ediciones. Desactivado por defecto: activarlo en silencio significaría que el editor empieza a cambiar archivos en disco sin que se lo pidan.",
   searchStop: "Detener",
   searchStopped: "Búsqueda detenida",
   searchTruncated: "Mostrando los primeros {count}: afina la consulta para ver el resto",

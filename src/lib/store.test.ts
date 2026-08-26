@@ -204,6 +204,36 @@ describe("opening files", () => {
     expect(useStore.getState().tabs).toHaveLength(1);
   });
 
+  it("keeps pinned tabs first, and keeps them through a close-all", () => {
+    const st = useStore.getState();
+    for (const n of ["a", "b", "c"]) st.openTab({ path: `/repo/${n}.ts`, name: `${n}.ts` });
+
+    useStore.getState().togglePin("/repo/c.ts");
+    // Pinning is a claim on a position as much as on the tab.
+    expect(useStore.getState().tabs.map((x) => x.name)).toEqual(["c.ts", "a.ts", "b.ts"]);
+
+    // A tab opened afterwards lands after the pinned ones, not among them.
+    useStore.getState().openTab({ path: "/repo/d.ts", name: "d.ts" });
+    expect(useStore.getState().tabs.map((x) => x.name)).toEqual([
+      "c.ts",
+      "a.ts",
+      "b.ts",
+      "d.ts",
+    ]);
+
+    // Close-all is for clearing what a search or an agent run left behind.
+    // Taking the file someone deliberately kept is not tidying up.
+    useStore.getState().closeAllTabs();
+    expect(useStore.getState().tabs.map((x) => x.name)).toEqual(["c.ts"]);
+    expect(useStore.getState().activeTabPath).toBe("/repo/c.ts");
+
+    // Unpinning puts it back among the ordinary tabs, and then it goes.
+    useStore.getState().togglePin("/repo/c.ts");
+    useStore.getState().closeAllTabs();
+    expect(useStore.getState().tabs).toEqual([]);
+    expect(useStore.getState().activeTabPath).toBeUndefined();
+  });
+
   it("focuses the neighbour that takes a closed tab's place", () => {
     const st = useStore.getState();
     for (const n of ["a", "b", "c"]) st.openTab({ path: `/repo/${n}.ts`, name: `${n}.ts` });

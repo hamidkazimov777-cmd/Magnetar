@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Editor, { type OnMount } from "@monaco-editor/react";
-import { X, Save, FileCode2, GitCompare, Loader2, Info, Copy, Check } from "../icons";
+import { X, Save, FileCode2, GitCompare, Loader2, Info, Copy, Check, Pin } from "../icons";
 import { copyText } from "../../lib/clipboard";
 import { api } from "../../lib/api";
 import { useStore, type EditorTab } from "../../lib/store";
@@ -24,6 +24,9 @@ export function EditorArea() {
   const t = useT();
   const tabs = useStore((s) => s.tabs);
   const activeTabPath = useStore((s) => s.activeTabPath);
+  const togglePin = useStore((s) => s.togglePin);
+  const autosave = useStore((s) => s.prefs.autosave);
+  const autosaveDelayMs = useStore((s) => s.prefs.autosaveDelayMs);
   const setActiveTab = useStore((s) => s.setActiveTab);
   const closeTab = useStore((s) => s.closeTab);
   const openTab = useStore((s) => s.openTab);
@@ -159,6 +162,19 @@ export function EditorArea() {
     }
   }, [active, buffers, refreshExplorer, t]);
 
+  // Autosave: write the file once it has stopped changing.
+  //
+  // Off by default, and debounced rather than on every keystroke — saving
+  // mid-word means every file watcher, formatter and dev server in the project
+  // reacts to a state the user never intended to create. The delay restarts
+  // with each edit, so the write happens when typing stops.
+  useEffect(() => {
+    if (!autosave || !active || active.kind === "diff") return;
+    if (!dirty[active.path]) return;
+    const timer = setTimeout(() => void save(), Math.max(200, autosaveDelayMs));
+    return () => clearTimeout(timer);
+  }, [autosave, autosaveDelayMs, active, dirty, buffers, save]);
+
   // ⌘S saves, ⌘W closes. Registered on window so they work even when Monaco
   // does not have focus.
   useEffect(() => {
@@ -270,7 +286,25 @@ export function EditorArea() {
               ) : (
                 <FileCode2 size={13} className="shrink-0 opacity-70" />
               )}
-              <span className="max-w-[180px] truncate">{tab.name}</span>
+              <span className={cn("max-w-[180px] truncate", tab.pinned && "font-medium")}>
+                {tab.name}
+              </span>
+              <button
+                className={cn(
+                  "icon-btn h-5 w-5",
+                  // A pin nobody can find is a feature nobody has, so it shows
+                  // on hover — and stays visible once set, because the state
+                  // has to be readable without hovering every tab.
+                  tab.pinned ? "text-[var(--color-accent)]" : "opacity-0 group-hover/tab:opacity-100",
+                )}
+                title={tab.pinned ? t("editorUnpin") : t("editorPin")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  togglePin(tab.path);
+                }}
+              >
+                <Pin size={11} />
+              </button>
               <button
                 className="icon-btn h-5 w-5"
                 title={tabDirty ? t("editorUnsaved") : t("editorCloseTab")}

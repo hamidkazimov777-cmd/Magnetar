@@ -110,6 +110,12 @@ export function SettingsView() {
             value={prefs.editorMinimap}
             onChange={(v) => setPrefs({ editorMinimap: v })}
           />
+          <Toggle
+            label={t("prefAutosave")}
+            hint={t("prefAutosaveHint")}
+            value={prefs.autosave}
+            onChange={(v) => setPrefs({ autosave: v })}
+          />
         </Section>
 
         {/* Interface */}

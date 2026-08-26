@@ -39,6 +39,12 @@ export interface EditorTab {
   kind?: "file" | "diff";
   /** Diff tabs only: show the staged diff rather than the working-tree diff. */
   staged?: boolean;
+  /** Pinned tabs sort first and survive "close all".
+   *
+   *  The point is not decoration: the two or three files you keep coming back
+   *  to get lost among the dozen a search or an agent run opened, and closing
+   *  the clutter used to close them too. */
+  pinned?: boolean;
 }
 
 /** Sentinel title for a freshly created chat; the UI renders it translated. */
@@ -61,6 +67,14 @@ export interface Prefs {
   /** Apply agent edits immediately and let the user review/undo (VS Code-like),
    *  instead of blocking on a confirm dialog for every single write. */
   autoApplyEdits: boolean;
+  /** Write a file to disk shortly after it stops being edited.
+   *
+   *  Off by default. Turning it on for someone silently means their editor
+   *  starts changing files on disk without them asking, which is the opposite
+   *  of what an agent-driven tool should assume. */
+  autosave: boolean;
+  /** How long the file has to sit still first. */
+  autosaveDelayMs: number;
   /** Shell commands are never auto-approved unless the user opts in. */
   confirmBash: boolean;
   /** How many tool-use rounds the agent may take before stopping. */
@@ -86,6 +100,8 @@ export interface Prefs {
 
 export const DEFAULT_PREFS: Prefs = {
   autoApplyEdits: true,
+  autosave: false,
+  autosaveDelayMs: 1000,
   confirmBash: true,
   agentMaxSteps: 80,
   bashTimeoutSecs: 600,
