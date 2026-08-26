@@ -16,6 +16,20 @@ mod workspace;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Dropping a file onto the window is as clear a statement of intent as
+        // choosing one in the file dialog, so it grants the same access — but
+        // only when the backend sees the drop itself. Left to the frontend it
+        // would be a path the webview claims was dropped, which is not the same
+        // thing at all, and the user was being asked to approve their own drag.
+        .on_window_event(|_window, event| {
+            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths: dropped, .. }) =
+                event
+            {
+                for path in dropped {
+                    paths::grant(path);
+                }
+            }
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {

@@ -75,7 +75,9 @@ configured by the user or to a local provider.
   containment, deciding the same question by different rules and leaving no
   audit record — and it did not cover drag-and-drop, which is not a pick.
   Attachment reads and the file picker are now backend commands subject to
-  containment, the fs plugin is granted nothing and is no longer registered or
+  containment; a file dropped onto the window is granted by the backend's own
+  drag-drop handler, so a drop carries the same weight as a pick instead of
+  asking the user to approve a drag they just performed, the fs plugin is granted nothing and is no longer registered or
   shipped, and a test keeps `fs:` out of the capability file.
 - Webview isolation for the embedded browser window is still unreviewed, and no
   Tauri command performs per-capability authorization of its own.
