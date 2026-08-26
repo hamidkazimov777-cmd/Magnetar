@@ -23,7 +23,18 @@ configured by the user or to a local provider.
   memory use is a known risk.
 - Path containment, symlink policy, repository trust, read-only mode and
   per-capability authorization are not yet a complete backend policy.
-- Tauri CSP is currently `null`; release cannot proceed with this value.
+- A restrictive CSP is now configured in `src-tauri/tauri.conf.json` and guarded
+  by `config_tests` in `src-tauri/src/lib.rs`, so it cannot silently return to
+  `null` or gain `'unsafe-inline'`/`'unsafe-eval'` in `script-src`. Verified
+  against the production bundle served with the policy as a real header: inline
+  script injection and cross-origin script loading are refused, outbound
+  `fetch` is refused, and same-origin/blob workers and injected styles — which
+  Monaco needs — still work. `img-src`/`media-src` keep `https:` only because
+  generation providers return a remote URL for the finished asset; Step 13
+  moves assets to disk and should then drop it.
+- Webview isolation and the Tauri capability set are not yet reviewed: the
+  capability file still grants `fs:default`, and no Tauri command performs
+  authorization of its own.
 - `npm audit --omit=dev --audit-level=high` currently reports 2 moderate/low
   vulnerabilities in DOMPurify pulled by Monaco. The available fix would force
   a breaking Monaco downgrade, so dependency remediation needs a deliberate
@@ -47,8 +58,9 @@ configured by the user or to a local provider.
 5. Run shell commands with bounded timeout, process group cancellation,
    output budgets, non-interactive defaults, confirmation for risky commands,
    and an append-only local audit record without sensitive arguments.
-6. Set a restrictive CSP and review webview/browser isolation. External pages
-   must not gain access to Tauri commands or project files.
+6. Set a restrictive CSP (done) and review webview/browser isolation and the
+   Tauri capability set (outstanding). External pages must not gain access to
+   Tauri commands or project files.
 7. Treat model output and repository content as untrusted input. Show
    prompt-injection warnings and require confirmation before privilege changes,
    credential access or external network use.

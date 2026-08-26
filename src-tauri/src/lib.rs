@@ -156,3 +156,74 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+mod config_tests {
+    /// The webview is untrusted presentation code, and a content policy is the
+    /// one control that limits what it may do with a compromised page: where
+    /// script may come from, and where anything may be sent.
+    ///
+    /// `csp: null` shipped for a long time, which is no policy at all. These
+    /// tests exist so it cannot come back quietly — a config edit that weakens
+    /// the policy fails the build rather than passing review unnoticed.
+    fn csp() -> serde_json::Map<String, serde_json::Value> {
+        let raw = include_str!("../tauri.conf.json");
+        let conf: serde_json::Value = serde_json::from_str(raw).expect("tauri.conf.json parses");
+        conf["app"]["security"]["csp"]
+            .as_object()
+            .expect("a content security policy is configured")
+            .clone()
+    }
+
+    fn directive(name: &str) -> String {
+        csp()
+            .get(name)
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| panic!("{name} is declared"))
+            .to_string()
+    }
+
+    #[test]
+    fn the_policy_denies_by_default() {
+        assert_eq!(directive("default-src"), "'self'");
+        assert_eq!(directive("object-src"), "'none'");
+        assert_eq!(directive("base-uri"), "'self'");
+        assert_eq!(directive("frame-ancestors"), "'none'");
+        assert_eq!(directive("form-action"), "'none'");
+    }
+
+    #[test]
+    fn no_script_may_be_injected_or_fetched_from_elsewhere() {
+        let script = directive("script-src");
+        assert_eq!(script, "'self'");
+        // These three are what turn a prompt injection or a malicious tool
+        // result into code execution inside the app.
+        for banned in ["'unsafe-inline'", "'unsafe-eval'", "*"] {
+            assert!(!script.contains(banned), "script-src must not allow {banned}");
+        }
+    }
+
+    #[test]
+    fn the_frontend_can_only_talk_to_its_own_backend() {
+        // Every provider call goes through Rust, so the webview itself has no
+        // reason to reach the network. If that ever changes, this test is the
+        // place the change has to be argued for.
+        let connect = directive("connect-src");
+        assert!(connect.starts_with("'self'"));
+        assert!(connect.contains("ipc:"), "Tauri IPC must stay reachable");
+        assert!(!connect.contains("https:"), "the webview must not open its own connections");
+        assert!(!connect.contains('*'));
+    }
+
+    #[test]
+    fn remote_media_is_allowed_only_where_generated_assets_need_it() {
+        // Generation providers hand back an https URL for the finished asset,
+        // and Studio renders it directly. That is the whole reason `https:`
+        // appears here; it must not spread to anything executable. Step 13
+        // saves assets to disk, and this can be tightened once it does.
+        assert!(directive("img-src").contains("https:"));
+        assert!(directive("media-src").contains("https:"));
+        assert!(!directive("script-src").contains("https:"));
+        assert!(!directive("style-src").contains("https:"));
+    }
+}

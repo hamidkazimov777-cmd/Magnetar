@@ -20,6 +20,14 @@
 - Cross-domain store tests covering folder close, reveal-in-file, project
   adoption, model-per-conversation, track switching and the memory queue.
 
+### Security
+
+- Replaced `csp: null` with a deny-by-default content security policy, and
+  guarded it with Rust tests so it cannot silently weaken. Verified against the
+  production bundle: inline and cross-origin scripts are refused and the webview
+  cannot open its own network connections, while Monaco's workers and injected
+  styles keep working.
+
 ### Changed
 
 - Removed the confirmed unreachable duplicate `new_project` agent case and the
@@ -36,6 +44,7 @@
 
 - In-memory index capped at 5,000 files, with no persistence or watcher.
 - Plaintext-at-rest `secrets.json` development posture pending Keychain hardening.
-- No backend authorization boundary, path containment policy or CSP.
+- No backend authorization boundary or path containment policy; the Tauri
+  capability set still grants `fs:default` and no command authorizes itself.
 - Networked npm audit identifies 2 moderate/low DOMPurify advisories pulled
   through Monaco; no forced downgrade has been applied.
