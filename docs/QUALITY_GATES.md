@@ -46,7 +46,7 @@ never required for an offline build.
   of the live database contained 22 projects, 434 facts and no messages, while
   `VACUUM INTO` of the same database gave 24, 495 and 7 — the difference was
   sitting in the write-ahead log.
-- Frontend: 174 tests passed across 19 files, covering redaction, retry and
+- Frontend: 194 tests passed across 22 files, covering redaction, retry and
   cancellation, agent guards and text-tool-call recovery, memory prompt
   assembly and background-model selection, handoff/summarisation, fact
   provenance and rendering, machine verification, verify-spec construction and

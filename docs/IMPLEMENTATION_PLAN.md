@@ -64,10 +64,10 @@ target or intentionally manual. Test IDs are mapped to quality gates below.
 | Workspace search | ✅ ranked BM25 | ✅ | ✅ | ✅ | ✅ | Search returns file/line hits and opens the result. `SEARCH-01` | P0 |
 | Replace in workspace | ✅ same engine as search | ✅ | ✅ | ✅ | ✅ | Preview selected files, apply, handle zero matches, failure and rerun. `SEARCH-02` | P0 |
 | Regex search + cancellation | ✅ budget, deadline, cancel by id | ✅ | ✅ | ✅ | ✅ | Regex, timeout, result budget and cancel work on a large repository. `SEARCH-03` | P0 |
-| Breadcrumbs / outline / symbols | ◐ path breadcrumbs; symbols in Step 5 | ✅ | ✅ | ✅ | ✅ | Show structure without LSP via parser layer; LSP enriches it when available. `IDE-06` | P1 |
-| Definition / implementation / references | ◐ LSP bridge | ✅ | ✅ | ✅ | ✅ | TS/Rust/Python/Go navigation works; missing server gives actionable fallback. `LSP-01` | P0 |
-| Hover / completion / rename / code actions | ◐ LSP bridge | ✅ | ✅ | ✅ | ✅ | Live request, timeout, reconnect and unsupported-server behavior are visible. `LSP-02` | P0 |
-| Formatting / organize imports / format-on-save | □ | ✅ | ✅ | ✅ | ✅ | Detect formatter, show failure, and never overwrite on formatter error. `LSP-03` | P1 |
+| Breadcrumbs / outline / symbols | ✅ heuristic floor + server symbols | ✅ | ✅ | ✅ | ✅ | Show structure without LSP via parser layer; LSP enriches it when available. `IDE-06` | P1 |
+| Definition / implementation / references | ✅ four languages | ✅ | ✅ | ✅ | ✅ | TS/Rust/Python/Go navigation works; missing server gives actionable fallback. `LSP-01` | P0 |
+| Hover / completion / rename / code actions | ✅ four languages | ✅ | ✅ | ✅ | ✅ | Live request, timeout, reconnect and unsupported-server behavior are visible. `LSP-02` | P0 |
+| Formatting / organize imports / format-on-save | ✅ from the server, opt-in | ✅ | ✅ | ✅ | ✅ | Detect formatter, show failure, and never overwrite on formatter error. `LSP-03` | P1 |
 | Diagnostics / Problems panel | ✅ checks + LSP | ✅ | ✅ | ✅ | ✅ | Parse compiler/linter output, click to location, preserve raw unparsed output. `LSP-04` | P0 |
 | Multi-root workspaces | — deliberate, see below | ✅ | ✅ | ✅ | ✅ | One root, documented. `IDE-07` withdrawn | P1 |
 | Recent projects | ✅ | ✅ | ✅ | ✅ | ✅ | Open, close, reopen and remove stale path safely. `IDE-08` | P1 |
@@ -125,7 +125,7 @@ something deliberately not built is a permanent false failure.
 | 2 | Keychain, containment, trust/read-only, permission model, CSP, secret scan | **Done** except the clean-machine review, which belongs to Step 14 |
 | 3 | Canon migrations, FKs, cleanup, backup/import, integrity/recovery | **Done**; migration, cascade, integrity and import covered by tests |
 | 4 | Professional editor workflow and settings/keybindings | **Done**; multi-root withdrawn with reasons, symbols deferred to Step 5 |
-| 5 | LSP/parser layer and diagnostics | `LSP-*` acceptance suite for four languages plus graceful fallback |
+| 5 | LSP/parser layer and diagnostics | **Done**; heuristic outline is the fallback, Tree-sitter deferred with reasons |
 | 6 | Git completion, tasks/tests, Test Explorer, Node/Python DAP | `GIT-*`, `TEST-*`, `DEBUG-*` |
 | 7 | Persistent/incremental search, watcher, scale and budgets | `PERF-*` scale runs |
 | 8 | Headless durable agent runtime | `AGENT-*` crash/resume/budget suite |
@@ -139,24 +139,26 @@ something deliberately not built is a permanent false failure.
 
 ## Next step
 
-Step 4 is complete. Search has a real engine — regex or literal, case and whole
-word, with a result budget, a deadline and cancellation by id — and it reports
-which of the three stopped it rather than returning a short list that looks
-complete. Replace runs on the same engine, so the list shown before a replace
-is the list that gets replaced. Tabs pin and survive close-all, a second file
-opens beside the first, autosave is available and off by default, breadcrumbs
-show where the open file lives, VS Code chords work alongside Magnetar's own
-and a `keybindings.json` can be imported, and settings travel as a file.
+Step 5 is complete. The bridge gained formatting and format-on-save, range
+formatting, code actions and organize imports, document and workspace symbols,
+and semantic tokens. Each server now reports what it is doing — starting,
+ready, missing with its install line, retrying, or given up with a restart
+button — because the previous states visible from the editor were "working" and
+"silently not working", which look identical.
 
-Two things are deliberately not in it. Multi-root is withdrawn with reasons
-above rather than left as an open acceptance test. Symbol-level breadcrumbs,
-outline and workspace symbols need a parser that works without a language
-server, which is Step 5's parser layer — path breadcrumbs ship now so the trail
-is not missing entirely.
+Structure works without a server at all: `src/lib/outline.ts` reads
+declarations off the start of lines for TypeScript, JavaScript, Rust, Python,
+Go, shell, Markdown, JSON and YAML, and drives breadcrumbs and the outline
+dropdown. It is a heuristic and documented as one. Where a server answers, its
+symbols are used instead.
 
-Step 5 is next: the LSP and parser layer. Definition, references, rename, hover
-and completion are already bridged for four languages; what is missing is
-formatting and format-on-save, organize imports, code actions, document and
-workspace symbols, semantic tokens, server onboarding when none is installed,
-restart and reconnect, and a Tree-sitter-style parser so structure works
-without a server at all.
+Tree-sitter is deferred rather than dropped: a WASM runtime plus a grammar per
+language is a couple of megabytes for a view that is right nine times in ten
+without it. The trade is worth revisiting when something needs a real parse
+tree, which is inline completion in Step 11.
+
+Step 6 is next, and it is the largest remaining: Git beyond a passthrough —
+staging hunks, branches, merge, rebase, stash, cherry-pick, a conflict
+resolver, blame, file history, remotes and commit signing — then task discovery
+from package.json/Cargo/Make/pyproject/just, running a single test and a suite,
+a Test Explorer, and a DAP debugger starting with Node and Python.

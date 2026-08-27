@@ -20,6 +20,19 @@
 - Cross-domain store tests covering folder close, reveal-in-file, project
   adoption, model-per-conversation, track switching and the memory queue.
 
+### Language intelligence
+
+- Formatting and format-on-save, taken from the language server because the
+  formatter is the project's decision. Off by default.
+- Code actions and organize imports.
+- Document symbols from the server, and workspace symbol search on ⌘T that asks
+  every running server rather than only the current file's.
+- Semantic tokens, remapped from each server's own legend.
+- Outline and breadcrumbs work without a language server at all, for
+  TypeScript, JavaScript, Rust, Python, Go, shell, Markdown, JSON and YAML.
+- The Problems panel reports what each language server is doing, with the
+  install line when one is missing and a restart button when one has given up.
+
 ### Editor and search
 
 - Project search has a real engine: regex or literal, case and whole-word, with
