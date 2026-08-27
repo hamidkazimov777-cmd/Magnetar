@@ -36,6 +36,11 @@ describe("what the defaults answer to", () => {
     expect(commandFor("mod+`")).toBe("view.terminal");
   });
 
+  it("binds go-to-symbol to the chords VS Code uses for it", () => {
+    expect(commandFor("mod+t")).toBe("palette.symbols");
+    expect(commandFor("mod+shift+o")).toBe("palette.symbols");
+  });
+
   it("answers nothing for a chord nobody bound", () => {
     expect(commandFor("mod+shift+z")).toBeNull();
   });

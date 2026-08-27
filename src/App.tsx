@@ -23,7 +23,7 @@ export default function App() {
   const [guideOpen, setGuideOpen] = useState(false);
   // The palette serves two shortcuts: ⌘K for commands, ⌘P for the project's
   // files. Same surface, different starting list.
-  const [palette, setPalette] = useState<null | "commands" | "files">(null);
+  const [palette, setPalette] = useState<null | "commands" | "files" | "symbols">(null);
   const [showSplash, setShowSplash] = useState(true);
 
   const connections = useStore((s) => s.connections);
@@ -101,6 +101,10 @@ export default function App() {
         case "palette.files":
           e.preventDefault();
           setPalette((v) => (v === "files" ? null : "files"));
+          break;
+        case "palette.symbols":
+          e.preventDefault();
+          setPalette((v) => (v === "symbols" ? null : "symbols"));
           break;
         case "view.terminal":
           e.preventDefault();

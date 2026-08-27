@@ -30,6 +30,7 @@ import { useT, LANGS } from "../../lib/i18n";
 import { pickWorkspaceFolder } from "../panels/ExplorerPanel";
 import { projectFiles, rankFiles } from "../../lib/mentions";
 import { cn } from "../../lib/cn";
+import { workspaceSymbols, type WorkspaceSymbol } from "../../lib/lspManager";
 
 interface Cmd {
   id: string;
@@ -53,8 +54,10 @@ export function CommandPalette({
   onClose: () => void;
   onOpenSettings: () => void;
   onOpenGuide: () => void;
-  /** "files" opens straight into the project's files (⌘P). */
-  mode?: "commands" | "files";
+  /** "files" opens straight into the project's files (⌘P); "symbols" searches
+   *  declarations across the project through whatever language servers are
+   *  running (⌘T). */
+  mode?: "commands" | "files" | "symbols";
 }) {
   const t = useT();
   const [query, setQuery] = useState("");
@@ -62,6 +65,24 @@ export function CommandPalette({
   // The project's files, for ⌘P. Loaded when the palette opens in that mode —
   // the list is cached in mentions.ts, so reopening is instant.
   const [files, setFiles] = useState<string[]>([]);
+  // Workspace symbols, for ⌘T. Debounced: each keystroke is a request to every
+  // running server, and firing them per character would keep the servers busy
+  // answering questions the user has already moved past.
+  const [symbols, setSymbols] = useState<WorkspaceSymbol[]>([]);
+  const revealInFile = useStore((s) => s.revealInFile);
+  useEffect(() => {
+    if (!open || mode !== "symbols") return;
+    const q = query.trim();
+    if (!q) {
+      setSymbols([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      void workspaceSymbols(q).then(setSymbols);
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [open, mode, query]);
+
   useEffect(() => {
     if (!open || mode !== "files") return;
     void projectFiles().then(setFiles);
@@ -159,12 +180,25 @@ export function CommandPalette({
     }));
   }, [mode, files, query, root, openTab]);
 
+  const symbolCommands = useMemo<Cmd[]>(() => {
+    if (mode !== "symbols") return [];
+    return symbols.slice(0, 60).map((sym) => ({
+      id: `${sym.path}:${sym.line}:${sym.name}`,
+      group: "cmdGroupSymbols",
+      label: sym.containerName ? `${sym.containerName} › ${sym.name}` : sym.name,
+      hint: root && sym.path.startsWith(root + "/") ? sym.path.slice(root.length + 1) : sym.path,
+      icon: FileCode2,
+      run: () => revealInFile(sym.path, sym.line),
+    }));
+  }, [mode, symbols, root, revealInFile]);
+
   const results = useMemo(() => {
+    if (mode === "symbols") return symbolCommands;
     if (mode === "files") return fileCommands;
     const q = query.trim().toLowerCase();
     if (!q) return commands;
     return commands.filter((c) => c.label.toLowerCase().includes(q));
-  }, [mode, fileCommands, commands, query]);
+  }, [mode, fileCommands, symbolCommands, commands, query]);
 
   // Reset when reopened; keep the cursor inside the result set.
   useEffect(() => {
@@ -222,7 +256,13 @@ export function CommandPalette({
                 onClose();
               }
             }}
-            placeholder={mode === "files" ? t("cmdFilePlaceholder") : t("cmdPlaceholder")}
+            placeholder={
+              mode === "files"
+                ? t("cmdFilePlaceholder")
+                : mode === "symbols"
+                  ? t("cmdSymbolPlaceholder")
+                  : t("cmdPlaceholder")
+            }
             className="h-12 w-full bg-transparent text-[length:var(--fs-lg)] outline-none placeholder:text-[var(--color-text-mute)]"
           />
         </div>

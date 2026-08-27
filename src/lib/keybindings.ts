@@ -19,6 +19,7 @@
 export type Command =
   | "palette.commands"
   | "palette.files"
+  | "palette.symbols"
   | "view.terminal"
   | "view.sidebar"
   | "view.agentPanel"
@@ -39,6 +40,9 @@ export type Chord = string;
 export const DEFAULT_BINDINGS: Record<Command, Chord[]> = {
   "palette.commands": ["mod+k", "mod+shift+p"],
   "palette.files": ["mod+p"],
+  // VS Code's "go to symbol in workspace". ⌘⇧O is its in-file variant; both
+  // land here, because the distinction matters less than the key working.
+  "palette.symbols": ["mod+t", "mod+shift+o"],
   "view.terminal": ["mod+j", "mod+`"],
   "view.sidebar": ["mod+b"],
   "view.agentPanel": ["mod+shift+a"],
@@ -106,6 +110,8 @@ export function commandFor(
 const VSCODE_COMMANDS: Record<string, Command> = {
   "workbench.action.showCommands": "palette.commands",
   "workbench.action.quickOpen": "palette.files",
+  "workbench.action.showAllSymbols": "palette.symbols",
+  "workbench.action.gotoSymbol": "palette.symbols",
   "workbench.action.terminal.toggleTerminal": "view.terminal",
   "workbench.action.toggleSidebarVisibility": "view.sidebar",
   "workbench.action.files.save": "editor.save",

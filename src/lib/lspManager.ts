@@ -242,6 +242,67 @@ export async function restartServer(key: string): Promise<void> {
   if (affected.length) await restart(affected);
 }
 
+export interface WorkspaceSymbol {
+  name: string;
+  kind: number;
+  containerName?: string;
+  path: string;
+  line: number;
+}
+
+/** Ask every running server for symbols matching a query.
+ *
+ *  Every server, not the one for the current file: a project is rarely one
+ *  language, and "go to symbol" that only finds symbols in the language of
+ *  whatever file happens to be open is a worse answer than no search.
+ *
+ *  Servers that are not up are skipped rather than started. Someone typing in
+ *  a picker is not asking to spin up a Rust analyzer and wait for it to index.
+ */
+export async function workspaceSymbols(query: string): Promise<WorkspaceSymbol[]> {
+  if (!query.trim()) return [];
+  const live = [...servers.values()].filter((s): s is Server => s !== null);
+  const results = await Promise.all(
+    live.map(async (server) => {
+      try {
+        const res = await server.client.request<
+          Array<{
+            name: string;
+            kind: number;
+            containerName?: string;
+            location?: { uri: string; range?: { start: { line: number } } };
+          }> | null
+        >("workspace/symbol", { query });
+        return (res ?? []).flatMap((sym) => {
+          const uri = sym.location?.uri;
+          if (!uri) return [];
+          return [
+            {
+              name: sym.name,
+              kind: sym.kind,
+              containerName: sym.containerName,
+              path: uriToPath(uri),
+              line: (sym.location?.range?.start.line ?? 0) + 1,
+            },
+          ];
+        });
+      } catch {
+        return [];
+      }
+    }),
+  );
+
+  // One process can serve two languages, so the same symbol can come back
+  // twice; dedupe by where it actually is.
+  const seen = new Set<string>();
+  return results.flat().filter((s) => {
+    const key = `${s.path}:${s.line}:${s.name}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export function supportedLanguages(): string[] {
   return Object.keys(SERVERS);
 }
