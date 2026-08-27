@@ -1,6 +1,11 @@
 import type * as monaco from "monaco-editor";
 import { api } from "./api";
-import { clientForPath, pathToUri, supportedLanguages } from "./lspManager";
+import {
+  clientForPath,
+  pathToUri,
+  semanticLegendForPath,
+  supportedLanguages,
+} from "./lspManager";
 import { useStore } from "./store";
 
 /* ==========================================================================
@@ -488,6 +493,47 @@ export function registerLspProviders(m: typeof import("monaco-editor")): void {
   });
 
   /* ------------------------------------------------------------------------
+     Semantic tokens
+
+     Monaco's own tokeniser works from patterns and cannot tell a type from a
+     variable that happens to be capitalised. A server can, because it has
+     resolved the code. The wire format is a flat list of integers whose
+     meaning depends on a legend the server sent once at startup, so both have
+     to be kept together — a token stream without its legend is a list of
+     numbers.
+     ------------------------------------------------------------------------ */
+  m.languages.registerDocumentSemanticTokensProvider(supportedLanguages(), {
+    getLegend() {
+      // Monaco asks for one legend for the whole language set, before any
+      // server is up. The union of what the servers here actually use is the
+      // honest answer; a server whose legend differs is handled by remapping
+      // its indices when its tokens arrive.
+      return { tokenTypes: [...MONACO_TOKEN_TYPES], tokenModifiers: [] };
+    },
+    async provideDocumentSemanticTokens(model, _lastResultId, token) {
+      const path = modelPath(model);
+      const client = clientForPath(path);
+      const legend = semanticLegendForPath(path);
+      if (!client || !legend) return null;
+      try {
+        const res = await client.request<{ data?: number[] } | null>(
+          "textDocument/semanticTokens/full",
+          { textDocument: { uri: pathToUri(path) } },
+          { token },
+        );
+        const data = res?.data;
+        if (!data?.length) return null;
+        return { data: new Uint32Array(remapTokenTypes(data, legend.tokenTypes)) };
+      } catch {
+        return null;
+      }
+    },
+    releaseDocumentSemanticTokens() {
+      /* nothing cached to release */
+    },
+  });
+
+  /* ------------------------------------------------------------------------
      Document symbols
 
      The heuristic outline covers every language and is there immediately; a
@@ -511,6 +557,68 @@ export function registerLspProviders(m: typeof import("monaco-editor")): void {
       }
     },
   });
+}
+
+/** The token types this editor renders, in the order Monaco's legend expects.
+ *
+ *  Deliberately a short list of the ones that change how code reads. A server
+ *  emitting something outside it has that token dropped rather than coloured
+ *  as the wrong thing — a variable painted as a type is worse than a variable
+ *  painted as nothing.
+ */
+export const MONACO_TOKEN_TYPES = [
+  "namespace",
+  "class",
+  "enum",
+  "interface",
+  "struct",
+  "typeParameter",
+  "type",
+  "parameter",
+  "variable",
+  "property",
+  "enumMember",
+  "function",
+  "method",
+  "macro",
+  "keyword",
+  "comment",
+  "string",
+  "number",
+  "operator",
+] as const;
+
+/** Translate a server's token-type numbers into this editor's.
+ *
+ *  Every server picks its own legend order, so the same integer means
+ *  different things in rust-analyzer and Pyright. The stream is five integers
+ *  per token — deltaLine, deltaStart, length, type, modifiers — and only the
+ *  fourth needs touching.
+ *
+ *  A type this editor does not render is set to `length: 0`, which Monaco
+ *  skips: dropping a token leaves that span with the default colouring, while
+ *  guessing at a replacement paints it as something it is not.
+ */
+export function remapTokenTypes(data: number[], serverTypes: string[]): number[] {
+  const out = data.slice();
+  const lookup = new Map<number, number>();
+  serverTypes.forEach((name, i) => {
+    const at = MONACO_TOKEN_TYPES.indexOf(name as (typeof MONACO_TOKEN_TYPES)[number]);
+    if (at >= 0) lookup.set(i, at);
+  });
+
+  // Five integers per token; a trailing partial group is malformed and left
+  // alone rather than half-rewritten.
+  for (let i = 0; i + 5 <= out.length; i += 5) {
+    const mapped = lookup.get(out[i + 3]);
+    if (mapped === undefined) {
+      out[i + 2] = 0; // unknown type: render nothing rather than the wrong thing
+      out[i + 3] = 0;
+    } else {
+      out[i + 3] = mapped;
+    }
+  }
+  return out;
 }
 
 interface LspCodeAction {

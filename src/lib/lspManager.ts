@@ -84,6 +84,11 @@ interface Server {
   config: ServerConfig;
   /** Resolves once the initialize handshake has completed. */
   ready: Promise<void>;
+  /** The token types and modifiers this server will use, in the order its
+   *  numbers refer to. Sent once in the initialize response and never again,
+   *  so it has to be kept: without the legend the token stream is a list of
+   *  integers meaning nothing. */
+  semanticLegend?: { tokenTypes: string[]; tokenModifiers: string[] };
 }
 
 /** One entry per language. `null` means "checked, binary not installed" — cached
@@ -240,6 +245,24 @@ export async function restartServer(key: string): Promise<void> {
     versions.delete(p);
   }
   if (affected.length) await restart(affected);
+}
+
+interface InitializeResult {
+  capabilities?: {
+    semanticTokensProvider?: {
+      legend?: { tokenTypes: string[]; tokenModifiers: string[] };
+    };
+  };
+}
+
+/** The legend for a path's server, or null when it does not do semantic
+ *  tokens. Editor code asks through this rather than reaching into the map. */
+export function semanticLegendForPath(
+  path: string,
+): { tokenTypes: string[]; tokenModifiers: string[] } | null {
+  const config = configFor(path);
+  if (!config) return null;
+  return servers.get(serverKey(config))?.semanticLegend ?? null;
 }
 
 export interface WorkspaceSymbol {
@@ -416,7 +439,7 @@ async function ensureServer(config: ServerConfig): Promise<Server | null> {
     };
 
     await client.start();
-    await client.request("initialize", {
+    const initialized = await client.request<InitializeResult>("initialize", {
       processId: null,
       rootUri: pathToUri(root),
       workspaceFolders: [{ uri: pathToUri(root), name: root.split("/").pop() }],
@@ -424,11 +447,22 @@ async function ensureServer(config: ServerConfig): Promise<Server | null> {
         textDocument: {
           synchronization: { dynamicRegistration: false, didSave: false },
           publishDiagnostics: { relatedInformation: true },
+          // Asked for explicitly: a server that is not told the client wants
+          // semantic tokens will not compute them, and silently sends none.
+          semanticTokens: {
+            dynamicRegistration: false,
+            requests: { full: true },
+            tokenTypes: [],
+            tokenModifiers: [],
+            formats: ["relative"],
+          },
         },
         workspace: { workspaceFolders: true },
       },
     });
     client.notify("initialized", {});
+    const legend = initialized?.capabilities?.semanticTokensProvider?.legend;
+    if (entry && legend?.tokenTypes) entry.semanticLegend = legend;
     // A clean start clears the restart loop guard and the "missing" hint.
     restartCounts.delete(serverKey(config));
     useStore.getState().setLspMissing(serverKey(config), null);
