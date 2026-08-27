@@ -383,6 +383,232 @@ export function registerLspProviders(m: typeof import("monaco-editor")): void {
       return { edits: monacoEdits };
     },
   });
+
+  /* ------------------------------------------------------------------------
+     Formatting
+
+     A project's formatter is a decision the project already made — prettier,
+     rustfmt, black, gofmt — and the language server is what knows which. So
+     this asks the server rather than shipping opinions of our own.
+     ------------------------------------------------------------------------ */
+  m.languages.registerDocumentFormattingEditProvider(supportedLanguages(), {
+    async provideDocumentFormattingEdits(model, options, token) {
+      const path = modelPath(model);
+      const client = clientForPath(path);
+      if (!client) return [];
+      try {
+        const res = await client.request<LspTextEditR[] | null>(
+          "textDocument/formatting",
+          {
+            textDocument: { uri: pathToUri(path) },
+            options: {
+              tabSize: options.tabSize,
+              insertSpaces: options.insertSpaces,
+            },
+          },
+          { token },
+        );
+        return (res ?? []).map((e) => toMonacoEdit(e, m));
+      } catch {
+        // A server that cannot format is not an error worth interrupting for;
+        // the file is simply left as the user wrote it.
+        return [];
+      }
+    },
+  });
+
+  m.languages.registerDocumentRangeFormattingEditProvider(supportedLanguages(), {
+    async provideDocumentRangeFormattingEdits(model, range, options, token) {
+      const path = modelPath(model);
+      const client = clientForPath(path);
+      if (!client) return [];
+      try {
+        const res = await client.request<LspTextEditR[] | null>(
+          "textDocument/rangeFormatting",
+          {
+            textDocument: { uri: pathToUri(path) },
+            range: {
+              start: { line: range.startLineNumber - 1, character: range.startColumn - 1 },
+              end: { line: range.endLineNumber - 1, character: range.endColumn - 1 },
+            },
+            options: { tabSize: options.tabSize, insertSpaces: options.insertSpaces },
+          },
+          { token },
+        );
+        return (res ?? []).map((e) => toMonacoEdit(e, m));
+      } catch {
+        return [];
+      }
+    },
+  });
+
+  /* ------------------------------------------------------------------------
+     Code actions
+
+     Quick fixes and "organize imports" are the same request; what differs is
+     the kind the caller asks for. Actions that carry edits are applied
+     directly, actions that carry a command are not — running an arbitrary
+     server command is a different kind of permission from applying a text
+     edit, and this is not the step that decides it.
+     ------------------------------------------------------------------------ */
+  m.languages.registerCodeActionProvider(supportedLanguages(), {
+    async provideCodeActions(model, range, context, token) {
+      const path = modelPath(model);
+      const client = clientForPath(path);
+      if (!client) return { actions: [], dispose() {} };
+      try {
+        const res = await client.request<LspCodeAction[] | null>(
+          "textDocument/codeAction",
+          {
+            textDocument: { uri: pathToUri(path) },
+            range: {
+              start: { line: range.startLineNumber - 1, character: range.startColumn - 1 },
+              end: { line: range.endLineNumber - 1, character: range.endColumn - 1 },
+            },
+            context: {
+              diagnostics: [],
+              only: context.only ? [context.only] : undefined,
+            },
+          },
+          { token },
+        );
+        const actions = (res ?? [])
+          .filter((a) => a && typeof a.title === "string" && a.edit)
+          .map((a) => ({
+            title: a.title,
+            kind: a.kind,
+            isPreferred: a.isPreferred,
+            edit: workspaceEditToMonaco(a.edit!, m),
+          }));
+        return { actions, dispose() {} };
+      } catch {
+        return { actions: [], dispose() {} };
+      }
+    },
+  });
+
+  /* ------------------------------------------------------------------------
+     Document symbols
+
+     The heuristic outline covers every language and is there immediately; a
+     server's symbols are exact. Both exist, and Monaco prefers this one when
+     a server answers.
+     ------------------------------------------------------------------------ */
+  m.languages.registerDocumentSymbolProvider(supportedLanguages(), {
+    async provideDocumentSymbols(model, token) {
+      const path = modelPath(model);
+      const client = clientForPath(path);
+      if (!client) return [];
+      try {
+        const res = await client.request<LspDocumentSymbol[] | null>(
+          "textDocument/documentSymbol",
+          { textDocument: { uri: pathToUri(path) } },
+          { token },
+        );
+        return (res ?? []).map((sym) => toMonacoSymbol(sym, m));
+      } catch {
+        return [];
+      }
+    },
+  });
+}
+
+interface LspCodeAction {
+  title: string;
+  kind?: string;
+  isPreferred?: boolean;
+  edit?: LspWorkspaceEdit;
+}
+
+interface LspDocumentSymbol {
+  name: string;
+  detail?: string;
+  kind: number;
+  range?: { start: { line: number; character: number }; end: { line: number; character: number } };
+  selectionRange?: {
+    start: { line: number; character: number };
+    end: { line: number; character: number };
+  };
+  location?: LspLocation;
+  children?: LspDocumentSymbol[];
+}
+
+function toMonacoEdit(
+  edit: LspTextEditR,
+  m: typeof monaco,
+): monaco.languages.TextEdit {
+  return {
+    range: new m.Range(
+      edit.range.start.line + 1,
+      edit.range.start.character + 1,
+      edit.range.end.line + 1,
+      edit.range.end.character + 1,
+    ),
+    text: edit.newText,
+  };
+}
+
+/** A server's edit set, in the shape Monaco applies.
+ *
+ *  Only edits to files Monaco already has a model for are included: applying a
+ *  change to a file nobody has open would be an edit the user never sees and
+ *  cannot undo from the editor, which is not what accepting a quick fix means.
+ */
+function workspaceEditToMonaco(
+  edit: LspWorkspaceEdit,
+  m: typeof monaco,
+): monaco.languages.WorkspaceEdit {
+  const edits: monaco.languages.IWorkspaceTextEdit[] = [];
+  for (const [path, textEdits] of renameGroups(edit)) {
+    const uri = m.Uri.file(path);
+    if (!m.editor.getModel(uri)) continue;
+    for (const te of textEdits) {
+      edits.push({
+        resource: uri,
+        versionId: undefined,
+        textEdit: toMonacoEdit(te, m),
+      });
+    }
+  }
+  return { edits };
+}
+
+/** LSP symbol kinds are numbers; Monaco's are its own enum. Only the ones that
+ *  appear in real files are mapped — the rest land on `Variable`, which is
+ *  wrong in a way nobody is misled by. */
+function toMonacoSymbol(
+  sym: LspDocumentSymbol,
+  m: typeof monaco,
+): monaco.languages.DocumentSymbol {
+  const KINDS: Record<number, monaco.languages.SymbolKind> = {
+    5: m.languages.SymbolKind.Class,
+    6: m.languages.SymbolKind.Method,
+    8: m.languages.SymbolKind.Field,
+    11: m.languages.SymbolKind.Interface,
+    12: m.languages.SymbolKind.Function,
+    13: m.languages.SymbolKind.Variable,
+    14: m.languages.SymbolKind.Constant,
+    23: m.languages.SymbolKind.Struct,
+  };
+  const r = sym.range ?? sym.location?.range ?? {
+    start: { line: 0, character: 0 },
+    end: { line: 0, character: 0 },
+  };
+  const range = new m.Range(
+    r.start.line + 1,
+    r.start.character + 1,
+    r.end.line + 1,
+    r.end.character + 1,
+  );
+  return {
+    name: sym.name,
+    detail: sym.detail ?? "",
+    kind: KINDS[sym.kind] ?? m.languages.SymbolKind.Variable,
+    tags: [],
+    range,
+    selectionRange: range,
+    children: (sym.children ?? []).map((c) => toMonacoSymbol(c, m)),
+  };
 }
 
 /** Route "go to definition" through our own tab system. A standalone Monaco

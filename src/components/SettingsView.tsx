@@ -119,6 +119,12 @@ export function SettingsView() {
             value={prefs.autosave}
             onChange={(v) => setPrefs({ autosave: v })}
           />
+          <Toggle
+            label={t("prefFormatOnSave")}
+            hint={t("prefFormatOnSaveHint")}
+            value={prefs.formatOnSave}
+            onChange={(v) => setPrefs({ formatOnSave: v })}
+          />
         </Section>
 
         {/* Interface */}

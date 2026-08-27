@@ -32,6 +32,7 @@ export function EditorArea() {
   const [cursorLine, setCursorLine] = useState(1);
   const setSplitTab = useStore((s) => s.setSplitTab);
   const autosave = useStore((s) => s.prefs.autosave);
+  const formatOnSave = useStore((s) => s.prefs.formatOnSave);
   const autosaveDelayMs = useStore((s) => s.prefs.autosaveDelayMs);
   const setActiveTab = useStore((s) => s.setActiveTab);
   const closeTab = useStore((s) => s.closeTab);
@@ -161,11 +162,26 @@ export function EditorArea() {
 
   const save = useCallback(async () => {
     if (!active || active.kind === "diff") return;
-    const content = buffers[active.path];
+    let content = buffers[active.path];
     if (content === undefined) return;
     setSaving(true);
     setError(null);
     try {
+      // Formatting is the project's decision, so it goes through the language
+      // server's formatter rather than any opinion of ours. Run before the
+      // write and read back from the model, so what lands on disk is what the
+      // editor now shows — formatting after the write would leave the two
+      // disagreeing until the next keystroke.
+      if (formatOnSave && editorRef.current) {
+        try {
+          await editorRef.current.getAction("editor.action.formatDocument")?.run();
+          content = editorRef.current.getValue();
+          setBuffers((b) => ({ ...b, [active.path]: content as string }));
+        } catch {
+          // No formatter, or one that failed: save what the user wrote. A save
+          // that refuses because formatting did not work would lose the edit.
+        }
+      }
       await api.toolWriteFile(active.path, content);
       setDirty((d) => ({ ...d, [active.path]: false }));
       refreshExplorer();
@@ -174,7 +190,7 @@ export function EditorArea() {
     } finally {
       setSaving(false);
     }
-  }, [active, buffers, refreshExplorer, t]);
+  }, [active, buffers, formatOnSave, refreshExplorer, t]);
 
   // Autosave: write the file once it has stopped changing.
   //

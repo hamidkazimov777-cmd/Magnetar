@@ -73,6 +73,12 @@ export interface Prefs {
    *  starts changing files on disk without them asking, which is the opposite
    *  of what an agent-driven tool should assume. */
   autosave: boolean;
+  /** Run the project's formatter before writing the file.
+   *
+   *  Off by default, like autosave and for the same reason: a tool that
+   *  reformats someone's file the first time they press ⌘S, without being
+   *  asked, produces a diff they did not write. */
+  formatOnSave: boolean;
   /** How long the file has to sit still first. */
   autosaveDelayMs: number;
   /** Shell commands are never auto-approved unless the user opts in. */
@@ -101,6 +107,7 @@ export interface Prefs {
 export const DEFAULT_PREFS: Prefs = {
   autoApplyEdits: true,
   autosave: false,
+  formatOnSave: false,
   autosaveDelayMs: 1000,
   confirmBash: true,
   agentMaxSteps: 80,
