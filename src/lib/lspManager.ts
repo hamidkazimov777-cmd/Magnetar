@@ -206,6 +206,42 @@ export function serverKeyForPath(path: string): string | undefined {
 
 /** The Monaco languages that have a server configured, for provider
  *  registration. */
+function reportServer(key: string, state: import("./stores/diagnostics").LspServerState): void {
+  useStore.getState().setLspServer(key, state);
+}
+
+/** Start a server again after it gave up, at the user's request.
+ *
+ *  Manual rather than another automatic retry: three failures in a row is a
+ *  server that needs something changed — a missing toolchain, a broken config —
+ *  and retrying forever would hide that behind a busy machine.
+ */
+export async function restartServer(key: string): Promise<void> {
+  const server = servers.get(key);
+  if (server) {
+    try {
+      await server.client.stop();
+    } catch {
+      /* already gone */
+    }
+  }
+  servers.delete(key);
+  restartCounts.delete(key);
+  useStore.getState().setLspServer(key, null);
+
+  // Reopen whatever this server was serving, so features come back without the
+  // user closing and reopening files.
+  const affected = [...open].filter((p) => {
+    const c = configFor(p);
+    return c && serverKey(c) === key;
+  });
+  for (const p of affected) {
+    open.delete(p);
+    versions.delete(p);
+  }
+  if (affected.length) await restart(affected);
+}
+
 export function supportedLanguages(): string[] {
   return Object.keys(SERVERS);
 }
@@ -253,6 +289,10 @@ async function ensureServer(config: ServerConfig): Promise<Server | null> {
   const ready = new Promise<void>((r) => (resolveReady = r));
   let entry: Server | null = null;
 
+  const report = (state: Parameters<typeof reportServer>[1]) =>
+    reportServer(serverKey(config), state);
+  report({ label: config.label, status: "starting", at: Date.now() });
+
   try {
     // In the browser preview there is no Tauri backend; this throws and we
     // cache "unavailable" so we never retry per keystroke.
@@ -264,6 +304,12 @@ async function ensureServer(config: ServerConfig): Promise<Server | null> {
       useStore.getState().setLspMissing(serverKey(config), {
         label: config.label,
         install: config.install,
+      });
+      report({
+        label: config.label,
+        status: "missing",
+        install: config.install,
+        at: Date.now(),
       });
       return null;
     }
@@ -298,7 +344,13 @@ async function ensureServer(config: ServerConfig): Promise<Server | null> {
       const count = (restartCounts.get(serverKey(config)) ?? 0) + 1;
       if (affected.length && count <= MAX_RESTARTS) {
         restartCounts.set(serverKey(config), count);
+        report({ label: config.label, status: "failed", restarts: count, at: Date.now() });
         setTimeout(() => void restart(affected), 1000 * count);
+      } else if (affected.length) {
+        // Out of automatic retries. Saying so is the whole point: a server
+        // that quietly stopped looks exactly like a language with no server,
+        // and the user spends the afternoon wondering why hover stopped.
+        report({ label: config.label, status: "gaveUp", restarts: count - 1, at: Date.now() });
       }
     };
 
@@ -319,6 +371,7 @@ async function ensureServer(config: ServerConfig): Promise<Server | null> {
     // A clean start clears the restart loop guard and the "missing" hint.
     restartCounts.delete(serverKey(config));
     useStore.getState().setLspMissing(serverKey(config), null);
+    report({ label: config.label, status: "ready", at: Date.now() });
     // TypeScript is the one language Monaco already services with its own
     // worker. Now that a real project-wide server is up, switch Monaco's TS/JS
     // language features off so hovers, completion and diagnostics come from the

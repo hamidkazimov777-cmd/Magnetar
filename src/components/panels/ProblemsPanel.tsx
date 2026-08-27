@@ -16,6 +16,7 @@ import { useT } from "../../lib/i18n";
 import { cn } from "../../lib/cn";
 import { EmptyState } from "../ui/EmptyState";
 import { pickWorkspaceFolder } from "./ExplorerPanel";
+import { restartServer } from "../../lib/lspManager";
 import {
   discoverChecks,
   runCheck,
@@ -231,6 +232,8 @@ export function ProblemsPanel() {
 
       <p className="section-hint px-3 pt-2">{t("problemsWhat")}</p>
 
+      <LanguageServers />
+
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto px-1 pb-3">
         {/* Live language-server diagnostics — updated as you type, no run
             needed — sit above the on-demand project checks. */}
@@ -380,5 +383,79 @@ function CountBadge({ run }: { run?: CheckRun }) {
     <span className="badge ml-auto shrink-0" data-tone={errors ? "danger" : undefined}>
       {run.problems.length}
     </span>
+  );
+}
+
+
+/** What each language server is doing.
+ *
+ *  Before this the visible states were "working" and "silently not working",
+ *  and they look identical from the editor: no hover, no completion, no
+ *  squiggles. A server that is missing owes the user an install line; one that
+ *  crashed repeatedly and gave up owes them a button. Silence is what makes
+ *  someone spend an afternoon wondering why hover stopped.
+ */
+function LanguageServers() {
+  const t = useT();
+  const servers = useStore((s) => s.lspServers);
+  const [restarting, setRestarting] = useState<string | null>(null);
+  const entries = Object.entries(servers);
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="border-b border-[var(--color-border)] px-1 pb-2 pt-1">
+      <div className="section-label flex items-center gap-1.5">
+        <Zap size={11} /> {t("lspServers")}
+      </div>
+      {entries.map(([key, server]) => (
+        <div key={key} className="flex items-start gap-2 px-3 py-1">
+          <span
+            className={cn(
+              "mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full",
+              server.status === "ready"
+                ? "bg-[var(--color-ok,var(--color-accent))]"
+                : server.status === "starting"
+                  ? "bg-[var(--color-text-mute)]"
+                  : "bg-[var(--color-danger)]",
+            )}
+          />
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[length:var(--fs-xs)] text-[var(--color-text)]">
+              {server.label}
+            </div>
+            <div className="text-[length:var(--fs-2xs)] leading-relaxed text-[var(--color-text-mute)]">
+              {server.status === "ready" && t("lspReady")}
+              {server.status === "starting" && t("lspStarting")}
+              {server.status === "missing" && (
+                <>
+                  {t("lspMissingHint")}{" "}
+                  <code className="select-text font-mono">{server.install}</code>
+                </>
+              )}
+              {server.status === "failed" &&
+                t("lspFailed").replace("{n}", String(server.restarts ?? 1))}
+              {server.status === "gaveUp" &&
+                t("lspGaveUp").replace("{n}", String(server.restarts ?? 0))}
+            </div>
+          </div>
+          {(server.status === "gaveUp" || server.status === "ready") && (
+            <button
+              className="btn btn-ghost btn-sm shrink-0"
+              disabled={restarting === key}
+              onClick={() => {
+                setRestarting(key);
+                void restartServer(key).finally(() => setRestarting(null));
+              }}
+            >
+              {restarting === key ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                t("lspRestart")
+              )}
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
