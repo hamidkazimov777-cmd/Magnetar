@@ -365,6 +365,14 @@ export const Download: IconType = (p) => (
     <path d="M5 19h14" />
   </G>
 );
+/** A drawer or box for set-aside work: the stash. */
+export const Archive: IconType = (p) => (
+  <G {...p}>
+    <rect x="3.5" y="5" width="17" height="4" rx="1" />
+    <path d="M5 9v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9" />
+    <path d="M10 13h4" />
+  </G>
+);
 /** Two panes side by side. */
 export const Columns: IconType = (p) => (
   <G {...p}>

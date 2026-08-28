@@ -15,6 +15,8 @@ import {
   GitCompare,
 } from "../icons";
 import { HunkList } from "./HunkList";
+import { GitBranches } from "./GitBranches";
+import { abort, continueOp, repoState, type RepoState } from "../../lib/git";
 import { api } from "../../lib/api";
 import { useStore } from "../../lib/store";
 import { useT } from "../../lib/i18n";
@@ -50,6 +52,9 @@ export function GitPanel() {
   /** Which file's hunks are expanded for per-hunk staging. One at a time keeps
    *  the panel readable. */
   const [expanded, setExpanded] = useState<string | null>(null);
+  /** A merge/rebase/cherry-pick in progress, and which files are conflicted.
+   *  Drives the banner that turns a stuck repository into two buttons. */
+  const [state, setState] = useState<RepoState>({ operation: null, conflicts: [] });
 
   const refresh = useCallback(async () => {
     if (!root) return;
@@ -98,6 +103,8 @@ export function GitPanel() {
 
       const lg = await api.gitExec(root, ["log", "--oneline", "-12"]);
       setLog(lg.stdout.split("\n").filter(Boolean));
+
+      setState(await repoState(root));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -179,10 +186,9 @@ export function GitPanel() {
   return (
     <div className="flex h-full flex-col">
       <header className="panel-header">
-        <GitBranch size={14} className="shrink-0 text-[var(--color-accent)]" />
-        <span className="flex-1 truncate text-[length:var(--fs-base)] font-medium">
-          {branch || "—"}
-        </span>
+        <div className="min-w-0 flex-1">
+          <GitBranches root={root} current={branch} onChanged={() => void refresh()} />
+        </div>
         {hasRemote && (
           <>
             <button
@@ -237,6 +243,29 @@ export function GitPanel() {
       <div className="min-h-0 flex-1 overflow-auto px-2 pb-2">
         {error && (
           <div className="alert my-2 text-[length:var(--fs-xs)]">{error}</div>
+        )}
+
+        {state.operation && (
+          <OperationBanner
+            state={state}
+            onContinue={async () => {
+              if (state.operation === "merge") {
+                // A merge has no --continue; committing the resolved index is
+                // what finishes it.
+                await run(["commit", "--no-edit"]);
+              } else if (state.operation) {
+                const r = await continueOp(root, state.operation);
+                if (!r.ok) setError(r.stderr.trim().slice(0, 300));
+                await refresh();
+              }
+            }}
+            onAbort={async () => {
+              if (state.operation) await abort(root, state.operation);
+              await refresh();
+              refreshExplorer();
+            }}
+            onOpen={(p) => openTab({ path: `${root}/${p}`, name: p.split("/").pop() || p, kind: "file" })}
+          />
         )}
 
         {!loaded ? (
@@ -449,6 +478,72 @@ function Row({
           </span>
         )}
       </span>
+    </div>
+  );
+}
+
+
+/** A repository stuck mid-operation, made into an explanation and two buttons.
+ *
+ *  A conflicted merge or rebase is the moment people reach for the terminal
+ *  because the GUI went quiet. It should not: the state is knowable, the
+ *  conflicted files are listable, and the only two moves — resolve then
+ *  continue, or abort — are the ones offered here.
+ */
+function OperationBanner({
+  state,
+  onContinue,
+  onAbort,
+  onOpen,
+}: {
+  state: RepoState;
+  onContinue: () => void | Promise<void>;
+  onAbort: () => void | Promise<void>;
+  onOpen: (path: string) => void;
+}) {
+  const t = useT();
+  const label =
+    state.operation === "merge"
+      ? t("gitOpMerge")
+      : state.operation === "rebase"
+        ? t("gitOpRebase")
+        : t("gitOpCherry");
+  const clean = state.conflicts.length === 0;
+  return (
+    <div className="my-2 rounded-[var(--r-md)] border border-[var(--color-warning,var(--color-border))] bg-[var(--color-surface-2)] p-2">
+      <div className="mb-1 text-[length:var(--fs-xs)] font-medium">
+        {label}{" "}
+        {clean ? (
+          <span className="text-[var(--color-ok,var(--color-accent))]">{t("gitOpReady")}</span>
+        ) : (
+          <span className="text-[var(--color-danger)]">
+            {t("gitOpConflicts").replace("{n}", String(state.conflicts.length))}
+          </span>
+        )}
+      </div>
+      {state.conflicts.map((p) => (
+        <button
+          key={p}
+          className="row w-full text-[length:var(--fs-xs)] text-[var(--color-danger)]"
+          onClick={() => onOpen(p)}
+          title={t("gitOpenConflict")}
+        >
+          <span className="truncate">{p}</span>
+        </button>
+      ))}
+      <div className="mt-1.5 flex gap-1.5">
+        <button
+          className="btn btn-secondary btn-sm flex-1"
+          disabled={!clean}
+          onClick={() => void onContinue()}
+          title={clean ? undefined : t("gitResolveFirst")}
+        >
+          {t("gitContinue")}
+        </button>
+        <button className="btn btn-ghost btn-sm flex-1" onClick={() => void onAbort()}>
+          {t("gitAbort")}
+        </button>
+      </div>
     </div>
   );
 }
