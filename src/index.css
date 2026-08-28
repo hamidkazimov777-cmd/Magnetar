@@ -965,3 +965,13 @@
   opacity: 0.7;
   user-select: none;
 }
+
+/* A breakpoint in the glyph margin: a solid red dot, the universal mark. */
+.breakpoint-glyph {
+  background: var(--color-danger);
+  border-radius: 50%;
+  width: 10px !important;
+  height: 10px !important;
+  margin-left: 5px;
+  margin-top: 5px;
+}

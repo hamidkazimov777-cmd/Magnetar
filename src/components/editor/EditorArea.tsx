@@ -33,6 +33,8 @@ export function EditorArea() {
    *  function you are looking at rather than only which file. */
   const [cursorLine, setCursorLine] = useState(1);
   const lang = useStore((s) => s.lang);
+  const breakpoints = useStore((s) => s.breakpoints);
+  const activeRef = useRef<string | undefined>(undefined);
   /** GitLens-style current-line blame: who last touched the line under the
    *  cursor, shown after it. Off until asked for — it costs a git call per
    *  file and most reading does not need it. */
@@ -128,7 +130,28 @@ export function EditorArea() {
 
   useEffect(() => {
     if (active && active.kind !== "diff") loadFile(active.path);
+    activeRef.current = active && active.kind !== "diff" ? active.path : undefined;
   }, [active, loadFile]);
+
+  // Paint breakpoint markers whenever they change or the file switches.
+  const bpDecoration = useRef<string[]>([]);
+  useEffect(() => {
+    const ed = editorRef.current;
+    const m = monacoRef.current;
+    if (!ed || !m || !active || active.kind === "diff") return;
+    const lines = breakpoints[active.path] ?? [];
+    bpDecoration.current = ed.deltaDecorations(
+      bpDecoration.current,
+      lines.map((line) => ({
+        range: new m.Range(line, 1, line, 1),
+        options: {
+          isWholeLine: false,
+          glyphMarginClassName: "breakpoint-glyph",
+          glyphMarginHoverMessage: { value: "breakpoint" },
+        },
+      })),
+    );
+  }, [breakpoints, active, buffers]);
 
   useEffect(() => {
     loadFile(splitPath);
@@ -297,6 +320,15 @@ export function EditorArea() {
     // The breadcrumb trail follows the cursor, so it has to hear about it.
     setCursorLine(editor.getPosition()?.lineNumber ?? 1);
     editor.onDidChangeCursorPosition((e) => setCursorLine(e.position.lineNumber));
+
+    // Breakpoints: a click in the glyph margin toggles one on that line, the
+    // way every editor does it. The margin is enabled in the options below.
+    editor.onMouseDown((e) => {
+      if (e.target.type !== monacoInstance.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) return;
+      const line = e.target.position?.lineNumber;
+      const path = activeRef.current;
+      if (line && path) useStore.getState().toggleBreakpoint(path, line);
+    });
   };
 
   // Errors from the project's own checks belong under the code, not only in a
@@ -779,6 +811,7 @@ function CodePane({
         fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
         fontSize: prefs.editorFontSize,
         lineHeight: 1.6,
+        glyphMargin: true,
         minimap: { enabled: prefs.editorMinimap, renderCharacters: false },
         smoothScrolling: true,
         cursorBlinking: "smooth",

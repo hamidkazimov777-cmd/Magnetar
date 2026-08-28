@@ -11,6 +11,7 @@ import {
   Changes,
   Problems,
   Play,
+  Bug,
   Keys,
   Settings,
   Guide,
@@ -73,6 +74,7 @@ export function ActivityBar({
     { id: "git", icon: Git, label: t("navSourceControl"), hint: t("hintGit") },
     { id: "problems", icon: Problems, label: t("problemsTitle"), hint: t("hintProblems") },
     { id: "tasks", icon: Play, label: t("tasksTitle"), hint: t("hintTasks") },
+    { id: "debug", icon: Bug, label: t("debugTitle"), hint: t("hintDebug") },
     { id: "changes", icon: Changes, label: t("navChanges"), hint: t("hintChanges") },
   ];
 

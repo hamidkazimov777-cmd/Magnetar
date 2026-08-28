@@ -1,6 +1,7 @@
 import type { StateCreator } from "zustand";
 import type { AgentRunSlice } from "./agentRun";
 import type { AppSlice } from "./app";
+import type { DebugSlice } from "./debug";
 import type { DiagnosticsSlice } from "./diagnostics";
 import type { EditorSlice } from "./editor";
 import type { MemorySlice } from "./memory";
@@ -30,7 +31,8 @@ export type State = ProvidersSlice &
   MemorySlice &
   DiagnosticsSlice &
   AgentRunSlice &
-  AppSlice;
+  AppSlice &
+  DebugSlice;
 
 /** How every slice creator is typed: it may read and write the whole store,
  *  but it only declares the part it owns. */

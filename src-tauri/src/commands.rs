@@ -1237,6 +1237,42 @@ pub fn lsp_kill(id: String) -> Result<(), String> {
     crate::lsp::kill(&id)
 }
 
+// ---- Debug adapters (DAP) --------------------------------------------------
+//
+// The Debug Adapter Protocol uses the identical Content-Length framing as LSP,
+// so the transport is the same one — spawn a process, frame JSON both ways over
+// stdio. What differs is the protocol spoken on top, which lives in the
+// frontend. Reusing the transport rather than copying it means one place gets
+// the process reaping and pipe-drain behaviour right.
+
+#[tauri::command]
+pub fn dap_spawn(
+    app: tauri::AppHandle,
+    id: String,
+    cmd: String,
+    args: Vec<String>,
+    cwd: Option<String>,
+    on_msg: Channel<String>,
+) -> Result<(), String> {
+    // A debug adapter launches the user's own program, so it is execution and
+    // gated as such. The working directory is recorded like any command.
+    policy::require(Access::Execute)?;
+    let where_ = cwd.clone().unwrap_or_default();
+    audit::record("dap", &where_, &format!("{cmd} {}", args.join(" ")), "spawn");
+    let _ = app;
+    crate::lsp::spawn(id, cmd, args, cwd, on_msg)
+}
+
+#[tauri::command]
+pub fn dap_send(id: String, message: String) -> Result<(), String> {
+    crate::lsp::send(&id, &message)
+}
+
+#[tauri::command]
+pub fn dap_kill(id: String) -> Result<(), String> {
+    crate::lsp::kill(&id)
+}
+
 #[tauri::command]
 pub async fn chat_stream(
     connection: Connection,

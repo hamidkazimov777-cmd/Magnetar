@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { createAgentRunSlice } from "./stores/agentRun";
 import { createAppSlice } from "./stores/app";
+import { createDebugSlice } from "./stores/debug";
 import { createDiagnosticsSlice } from "./stores/diagnostics";
 import { createEditorSlice } from "./stores/editor";
 import { createMemorySlice } from "./stores/memory";
@@ -55,6 +56,7 @@ export const useStore = create<State>()(
       ...createDiagnosticsSlice(...a),
       ...createAgentRunSlice(...a),
       ...createAppSlice(...a),
+      ...createDebugSlice(...a),
     }),
     {
       name: "magnetar-store",
@@ -104,6 +106,7 @@ export const useStore = create<State>()(
         activeTabPath: s.activeTabPath,
         splitTabPath: s.splitTabPath,
         memoryLog: s.memoryLog.slice(0, 30),
+        breakpoints: s.breakpoints,
       }),
     },
   ),

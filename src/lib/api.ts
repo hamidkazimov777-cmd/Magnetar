@@ -422,4 +422,20 @@ export const api = {
   lspSend: (id: string, message: string) =>
     invoke<void>("lsp_send", { id, message }),
   lspKill: (id: string) => invoke<void>("lsp_kill", { id }),
+
+  /** Spawn a debug adapter. Same transport as an LSP server — Content-Length
+   *  framed JSON over stdio — different protocol on top. */
+  dapSpawn: (
+    id: string,
+    cmd: string,
+    args: string[],
+    cwd: string | undefined,
+    onMsg: (message: string) => void,
+  ) => {
+    const channel = new Channel<string>();
+    channel.onmessage = onMsg;
+    return invoke<void>("dap_spawn", { id, cmd, args, cwd: cwd ?? null, onMsg: channel });
+  },
+  dapSend: (id: string, message: string) => invoke<void>("dap_send", { id, message }),
+  dapKill: (id: string) => invoke<void>("dap_kill", { id }),
 };

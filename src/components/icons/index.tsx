@@ -365,6 +365,14 @@ export const Download: IconType = (p) => (
     <path d="M5 19h14" />
   </G>
 );
+/** A debugger. */
+export const Bug: IconType = (p) => (
+  <G {...p}>
+    <path d="M8 7a4 4 0 0 1 8 0" />
+    <rect x="7" y="7" width="10" height="10" rx="5" />
+    <path d="M3 9h3M18 9h3M3 14h3M18 14h3M12 7v10" />
+  </G>
+);
 /** A drawer or box for set-aside work: the stash. */
 export const Archive: IconType = (p) => (
   <G {...p}>
