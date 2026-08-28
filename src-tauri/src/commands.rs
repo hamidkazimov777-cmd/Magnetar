@@ -1148,6 +1148,41 @@ async fn git_exec_inner(cwd: String, args: Vec<String>) -> Result<tools::BashRes
     blocking(move || tools::git_exec(&cwd, args)).await
 }
 
+/// Apply a patch to the index or the working tree, for hunk-level staging.
+///
+/// A write to the repository, so it goes through the same gate and record as
+/// any other git command. `args` are the `apply` flags the frontend chooses
+/// (`--cached`, `-R`); the patch itself is data and never a path.
+#[tauri::command]
+pub async fn git_apply(
+    app: tauri::AppHandle,
+    cwd: String,
+    args: Vec<String>,
+    patch: String,
+) -> Result<tools::BashResult, String> {
+    policy::require(Access::Execute)?;
+    let logged = format!("git apply {}", args.join(" "));
+    let cwd = match ensure_allowed(&app, &cwd).await {
+        Ok(dir) => dir.to_string_lossy().into_owned(),
+        Err(refusal) => {
+            audit::record("git", &cwd, &logged, &refusal);
+            return Err(refusal);
+        }
+    };
+    let in_dir = cwd.clone();
+    let outcome = blocking(move || tools::git_apply(&cwd, args, &patch)).await;
+    audit::record(
+        "git",
+        &in_dir,
+        &logged,
+        &match &outcome {
+            Ok(r) => format!("exit {}", r.code),
+            Err(e) => format!("failed: {e}"),
+        },
+    );
+    outcome
+}
+
 // ---- Embedded terminal (PTY) ----------------------------------------------
 
 #[tauri::command]

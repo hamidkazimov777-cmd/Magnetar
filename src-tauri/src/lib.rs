@@ -148,6 +148,7 @@ pub fn run() {
             commands::index_build,
             commands::index_search,
             commands::git_exec,
+            commands::git_apply,
             commands::pty_spawn,
             commands::pty_write,
             commands::pty_resize,

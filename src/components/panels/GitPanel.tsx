@@ -12,7 +12,9 @@ import {
   History,
   FolderGit2,
   Loader2,
+  GitCompare,
 } from "../icons";
+import { HunkList } from "./HunkList";
 import { api } from "../../lib/api";
 import { useStore } from "../../lib/store";
 import { useT } from "../../lib/i18n";
@@ -45,6 +47,9 @@ export function GitPanel() {
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Which file's hunks are expanded for per-hunk staging. One at a time keeps
+   *  the panel readable. */
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!root) return;
@@ -240,29 +245,39 @@ export function GitPanel() {
           <>
         <Group title={t("gitStaged")} count={staged.length}>
           {staged.map((e) => (
-            <Row
-              key={e.path}
-              path={e.path}
-              code={e.code}
-              onClick={() => showDiff(e.path, true)}
-              actionTitle={t("gitUnstage")}
-              onAction={() => void run(["reset", "-q", "HEAD", "--", e.path])}
-              actionIcon={<Minus size={12} />}
-            />
+            <div key={e.path}>
+              <Row
+                path={e.path}
+                code={e.code}
+                onClick={() => setExpanded((p) => (p === `s:${e.path}` ? null : `s:${e.path}`))}
+                actionTitle={t("gitUnstage")}
+                onAction={() => void run(["reset", "-q", "HEAD", "--", e.path])}
+                actionIcon={<Minus size={12} />}
+                onOpenDiff={() => showDiff(e.path, true)}
+              />
+              {expanded === `s:${e.path}` && root && (
+                <HunkList root={root} path={e.path} staged onChanged={() => void refresh()} />
+              )}
+            </div>
           ))}
         </Group>
 
         <Group title={t("gitChanges")} count={unstaged.length}>
           {unstaged.map((e) => (
-            <Row
-              key={e.path}
-              path={e.path}
-              code={e.code}
-              onClick={() => showDiff(e.path, false)}
-              actionTitle={t("gitStage")}
-              onAction={() => void run(["add", "--", e.path])}
-              actionIcon={<Plus size={12} />}
-            />
+            <div key={e.path}>
+              <Row
+                path={e.path}
+                code={e.code}
+                onClick={() => setExpanded((p) => (p === `u:${e.path}` ? null : `u:${e.path}`))}
+                actionTitle={t("gitStage")}
+                onAction={() => void run(["add", "--", e.path])}
+                actionIcon={<Plus size={12} />}
+                onOpenDiff={() => showDiff(e.path, false)}
+              />
+              {expanded === `u:${e.path}` && root && (
+                <HunkList root={root} path={e.path} staged={false} onChanged={() => void refresh()} />
+              )}
+            </div>
           ))}
         </Group>
 
@@ -379,6 +394,7 @@ function Row({
   onAction,
   actionTitle,
   actionIcon,
+  onOpenDiff,
 }: {
   path: string;
   code?: string;
@@ -387,6 +403,9 @@ function Row({
   onAction: () => void;
   actionTitle: string;
   actionIcon: React.ReactNode;
+  /** Open the full side-by-side diff, when the row supports hunks (the inline
+   *  click toggles hunks instead). */
+  onOpenDiff?: () => void;
 }) {
   const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
   return (
@@ -401,7 +420,16 @@ function Row({
         )}
       </button>
       <span className="absolute right-1 flex items-center gap-0.5">
-        <span className="opacity-0 transition-opacity group-hover/git:opacity-100">
+        <span className="flex opacity-0 transition-opacity group-hover/git:opacity-100">
+          {onOpenDiff && (
+            <button
+              className="icon-btn h-6 w-6 bg-[var(--color-surface)]"
+              title="diff"
+              onClick={onOpenDiff}
+            >
+              <GitCompare size={12} />
+            </button>
+          )}
           <button
             className="icon-btn h-6 w-6 bg-[var(--color-surface)]"
             title={actionTitle}

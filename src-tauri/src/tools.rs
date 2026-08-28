@@ -505,6 +505,48 @@ pub fn git_exec(cwd: &str, args: Vec<String>) -> Result<BashResult, String> {
     })
 }
 
+/// Run `git apply` with a patch fed on stdin.
+///
+/// Staging and discarding a single hunk means constructing a one-hunk patch and
+/// handing it to `git apply`, which reads from stdin. `git_exec` does not write
+/// stdin, and it should not learn to: a general command runner that also pipes
+/// caller-supplied bytes into the process is a larger thing to reason about
+/// than one focused call that does exactly this.
+///
+/// The `args` are fixed by the caller to `apply` variants; the patch is data.
+pub fn git_apply(cwd: &str, args: Vec<String>, patch: &str) -> Result<BashResult, String> {
+    use std::io::Write;
+    let mut child = std::process::Command::new("git")
+        .arg("apply")
+        .args(&args)
+        .current_dir(cwd)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    // Write the patch and close stdin so git stops waiting for more. A patch
+    // that does not end in a newline makes `git apply` reject the last hunk
+    // with "corrupt patch", so one is ensured.
+    if let Some(mut stdin) = child.stdin.take() {
+        let body = if patch.ends_with('\n') {
+            patch.to_string()
+        } else {
+            format!("{patch}\n")
+        };
+        stdin.write_all(body.as_bytes()).map_err(|e| e.to_string())?;
+    }
+
+    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    Ok(BashResult {
+        stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+        code: out.status.code().unwrap_or(-1),
+        truncated: false,
+    })
+}
+
 pub fn kill_bash(pid: Option<u32>) -> Result<(), String> {
     // Negative pid = kill the whole process group (pgid == the bash pid we set
     // via process_group(0)), so children like node/npm die too.

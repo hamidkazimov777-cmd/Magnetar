@@ -344,6 +344,14 @@ export const api = {
       "index_search",
       { root, query, topK: topK ?? null },
     ),
+  /** Apply a patch to the index or working tree (hunk-level staging). The
+   *  patch is data; `args` are the apply flags the caller chose. */
+  gitApply: (cwd: string, args: string[], patch: string) =>
+    invoke<{ stdout: string; stderr: string; code: number }>("git_apply", {
+      cwd,
+      args,
+      patch,
+    }),
   gitExec: (cwd: string, args: string[]) =>
     invoke<{ stdout: string; stderr: string; code: number; truncated: boolean }>(
       "git_exec",
