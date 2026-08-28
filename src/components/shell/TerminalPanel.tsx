@@ -111,6 +111,24 @@ export function TerminalPanel() {
       void api.ptyWrite(id, d).catch(() => {});
     });
 
+    // A queued task/test command types itself in and runs. Subscribed to the
+    // store so a command chosen while the terminal is already open still lands.
+    const unsub = useStore.subscribe((st) => {
+      const cmd = st.pendingCommand;
+      if (!cmd) return;
+      useStore.getState().consumeCommand();
+      void api.ptyWrite(id, cmd + "\r").catch(() => {});
+    });
+
+    // A command queued before the terminal mounted is already in the store; the
+    // subscription only sees future changes, so consume any pending one now.
+    const queued = useStore.getState().pendingCommand;
+    if (queued) {
+      useStore.getState().consumeCommand();
+      // Give the pty a moment to be ready before typing into it.
+      setTimeout(() => void api.ptyWrite(id, queued + "\r").catch(() => {}), 300);
+    }
+
     const ro = new ResizeObserver(() => {
       try {
         fit.fit();
@@ -126,6 +144,7 @@ export function TerminalPanel() {
       alive = false;
       ro.disconnect();
       sub.dispose();
+      unsub();
       void api.ptyKill(id).catch(() => {});
       term.dispose();
       termRef.current = null;

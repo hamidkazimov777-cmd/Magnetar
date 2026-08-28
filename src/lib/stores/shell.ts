@@ -59,11 +59,18 @@ export interface ShellSlice {
   setCenterView: (v: CenterView) => void;
   terminalOpen: boolean;
   toggleTerminal: (v?: boolean) => void;
+  /** A command to type into the terminal and run. The terminal opens and picks
+   *  it up; consumed once so it does not re-run on every render. Used by the
+   *  task and test runners, so "run the tests" lands where a person can see it
+   *  run and interrupt it, rather than in a hidden subprocess. */
+  pendingCommand?: string;
+  runInTerminal: (command: string) => void;
+  consumeCommand: () => string | undefined;
   agentPanelOpen: boolean;
   toggleAgentPanel: (v?: boolean) => void;
 }
 
-export const createShellSlice: Slice<ShellSlice> = (set) => ({
+export const createShellSlice: Slice<ShellSlice> = (set, get) => ({
   prefs: DEFAULT_PREFS,
   setPrefs: (patch) => set((s) => ({ prefs: { ...s.prefs, ...patch } })),
 
@@ -112,6 +119,12 @@ export const createShellSlice: Slice<ShellSlice> = (set) => ({
     ),
   terminalOpen: false,
   toggleTerminal: (v) => set((s) => ({ terminalOpen: v ?? !s.terminalOpen })),
+  runInTerminal: (command) => set({ pendingCommand: command, terminalOpen: true }),
+  consumeCommand: () => {
+    const c = get().pendingCommand;
+    if (c) set({ pendingCommand: undefined });
+    return c;
+  },
   agentPanelOpen: true,
   toggleAgentPanel: (v) =>
     set((s) => ({ agentPanelOpen: v ?? !s.agentPanelOpen })),

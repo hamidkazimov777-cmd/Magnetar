@@ -9,6 +9,7 @@ import { SearchPanel } from "../panels/SearchPanel";
 import { GitPanel } from "../panels/GitPanel";
 import { ChangesPanel } from "../panels/ChangesPanel";
 import { ProblemsPanel } from "../panels/ProblemsPanel";
+import { TasksPanel } from "../panels/TasksPanel";
 import { ProjectPanel } from "../panels/ProjectPanel";
 import { StudioView } from "../StudioView";
 import { ChatView } from "../ChatView";
@@ -93,6 +94,7 @@ export function Workspace({
                   {sidePanel === "git" && <GitPanel />}
                   {sidePanel === "changes" && <ChangesPanel />}
                   {sidePanel === "problems" && <ProblemsPanel />}
+                  {sidePanel === "tasks" && <TasksPanel />}
                   {sidePanel === "project" && <ProjectPanel />}
                 </ErrorBoundary>
               </aside>

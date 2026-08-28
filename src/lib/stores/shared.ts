@@ -19,6 +19,7 @@ export type SidePanel =
   | "search"
   | "changes"
   | "problems"
+  | "tasks"
   | "project";
 
 /** What the center area renders: the code editor, or a full-width page. */

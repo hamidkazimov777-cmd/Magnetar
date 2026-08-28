@@ -10,6 +10,7 @@ import {
   Memory,
   Changes,
   Problems,
+  Play,
   Keys,
   Settings,
   Guide,
@@ -71,6 +72,7 @@ export function ActivityBar({
     { id: "search", icon: Search, label: t("navSearch"), hint: t("hintSearch") },
     { id: "git", icon: Git, label: t("navSourceControl"), hint: t("hintGit") },
     { id: "problems", icon: Problems, label: t("problemsTitle"), hint: t("hintProblems") },
+    { id: "tasks", icon: Play, label: t("tasksTitle"), hint: t("hintTasks") },
     { id: "changes", icon: Changes, label: t("navChanges"), hint: t("hintChanges") },
   ];
 
