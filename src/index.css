@@ -956,3 +956,12 @@
   50% { transform: translateX(200%); }
   100% { transform: translateX(-100%); }
 }
+
+/* Current-line blame: dim, italic, never selectable — it is an annotation, not
+   content, and copying a line must not pick it up. */
+.blame-annotation {
+  color: var(--color-text-mute);
+  font-style: italic;
+  opacity: 0.7;
+  user-select: none;
+}

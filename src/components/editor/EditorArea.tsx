@@ -15,6 +15,8 @@ import type * as monaco from "monaco-editor";
 import { monacoThemeFor, languageForPath, loadMonaco } from "../../lib/monaco";
 import { useResolvedTheme } from "../../lib/useTheme";
 import { outlineOf, trailAt } from "../../lib/outline";
+import { blame as gitBlame, fileHistory, type BlameLine } from "../../lib/git";
+import { relativeTime } from "../../lib/relativeTime";
 
 const tabKey = (tab: EditorTab) =>
   `${tab.kind === "diff" ? "diff" : "file"}:${tab.staged ? "s:" : ""}${tab.path}`;
@@ -30,6 +32,13 @@ export function EditorArea() {
   /** Which line the cursor is on, so the breadcrumb trail can say which
    *  function you are looking at rather than only which file. */
   const [cursorLine, setCursorLine] = useState(1);
+  const lang = useStore((s) => s.lang);
+  /** GitLens-style current-line blame: who last touched the line under the
+   *  cursor, shown after it. Off until asked for — it costs a git call per
+   *  file and most reading does not need it. */
+  const [blameOn, setBlameOn] = useState(false);
+  const blameRef = useRef<BlameLine[] | null>(null);
+  const blameDecoration = useRef<string[]>([]);
   const setSplitTab = useStore((s) => s.setSplitTab);
   const autosave = useStore((s) => s.prefs.autosave);
   const formatOnSave = useStore((s) => s.prefs.formatOnSave);
@@ -59,6 +68,8 @@ export function EditorArea() {
   const [monacoReady, setMonacoReady] = useState(false);
   const loadedRef = useRef<Set<string>>(new Set());
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const monacoRef = useRef<typeof monaco | null>(null);
+  const blameRoot = useStore((s) => s.workspaceRoot);
   /** Cursor position per path, so switching tabs returns you where you were. */
   const viewStates = useRef<Record<string, monaco.editor.ICodeEditorViewState | null>>({});
 
@@ -122,6 +133,53 @@ export function EditorArea() {
   useEffect(() => {
     loadFile(splitPath);
   }, [splitPath, loadFile]);
+
+  // Blame data follows the active file while the mode is on.
+  useEffect(() => {
+    blameRef.current = null;
+    if (blameDecoration.current.length && editorRef.current)
+      blameDecoration.current = editorRef.current.deltaDecorations(blameDecoration.current, []);
+    if (!blameOn || !blameRoot || !active || active.kind === "diff") return;
+    const rel = active.path.startsWith(blameRoot + "/")
+      ? active.path.slice(blameRoot.length + 1)
+      : active.path;
+    void gitBlame(blameRoot, rel).then((lines) => {
+      blameRef.current = lines;
+    });
+  }, [blameOn, blameRoot, active]);
+
+  // The annotation itself, redrawn as the cursor moves.
+  useEffect(() => {
+    const ed = editorRef.current;
+    if (!ed) return;
+    if (!blameOn || !blameRef.current) {
+      if (blameDecoration.current.length)
+        blameDecoration.current = ed.deltaDecorations(blameDecoration.current, []);
+      return;
+    }
+    if (!monacoRef.current) return;
+    const info = blameRef.current.find((b) => b.line === cursorLine);
+    if (!info) {
+      blameDecoration.current = ed.deltaDecorations(blameDecoration.current, []);
+      return;
+    }
+    // The all-zero sha is an uncommitted line: saying "not committed" is the
+    // honest answer, rather than attributing it to whoever is above it.
+    const text = /^0+$/.test(info.sha)
+      ? t("blameUncommitted")
+      : `${info.author}, ${relativeTime(info.time, lang === "ru" || lang === "es" ? lang : "en")}`;
+    blameDecoration.current = ed.deltaDecorations(blameDecoration.current, [
+      {
+        range: new (monacoRef.current as typeof monaco).Range(cursorLine, 1, cursorLine, 1),
+        options: {
+          after: {
+            content: `      ${text}`,
+            inlineClassName: "blame-annotation",
+          },
+        },
+      },
+    ]);
+  }, [blameOn, cursorLine, t, lang]);
 
   // Forget buffers for tabs that were closed, so reopening re-reads from disk.
   useEffect(() => {
@@ -226,6 +284,7 @@ export function EditorArea() {
 
   const onMount: OnMount = (editor, monacoInstance) => {
     editorRef.current = editor;
+    monacoRef.current = monacoInstance;
     // Monaco owns ⌘S inside the editor; wire it to the same save path.
     editor.addCommand(
       monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyS,
@@ -392,6 +451,8 @@ export function EditorArea() {
           path={active.path}
           text={buffers[active.path] ?? ""}
           line={cursorLine}
+          blameOn={blameOn}
+          onToggleBlame={() => setBlameOn((v) => !v)}
           onJump={(line) => {
             const ed = editorRef.current;
             if (!ed) return;
@@ -540,16 +601,24 @@ function Breadcrumbs({
   path,
   text,
   line,
+  blameOn,
+  onToggleBlame,
   onJump,
 }: {
   path: string;
   text: string;
   line: number;
+  blameOn: boolean;
+  onToggleBlame: () => void;
   onJump: (line: number) => void;
 }) {
   const t = useT();
   const root = useStore((s) => s.workspaceRoot);
+  const revealInFile = useStore((s) => s.revealInFile);
+  const lang = useStore((s) => s.lang);
   const [open, setOpen] = useState(false);
+  const [history, setHistory] = useState<import("../../lib/git").Commit[] | null>(null);
+  void revealInFile;
   const relative = root && path.startsWith(root + "/") ? path.slice(root.length + 1) : path;
   const segments = relative.split("/").filter(Boolean);
 
@@ -587,15 +656,67 @@ function Breadcrumbs({
         </button>
       ))}
 
-      {symbols.length > 0 && (
+      <span className="ml-auto flex shrink-0 items-center gap-1 pl-2">
         <button
-          onClick={() => setOpen((v) => !v)}
-          className="ml-auto shrink-0 pl-2 text-[var(--color-text-mute)] hover:text-[var(--color-text)]"
-          title={t("editorOutline")}
-          aria-expanded={open}
+          onClick={onToggleBlame}
+          className={cn(
+            "text-[length:var(--fs-2xs)]",
+            blameOn ? "text-[var(--color-accent)]" : "text-[var(--color-text-mute)] hover:text-[var(--color-text)]",
+          )}
+          title={t("gitBlameToggle")}
         >
-          ⌄
+          blame
         </button>
+        <button
+          onClick={() => {
+            if (history) {
+              setHistory(null);
+              return;
+            }
+            const rel = root && path.startsWith(root + "/") ? path.slice(root.length + 1) : path;
+            if (root) void fileHistory(root, rel).then(setHistory);
+          }}
+          className="text-[length:var(--fs-2xs)] text-[var(--color-text-mute)] hover:text-[var(--color-text)]"
+          title={t("gitHistoryToggle")}
+        >
+          history
+        </button>
+        {symbols.length > 0 && (
+          <button
+            onClick={() => setOpen((v) => !v)}
+            className="text-[var(--color-text-mute)] hover:text-[var(--color-text)]"
+            title={t("editorOutline")}
+            aria-expanded={open}
+          >
+            ⌄
+          </button>
+        )}
+      </span>
+
+      {history && (
+        <div className="absolute right-2 top-full z-20 max-h-80 w-96 overflow-auto rounded-[var(--r-md)] border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-lg">
+          <div className="section-label px-3">{t("gitFileHistory")}</div>
+          {history.length === 0 && (
+            <p className="px-3 py-2 text-[length:var(--fs-xs)] text-[var(--color-text-mute)]">
+              {t("gitNoHistory")}
+            </p>
+          )}
+          {history.map((c) => (
+            <div key={c.sha} className="px-3 py-1">
+              <div className="flex items-baseline gap-2">
+                <code className="shrink-0 font-mono text-[length:var(--fs-2xs)] text-[var(--color-accent)]">
+                  {c.shortSha}
+                </code>
+                <span className="min-w-0 flex-1 truncate text-[length:var(--fs-xs)]">
+                  {c.subject}
+                </span>
+              </div>
+              <div className="text-[length:var(--fs-2xs)] text-[var(--color-text-mute)]">
+                {c.author} · {relativeTime(c.time, lang === "ru" || lang === "es" ? lang : "en")}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
       {open && (

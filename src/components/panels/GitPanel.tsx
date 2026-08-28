@@ -13,10 +13,18 @@ import {
   FolderGit2,
   Loader2,
   GitCompare,
+  ShieldCheck,
 } from "../icons";
 import { HunkList } from "./HunkList";
 import { GitBranches } from "./GitBranches";
-import { abort, continueOp, repoState, type RepoState } from "../../lib/git";
+import {
+  abort,
+  continueOp,
+  repoState,
+  signingStatus,
+  type RepoState,
+  type SigningStatus,
+} from "../../lib/git";
 import { api } from "../../lib/api";
 import { useStore } from "../../lib/store";
 import { useT } from "../../lib/i18n";
@@ -55,6 +63,10 @@ export function GitPanel() {
   /** A merge/rebase/cherry-pick in progress, and which files are conflicted.
    *  Drives the banner that turns a stuck repository into two buttons. */
   const [state, setState] = useState<RepoState>({ operation: null, conflicts: [] });
+  /** Whether commits are configured to be signed. Read, not tested: detecting
+   *  whether signing works would mean a trial commit, and what is configured
+   *  is honest without touching the repository. */
+  const [signing, setSigning] = useState<SigningStatus | null>(null);
 
   const refresh = useCallback(async () => {
     if (!root) return;
@@ -105,6 +117,7 @@ export function GitPanel() {
       setLog(lg.stdout.split("\n").filter(Boolean));
 
       setState(await repoState(root));
+      setSigning(await signingStatus(root));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -143,7 +156,10 @@ export function GitPanel() {
 
   const commit = async () => {
     if (!msg.trim() || staged.length === 0) return;
-    await run(["commit", "-m", msg.trim()]);
+    // Sign when the repo is configured to. -S is added rather than trusting
+    // commit.gpgsign so it works even when only user.signingkey is set, and
+    // git's own error is shown if the key is unusable.
+    await run(["commit", ...(signing?.enabled ? ["-S"] : []), "-m", msg.trim()]);
     setMsg("");
   };
 
@@ -369,6 +385,12 @@ export function GitPanel() {
           placeholder={t("gitCommitPlaceholder")}
           className="input min-h-[52px] text-[length:var(--fs-base)]"
         />
+        {signing?.enabled && (
+          <p className="flex items-center gap-1 px-0.5 text-[length:var(--fs-2xs)] text-[var(--color-text-mute)]">
+            <ShieldCheck size={11} className="text-[var(--color-accent)]" />
+            {t("gitWillSign").replace("{fmt}", signing.format)}
+          </p>
+        )}
         <button
           className="btn btn-primary w-full"
           onClick={() => void commit()}
