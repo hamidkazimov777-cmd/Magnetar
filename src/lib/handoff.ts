@@ -5,6 +5,7 @@ import { ensureProjectFacts, newFact, projectFacts } from "./facts";
 import { recordDecision } from "./decisions";
 import { similarity } from "./relevance";
 import { reportError, reportPromise, withRetry } from "./errors";
+import { backgroundQueue } from "./backgroundQueue";
 import type { ChatMessage, Connection, FactKind, Session } from "./types";
 
 /** Keep this many most-recent messages verbatim; older ones get compressed into
@@ -128,11 +129,15 @@ export async function maybeSummarize(
     });
   }
 
-  // Also try to extract project brain updates if this session belongs to a project.
+  // Also try to extract project brain updates if this session belongs to a
+  // project — through the bounded queue, so several conversations summarising
+  // at once do not each fire a model call that competes with the user's own.
   if (session.projectId) {
-    void reportPromise(
-      maybeExtractProjectBrain(transcript, session.projectId, useConn, useModel),
-      "memory.projectBrain",
+    const projectId = session.projectId;
+    backgroundQueue.add(
+      () => reportPromise(maybeExtractProjectBrain(transcript, projectId, useConn, useModel), "memory.projectBrain"),
+      "low",
+      `brain:${projectId}`,
     );
   }
 }

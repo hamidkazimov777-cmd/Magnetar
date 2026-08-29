@@ -19,6 +19,7 @@ import { api } from "../lib/api";
 import { useStore } from "../lib/store";
 import { buildCatalog, recommend, type Recommendation } from "../lib/adaptive";
 import { buildOutgoing, maybeSummarize } from "../lib/handoff";
+import { backgroundQueue } from "../lib/backgroundQueue";
 import { runAgent, AGENT_SYSTEM } from "../lib/agent";
 import { buildProjectMemory, buildGenerationContext } from "../lib/memory";
 import type { AskRequest } from "../lib/agent";
@@ -178,8 +179,12 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
         useStore.getState().persistMessage(sessionId!, assistantId);
         const s = useStore.getState().sessions.find((x) => x.id === sessionId);
         if (s)
-          void maybeSummarize(s, connection, model, (sum, upTo) =>
-            setSummary(sessionId!, sum, upTo),
+          // Bounded and keyed by session: a fast back-and-forth must not queue
+          // three summaries of the same conversation racing each other.
+          backgroundQueue.add(
+            () => maybeSummarize(s, connection, model, (sum, upTo) => setSummary(sessionId!, sum, upTo)),
+            "normal",
+            `summary:${s.id}`,
           );
       },
       onError: (msg) => {
