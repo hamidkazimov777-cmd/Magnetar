@@ -20,6 +20,21 @@
 - Cross-domain store tests covering folder close, reveal-in-file, project
   adoption, model-per-conversation, track switching and the memory queue.
 
+### Git, tasks and debugging
+
+- Stage, unstage and discard individual hunks, not only whole files.
+- Branches: switch, create, delete, check out a remote branch locally, and
+  merge or rebase between them.
+- Stashes: push, pop, drop.
+- A conflict banner during a merge, rebase or cherry-pick: it lists the
+  conflicted files and offers continue (once resolved) or abort.
+- Blame on the current line, file history, and remote management.
+- Commits are signed when the repository is configured to.
+- A Tasks panel discovers commands from package.json, Cargo, Makefile,
+  pyproject and justfile, and runs them in the terminal.
+- A debugger over DAP: breakpoints, call stack, variables, watches, stepping
+  and a debug console. First-class for Python via debugpy; Node needs js-debug.
+
 ### Language intelligence
 
 - Formatting and format-on-save, taken from the language server because the

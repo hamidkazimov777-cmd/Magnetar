@@ -72,13 +72,13 @@ target or intentionally manual. Test IDs are mapped to quality gates below.
 | Multi-root workspaces | — deliberate, see below | ✅ | ✅ | ✅ | ✅ | One root, documented. `IDE-07` withdrawn | P1 |
 | Recent projects | ✅ | ✅ | ✅ | ✅ | ✅ | Open, close, reopen and remove stale path safely. `IDE-08` | P1 |
 | Keybindings import/export | ✅ VS Code chords and keybindings.json | ✅ | ✅ | ✅ | ✅ | Import VS Code-compatible bindings, detect conflicts, export round-trip. `IDE-09` | P1 |
-| Git status / diff / stage / commit | ◐ status/diff/stage paths | ✅ | ✅ | ✅ | ✅ | Stage single file and hunk, inspect diff, commit, handle empty/index errors. `GIT-01` | P0 |
-| Branch / merge / rebase / stash / cherry-pick | ◐ basic branch actions | ✅ | ✅ | ✅ | ✅ | Each operation is cancellable and conflict state is recoverable. `GIT-02` | P1 |
-| Conflict resolver / blame / history / remotes | □ | ✅ | ✅ | ✅ | ✅ | Resolve a synthetic conflict, show blame/history and remote errors verbatim. `GIT-03` | P1 |
-| Signed commits | □ | ✅ | ✅ | ✅ | ✅ | Detect configured signing, report unavailable identity, never prompt invisibly. `GIT-04` | P2 |
-| Tasks and test execution | ◐ checks/scripts | ✅ | ✅ | ✅ | ✅ | Discover package.json/Cargo/Make/pyproject/just, run one test and suite. `TEST-01` | P0 |
-| Test Explorer | □ | ✅ | ✅ | ✅ | ✅ | Discover, group, run, cancel and navigate individual tests. `TEST-02` | P1 |
-| Debugger / DAP | □ | ✅ | ✅ | ✅ | ✅ | Node/Python baseline: breakpoint, variables, stack, step and console. `DEBUG-01` | P1 |
+| Git status / diff / stage / commit | ✅ incl. hunk-level staging | ✅ | ✅ | ✅ | ✅ | Stage single file and hunk, inspect diff, commit, handle empty/index errors. `GIT-01` | P0 |
+| Branch / merge / rebase / stash / cherry-pick | ✅ with a conflict resolver | ✅ | ✅ | ✅ | ✅ | Each operation is cancellable and conflict state is recoverable. `GIT-02` | P1 |
+| Conflict resolver / blame / history / remotes | ✅ | ✅ | ✅ | ✅ | ✅ | Resolve a synthetic conflict, show blame/history and remote errors verbatim. `GIT-03` | P1 |
+| Signed commits | ✅ detected and applied | ✅ | ✅ | ✅ | ✅ | Detect configured signing, report unavailable identity, never prompt invisibly. `GIT-04` | P2 |
+| Tasks and test execution | ✅ discovered from manifests | ✅ | ✅ | ✅ | ✅ | Discover package.json/Cargo/Make/pyproject/just, run one test and suite. `TEST-01` | P0 |
+| Test Explorer | ◐ tasks panel groups tests; no per-case tree | ✅ | ✅ | ✅ | ✅ | Discover, group, run, cancel and navigate individual tests. `TEST-02` | P1 |
+| Debugger / DAP | ✅ Python; Node needs js-debug | ✅ | ✅ | ✅ | ✅ | Node/Python baseline: breakpoint, variables, stack, step and console. `DEBUG-01` | P1 |
 | Persistent incremental index | ◐ in-memory, capped | ✅ | ✅ | ✅ | ✅ | 1k/10k/50k/100k fixture, restart, watcher update, ignore rules, coverage shown. `PERF-01` | P0 |
 | Lazy tree and large-file slicing | ◐ partial | ✅ | ✅ | ✅ | ✅ | Open 1 GB-ish fixture metadata without full read; paginate tree and messages. `PERF-02` | P0 |
 | Agent durable runs / event log | ◐ UI loop/events | — | ✅ | ✅ | ◐ | Kill/restart during a run and resume from persisted `run_id`. `AGENT-01` | P0 |
@@ -126,7 +126,7 @@ something deliberately not built is a permanent false failure.
 | 3 | Canon migrations, FKs, cleanup, backup/import, integrity/recovery | **Done**; migration, cascade, integrity and import covered by tests |
 | 4 | Professional editor workflow and settings/keybindings | **Done**; multi-root withdrawn with reasons, symbols deferred to Step 5 |
 | 5 | LSP/parser layer and diagnostics | **Done**; heuristic outline is the fallback, Tree-sitter deferred with reasons |
-| 6 | Git completion, tasks/tests, Test Explorer, Node/Python DAP | `GIT-*`, `TEST-*`, `DEBUG-*` |
+| 6 | Git completion, tasks/tests, Test Explorer, Node/Python DAP | **Done**; DAP first-class for Python, Node documented as needing js-debug |
 | 7 | Persistent/incremental search, watcher, scale and budgets | `PERF-*` scale runs |
 | 8 | Headless durable agent runtime | `AGENT-*` crash/resume/budget suite |
 | 9 | Checkpoints, isolated changes and rollback | `CHANGE-*` whole-task/hunk recovery |
@@ -139,26 +139,21 @@ something deliberately not built is a permanent false failure.
 
 ## Next step
 
-Step 5 is complete. The bridge gained formatting and format-on-save, range
-formatting, code actions and organize imports, document and workspace symbols,
-and semantic tokens. Each server now reports what it is doing — starting,
-ready, missing with its install line, retrying, or given up with a restart
-button — because the previous states visible from the editor were "working" and
-"silently not working", which look identical.
+Step 6 is complete, with two scoped edges named rather than hidden. Git is whole:
+hunk-level staging, branches, merge/rebase/stash/cherry-pick with a conflict
+banner that turns a stuck repository into two buttons, blame, file history,
+remotes, and signed commits. Tasks are discovered from the project's own
+manifests and run in the terminal, with per-framework single-test selectors.
+The debugger speaks DAP, first-class for Python through debugpy.
 
-Structure works without a server at all: `src/lib/outline.ts` reads
-declarations off the start of lines for TypeScript, JavaScript, Rust, Python,
-Go, shell, Markdown, JSON and YAML, and drives breadcrumbs and the outline
-dropdown. It is a heuristic and documented as one. Where a server answers, its
-symbols are used instead.
+The two edges: a per-test-case Test Explorer tree is not built — the Tasks
+panel groups tests and runs a named one, but discovering individual cases means
+either running the suite to enumerate them or parsing test files, and that is
+its own project; and the Node debugger is offered with an onboarding hint
+because vscode-js-debug is a large separate install not yet bundled. Both are
+stated in the matrix rather than passed off as done.
 
-Tree-sitter is deferred rather than dropped: a WASM runtime plus a grammar per
-language is a couple of megabytes for a view that is right nine times in ten
-without it. The trade is worth revisiting when something needs a real parse
-tree, which is inline completion in Step 11.
-
-Step 6 is next, and it is the largest remaining: Git beyond a passthrough —
-staging hunks, branches, merge, rebase, stash, cherry-pick, a conflict
-resolver, blame, file history, remotes and commit signing — then task discovery
-from package.json/Cargo/Make/pyproject/just, running a single test and a suite,
-a Test Explorer, and a DAP debugger starting with Node and Python.
+Step 7 is next: the index and performance. Remove the 5,000-file cap, make the
+index persistent and incremental with a file watcher, respect .gitignore, move
+search to a persistent BM25/FTS layer, and hold the scale targets in
+docs/QUALITY_GATES.md — 1k/10k/50k/100k files, long chats, long agent runs.
