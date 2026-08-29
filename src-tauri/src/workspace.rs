@@ -168,13 +168,25 @@ pub fn save_project(p: Project) -> Result<(), String> {
 /// list of tables maintained here, which would fall behind the first time
 /// somebody added one.
 pub fn delete_project(id: &str) -> Result<(), String> {
-    with_conn(|c| {
-        let removed = crate::db::purge_project(c, id)?;
-        if removed > 0 {
-            eprintln!("magnetar: deleted project {id} and {removed} rows that belonged to it");
-        }
-        Ok(())
+    // The project's folder is the index key, so read it before the row is gone,
+    // then drop the on-disk index so it does not linger as an orphan file.
+    let path: Option<String> = with_conn(|c| {
+        Ok(c
+            .query_row("SELECT path FROM projects WHERE id = ?1", params![id], |r| {
+                r.get::<_, Option<String>>(0)
+            })
+            .ok()
+            .flatten())
     })
+    .unwrap_or(None);
+    let removed = with_conn(|c| crate::db::purge_project(c, id))?;
+    if removed > 0 {
+        eprintln!("magnetar: deleted project {id} and {removed} rows that belonged to it");
+    }
+    if let Some(root) = path {
+        let _ = crate::index::drop_index(&root);
+    }
+    Ok(())
 }
 
 // --- Memory facts ---

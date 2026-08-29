@@ -227,9 +227,12 @@ const ru: Dict = {
 
   // --- Code index ----------------------------------------------------------
   indexBuilding: "Строится индекс…",
-  indexReady: "Индекс готов · {files} файлов",
+  indexReady: "Индекс: {n} файлов",
+  indexSkipped: "{n} пропущено",
+  indexError: "Индекс: ошибка",
+  indexHint: "Поиск по коду использует этот индекс. Пропущены слишком большие и бинарные файлы.",
+
   indexStale: "Индекс устарел",
-  indexError: "Индекс не построен",
   indexRebuild: "Перестроить индекс",
   workspace: "Рабочее пространство",
   projects: "Проекты",
@@ -980,9 +983,12 @@ const en: Dict = {
   chatProjectOther: "Chat belongs to another project: {name}",
 
   indexBuilding: "Building index\u2026",
-  indexReady: "Index ready \u00b7 {files} files",
+  indexReady: "Indexed {n} files",
+  indexSkipped: "{n} skipped",
+  indexError: "Index error",
+  indexHint: "Code search uses this index. Files too large or binary are skipped.",
+
   indexStale: "Index is out of date",
-  indexError: "Index not built",
   indexRebuild: "Rebuild index",
   workspace: "Workspace",
   projects: "Projects",
@@ -1714,9 +1720,12 @@ const es: Dict = {
   chatProjectOther: "El chat pertenece a otro proyecto: {name}",
 
   indexBuilding: "Construyendo el índice…",
-  indexReady: "Índice listo · {files} archivos",
+  indexReady: "{n} archivos indexados",
+  indexSkipped: "{n} omitidos",
+  indexError: "Error de índice",
+  indexHint: "La búsqueda de código usa este índice. Se omiten los archivos demasiado grandes o binarios.",
+
   indexStale: "El índice está desactualizado",
-  indexError: "Índice no construido",
   indexRebuild: "Reconstruir el índice",
   workspace: "Espacio de trabajo",
   projects: "Proyectos",

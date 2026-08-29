@@ -1100,7 +1100,20 @@ pub fn search_cancel(id: String) {
 
 #[tauri::command]
 pub async fn index_build(root: String) -> Result<crate::index::IndexStats, String> {
-    blocking(move || crate::index::build(&root)).await
+    blocking(move || crate::index::sync(&root)).await
+}
+
+/// Start following a workspace's files, keeping the index current as they
+/// change. Called when a folder opens.
+#[tauri::command]
+pub async fn index_watch(app: tauri::AppHandle, root: String) -> Result<(), String> {
+    let root = ensure_allowed(&app, &root).await?.to_string_lossy().into_owned();
+    blocking(move || crate::index::watch(&root)).await
+}
+
+#[tauri::command]
+pub fn index_unwatch(root: String) {
+    crate::index::unwatch(&root);
 }
 
 #[tauri::command]

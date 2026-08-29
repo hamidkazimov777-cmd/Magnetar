@@ -19,6 +19,8 @@ vi.mock("./api", () => ({
     setReadOnly: vi.fn(async () => {}),
     workspaceTrusted: vi.fn(async () => true),
     trustWorkspace: vi.fn(async () => {}),
+    indexWatch: vi.fn(async () => {}),
+    indexUnwatch: vi.fn(async () => {}),
   },
 }));
 

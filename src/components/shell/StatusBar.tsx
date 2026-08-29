@@ -5,6 +5,7 @@ import {
   Cpu,
   TerminalSquare,
   Eye,
+  Database,
   Bot,
   Command,
   Zap,
@@ -143,6 +144,7 @@ export function StatusBar({ onOpenSettings }: { onOpenSettings: () => void }) {
           tone={readOnly ? "warning" : undefined}
         />
       </Hint>
+      <IndexStatus />
       <Item
         icon={Cpu}
         label={activeModel ? `${conn?.name ?? ""} · ${activeModel}` : t("statusNoModel")}
@@ -212,5 +214,35 @@ function Item({
       <Icon size={12} className="shrink-0" />
       <span className="truncate">{label}</span>
     </button>
+  );
+}
+
+
+/** How much of the project is indexed, so search coverage is a number the user
+ *  can see rather than a promise. Only shown once a folder is open. */
+function IndexStatus() {
+  const t = useT();
+  const root = useStore((s) => s.workspaceRoot);
+  const index = useStore((s) => s.indexState);
+  if (!root) return null;
+
+  const label =
+    index.status === "building"
+      ? t("indexBuilding")
+      : index.status === "ready"
+        ? t("indexReady").replace("{n}", String(index.files ?? 0)) +
+          (index.skipped ? ` · ${t("indexSkipped").replace("{n}", String(index.skipped))}` : "")
+        : index.status === "error"
+          ? t("indexError")
+          : "";
+  if (!label) return null;
+  return (
+    <span
+      className="hidden items-center gap-1 px-1 text-[length:var(--fs-xs)] text-[var(--color-text-mute)] sm:flex"
+      title={t("indexHint")}
+    >
+      <Database size={11} />
+      {label}
+    </span>
   );
 }

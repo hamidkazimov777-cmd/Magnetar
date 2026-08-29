@@ -337,8 +337,17 @@ export const api = {
     invoke<void>("tool_delete_file", { path }),
   editorReadFile: (path: string) =>
     invoke<string>("editor_read_file", { path }),
+  /** Follow the workspace's files, keeping the index current as they change. */
+  indexWatch: (root: string) =>
+    HAS_BACKEND ? invoke<void>("index_watch", { root }) : Promise.resolve(),
+  indexUnwatch: (root: string) =>
+    HAS_BACKEND ? invoke<void>("index_unwatch", { root }) : Promise.resolve(),
+  /** Bring the index up to date, reading only what changed. Returns coverage:
+   *  how many files are indexed, changed this sync, removed, and skipped. */
   indexBuild: (root: string) =>
-    invoke<{ files: number; terms: number }>("index_build", { root }),
+    invoke<{ files: number; changed: number; removed: number; skipped: number }>("index_build", {
+      root,
+    }),
   indexSearch: (root: string, query: string, topK?: number) =>
     invoke<{ file: string; score: number; snippet: string; line: number }[]>(
       "index_search",

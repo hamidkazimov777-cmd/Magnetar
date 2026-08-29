@@ -136,8 +136,12 @@ export async function analyzeFolderIntoMemory(
   store.setIndexState({ status: "building" });
   try {
     const r = await api.indexBuild(root);
-    store.setIndexState({ status: "ready", files: r.files, at: Date.now() });
-    store.logMemory({ kind: "index", status: "ok", detail: String(r.files) });
+    store.setIndexState({ status: "ready", files: r.files, skipped: r.skipped, at: Date.now() });
+    store.logMemory({
+      kind: "index",
+      status: "ok",
+      detail: `${r.files} files (+${r.changed}/-${r.removed}, ${r.skipped} skipped)`,
+    });
   } catch (e) {
     store.setIndexState({ status: "error", at: Date.now() });
     const error = reportError(e, "memory.index");

@@ -46,6 +46,7 @@ pub fn run() {
                 keychain::init(&dir);
                 audit::init(&dir);
                 policy::init(&dir);
+                index::init(&dir);
                 // The theme the frontend last persisted (see persist_window_theme).
                 dark = std::fs::read_to_string(dir.join("window-theme"))
                     .map(|s| s.trim() == "dark")
@@ -146,6 +147,8 @@ pub fn run() {
             commands::extract_pdf_text,
             commands::editor_read_file,
             commands::index_build,
+            commands::index_watch,
+            commands::index_unwatch,
             commands::index_search,
             commands::git_exec,
             commands::git_apply,

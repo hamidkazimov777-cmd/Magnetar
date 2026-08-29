@@ -41,7 +41,13 @@ export interface WorkspaceSlice {
   adoptRestoredWorkspace: () => Promise<void>;
 
   /** State of the code-search index for the open folder. */
-  indexState: { status: "unknown" | "building" | "ready" | "error"; files?: number; at?: number };
+  indexState: {
+    status: "unknown" | "building" | "ready" | "error";
+    files?: number;
+    /** Files skipped for size or being binary — shown so coverage is honest. */
+    skipped?: number;
+    at?: number;
+  };
   setIndexState: (s: WorkspaceSlice["indexState"]) => void;
 }
 
@@ -61,6 +67,8 @@ export const createWorkspaceSlice: Slice<WorkspaceSlice> = (set, get) => ({
         .then((workspaceTrusted) => set({ workspaceTrusted })),
       "paths:set_workspace_root",
     );
+    // Keep the index following the tree without anyone pressing a button.
+    if (path) void reportPromise(api.indexWatch(path), "index:watch");
     set((s) => ({
       workspaceRoot: path,
       recentFolders: path
@@ -70,6 +78,8 @@ export const createWorkspaceSlice: Slice<WorkspaceSlice> = (set, get) => ({
   },
   closeFolder: () => {
     void reportPromise(api.setWorkspaceRoot(undefined), "paths:set_workspace_root");
+    const closing = get().workspaceRoot;
+    if (closing) void reportPromise(api.indexUnwatch(closing), "index:unwatch");
     set({ workspaceTrusted: true }); // nothing open, nothing to distrust
     set({
       workspaceRoot: undefined,
