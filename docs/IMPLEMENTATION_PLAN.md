@@ -79,8 +79,8 @@ target or intentionally manual. Test IDs are mapped to quality gates below.
 | Tasks and test execution | ✅ discovered from manifests | ✅ | ✅ | ✅ | ✅ | Discover package.json/Cargo/Make/pyproject/just, run one test and suite. `TEST-01` | P0 |
 | Test Explorer | ◐ tasks panel groups tests; no per-case tree | ✅ | ✅ | ✅ | ✅ | Discover, group, run, cancel and navigate individual tests. `TEST-02` | P1 |
 | Debugger / DAP | ✅ Python; Node needs js-debug | ✅ | ✅ | ✅ | ✅ | Node/Python baseline: breakpoint, variables, stack, step and console. `DEBUG-01` | P1 |
-| Persistent incremental index | ◐ in-memory, capped | ✅ | ✅ | ✅ | ✅ | 1k/10k/50k/100k fixture, restart, watcher update, ignore rules, coverage shown. `PERF-01` | P0 |
-| Lazy tree and large-file slicing | ◐ partial | ✅ | ✅ | ✅ | ✅ | Open 1 GB-ish fixture metadata without full read; paginate tree and messages. `PERF-02` | P0 |
+| Persistent incremental index | ✅ FTS5, watcher, no cap | ✅ | ✅ | ✅ | ✅ | 1k/10k/50k/100k fixture, restart, watcher update, ignore rules, coverage shown. `PERF-01` | P0 |
+| Lazy tree and large-file slicing | ✅ lazy tree, streamed reads | ✅ | ✅ | ✅ | ✅ | Open 1 GB-ish fixture metadata without full read; paginate tree and messages. `PERF-02` | P0 |
 | Agent durable runs / event log | ◐ UI loop/events | — | ✅ | ✅ | ◐ | Kill/restart during a run and resume from persisted `run_id`. `AGENT-01` | P0 |
 | Pause / resume / cancellation / retry | ◐ frontend stop | — | ✅ | ✅ | ✅ | Cancel kills process group and provider request; retry uses bounded backoff. `AGENT-02` | P0 |
 | Budgets / cost / context compaction | ◐ token stats/summary | — | ✅ | ✅ | ✅ | Per-run and per-agent budgets stop work with an explainable reason. `AGENT-03` | P0 |
@@ -127,7 +127,7 @@ something deliberately not built is a permanent false failure.
 | 4 | Professional editor workflow and settings/keybindings | **Done**; multi-root withdrawn with reasons, symbols deferred to Step 5 |
 | 5 | LSP/parser layer and diagnostics | **Done**; heuristic outline is the fallback, Tree-sitter deferred with reasons |
 | 6 | Git completion, tasks/tests, Test Explorer, Node/Python DAP | **Done**; DAP first-class for Python, Node documented as needing js-debug |
-| 7 | Persistent/incremental search, watcher, scale and budgets | `PERF-*` scale runs |
+| 7 | Persistent/incremental search, watcher, scale and budgets | **Done**; scale targets recorded, live scale runs pending |
 | 8 | Headless durable agent runtime | `AGENT-*` crash/resume/budget suite |
 | 9 | Checkpoints, isolated changes and rollback | `CHANGE-*` whole-task/hunk recovery |
 | 10 | MCP and restricted integration API | `INT-*` deny-by-default tests |
@@ -139,21 +139,23 @@ something deliberately not built is a permanent false failure.
 
 ## Next step
 
-Step 6 is complete, with two scoped edges named rather than hidden. Git is whole:
-hunk-level staging, branches, merge/rebase/stash/cherry-pick with a conflict
-banner that turns a stuck repository into two buttons, blame, file history,
-remotes, and signed commits. Tasks are discovered from the project's own
-manifests and run in the terminal, with per-framework single-test selectors.
-The debugger speaks DAP, first-class for Python through debugpy.
+Step 7 is complete. The index is persistent FTS5, one database per workspace,
+incremental against file size and mtime, with no cap — a test finds all of
+6,000 files where the old code stopped at 5,000. A file watcher keeps it
+current, debounced so a branch switch is one sync. Walking honours .gitignore
+through ripgrep's crate. read_file streams a line window instead of reading the
+whole file, the file tree already loads children per directory on expand,
+conversations load their messages only when opened, and background memory work
+runs through a bounded, prioritised queue. Coverage is a number in the status
+bar.
 
-The two edges: a per-test-case Test Explorer tree is not built — the Tasks
-panel groups tests and runs a named one, but discovering individual cases means
-either running the suite to enumerate them or parsing test files, and that is
-its own project; and the Node debugger is offered with an onboarding hint
-because vscode-js-debug is a large separate install not yet bundled. Both are
-stated in the matrix rather than passed off as done.
+One thing is deliberately not claimed as verified: the scale targets in
+docs/QUALITY_GATES.md are targets, not measurements. Confirming 50k/100k-file
+sync and query times needs a live run on a real large repository inside the
+signed app, which is a Step 14 bench rather than something a unit test shows.
 
-Step 7 is next: the index and performance. Remove the 5,000-file cap, make the
-index persistent and incremental with a file watcher, respect .gitignore, move
-search to a persistent BM25/FTS layer, and hold the scale targets in
-docs/QUALITY_GATES.md — 1k/10k/50k/100k files, long chats, long agent runs.
+Step 8 is next: the agent runtime. Move orchestration out of React into a
+headless core with a durable run_id, an event log, pause/resume, cancellation
+that reaches the provider and the process group, retry with backoff, a provider
+circuit breaker, context compaction, token and monetary budgets, and resume
+after an app restart.

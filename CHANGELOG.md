@@ -48,6 +48,18 @@
 - The Problems panel reports what each language server is doing, with the
   install line when one is missing and a restart button when one has given up.
 
+### Performance
+
+- The code index is persistent (SQLite FTS5), one database per workspace,
+  incremental, and no longer capped at 5,000 files. A file watcher keeps it
+  current; .gitignore is honoured.
+- Index coverage — files indexed and skipped — shows in the status bar.
+- `read_file` streams a line window instead of reading the whole file first.
+- Launching no longer loads every message of every conversation; a
+  conversation's messages load when it is opened.
+- Background memory work (summaries, extraction) runs through a bounded,
+  prioritised queue instead of racing as unbounded promises.
+
 ### Editor and search
 
 - Project search has a real engine: regex or literal, case and whole-word, with
