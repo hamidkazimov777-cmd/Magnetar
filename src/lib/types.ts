@@ -81,6 +81,10 @@ export interface Session {
   id: string;
   title: string;
   messages: ChatMessage[];
+  /** False until this session's messages have been loaded from the DB. At
+   *  startup only metadata is read; the messages arrive when the session is
+   *  first opened, so a hundred old conversations do not all load at launch. */
+  messagesLoaded?: boolean;
   /** Which connection + model produced/continues this session. */
   connectionId?: string;
   model?: string;

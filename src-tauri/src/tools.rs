@@ -86,30 +86,54 @@ pub fn read_file(
     offset: Option<usize>,
     limit: Option<usize>,
 ) -> Result<ReadResult, String> {
-    let bytes = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
-    let total = bytes.len();
-    let text = String::from_utf8_lossy(&bytes);
+    // When a slice is asked for, read line by line and stop at the end of the
+    // window rather than pulling the whole file into memory first. An agent
+    // asking for lines 10-30 of a 500 MB log should cost thirty lines, not
+    // half a gigabyte — the old code read it all and then discarded the rest.
+    if offset.is_some() || limit.is_some() {
+        return read_slice(path, offset.unwrap_or(1), limit.unwrap_or(200));
+    }
 
-    let slice: String = if offset.is_some() || limit.is_some() {
-        let start = offset.unwrap_or(1).saturating_sub(1);
-        let count = limit.unwrap_or(200);
-        text.lines()
-            .enumerate()
-            .skip(start)
-            .take(count)
-            .map(|(i, l)| format!("{}: {}", i + 1, l))
-            .collect::<Vec<_>>()
-            .join("\n")
-    } else {
-        text.to_string()
-    };
+    // No window: the whole file is wanted, but still bounded — clip caps what
+    // is returned so a giant file cannot flood the model's context.
+    let meta = std::fs::metadata(path).map_err(|e| format!("{path}: {e}"))?;
+    let total = meta.len() as usize;
+    let text = std::fs::read_to_string(path)
+        .unwrap_or_else(|_| String::from_utf8_lossy(&std::fs::read(path).unwrap_or_default()).into_owned());
+    let (content, truncated) = clip(&text, MAX_READ_BYTES);
+    Ok(ReadResult { content, truncated, bytes: total })
+}
 
-    let (content, truncated) = clip(&slice, MAX_READ_BYTES);
-    Ok(ReadResult {
-        content,
-        truncated,
-        bytes: total,
-    })
+/// Read a window of lines without loading the whole file.
+fn read_slice(path: &str, offset: usize, limit: usize) -> Result<ReadResult, String> {
+    use std::io::BufRead;
+    let file = std::fs::File::open(path).map_err(|e| format!("{path}: {e}"))?;
+    let total = file.metadata().map(|m| m.len() as usize).unwrap_or(0);
+    let reader = std::io::BufReader::new(file);
+    let start = offset.saturating_sub(1);
+
+    let mut out = String::new();
+    for (i, line) in reader.lines().enumerate() {
+        if i < start {
+            continue;
+        }
+        if i >= start + limit {
+            break;
+        }
+        let line = line.unwrap_or_default();
+        out.push_str(&format!("{}: {}\n", i + 1, line));
+        // Even within the window, one pathological line must not blow the cap.
+        if out.len() > MAX_READ_BYTES {
+            break;
+        }
+    }
+    // Trim the trailing newline to match the previous join semantics.
+    if out.ends_with('\n') {
+        out.pop();
+    }
+
+    let (content, truncated) = clip(&out, MAX_READ_BYTES);
+    Ok(ReadResult { content, truncated, bytes: total })
 }
 
 /// Full file read (no truncation) — for the in-app code editor.
@@ -573,6 +597,36 @@ pub fn kill_bash(pid: Option<u32>) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reading_a_slice_does_not_depend_on_reading_the_whole_file() {
+        // The window is returned with 1-based line prefixes, and the byte count
+        // reflects the whole file even though only the window was read.
+        let dir = std::env::temp_dir().join(format!("magnetar-read-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("big.txt");
+        let body: String = (1..=1000).map(|i| format!("line {i}\n")).collect();
+        std::fs::write(&path, &body).unwrap();
+
+        let r = read_file(&path.to_string_lossy(), Some(10), Some(3)).unwrap();
+        assert!(r.content.contains("10: line 10"));
+        assert!(r.content.contains("12: line 12"));
+        assert!(!r.content.contains("line 13"));
+        assert!(!r.content.contains("line 9"));
+        assert_eq!(r.bytes, body.len());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reading_past_the_end_returns_what_exists() {
+        let dir = std::env::temp_dir().join(format!("magnetar-read2-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("short.txt");
+        std::fs::write(&path, "one\ntwo\n").unwrap();
+        let r = read_file(&path.to_string_lossy(), Some(5), Some(10)).unwrap();
+        assert_eq!(r.content, "");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// The regression that made Stop look broken: a command that detaches a
     /// child while leaving stdout attached. bash exits immediately, but the

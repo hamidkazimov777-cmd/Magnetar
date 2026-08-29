@@ -73,7 +73,7 @@ never required for an offline build.
 | Smoke | clean fixture, no user-specific absolute paths | `npm run smoke` |
 | Build | no actionable warnings; gzip JS budget ≤ 600 KB initial route | Vite report |
 | Startup | first useful UI ≤ 2 s on reference Mac after warm cache | recorded benchmark |
-| Search | 1k files ≤ 1 s, 10k ≤ 3 s, 50k ≤ 8 s initial; incremental update ≤ 500 ms | `PERF-01` |
+| Search | first sync 10k ≤ 5 s, 50k ≤ 20 s; re-open (no changes) ≤ 1 s; incremental after a save ≤ 500 ms; query ≤ 100 ms | `PERF-01` |
 | File open | bounded memory and no full read for sliced agent requests | `PERF-02` |
 | Agent | cancellation reaches provider/process group; no orphan child | `AGENT-02` |
 | Security | no secret in logs, DB, localStorage, prompt, trace or git | `SEC-01/02` |

@@ -32,8 +32,9 @@ configured by the user or to a local provider.
   opaque string: containment can say where `bash` starts, not where it goes, and
   a command is free to `cd` elsewhere. That residual reach is covered by the
   audit record rather than by prevention, and must be read that way.
-- `read_file` currently reads the complete file before slicing, so large-file
-  memory use is a known risk.
+- `read_file` streams a requested line window instead of reading the whole file
+  first, so an agent asking for lines 10-30 of a huge log costs thirty lines,
+  not the file. A whole-file read (no window) is still bounded by the output cap.
 - Path resolution now exists as a tested Rust primitive (`src-tauri/src/paths.rs`):
   it collapses `.`/`..` lexically, canonicalises the deepest existing ancestor so
   a target that does not exist yet still resolves, and reports whether the result

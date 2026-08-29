@@ -1,5 +1,6 @@
 import { keepBytes, toMetadata } from "../attachments";
 import { db } from "../db";
+import { fromMetadata } from "../attachments";
 import { reportPromise } from "../errors";
 import { providerForBaseUrl } from "../generation";
 import type { ChatMessage, Session, Track } from "../types";
@@ -70,6 +71,11 @@ export interface SessionsSlice {
 
   /** Persist a message's current in-memory content to the DB (e.g. after a stream ends). */
   persistMessage: (sessionId: string, messageId: string) => void;
+
+  /** Load a session's messages from the DB the first time it is opened.
+   *  Cheap and idempotent: a session whose messages are already loaded does
+   *  nothing, so this is safe to call whenever a session becomes active. */
+  ensureMessages: (sessionId: string) => Promise<void>;
 }
 
 export const createSessionsSlice: Slice<SessionsSlice> = (set, get) => ({
@@ -120,6 +126,7 @@ export const createSessionsSlice: Slice<SessionsSlice> = (set, get) => ({
           : st.activeModel,
       projectId: st.activeProjectId,
       track: resolvedTrack,
+      messagesLoaded: true,
       createdAt: now(),
       updatedAt: now(),
     };
@@ -137,7 +144,8 @@ export const createSessionsSlice: Slice<SessionsSlice> = (set, get) => ({
   // Selecting a conversation restores everything about it: its track, and
   // the model that was talking. Otherwise you return to a discussion held
   // with one model and continue it, unannounced, with another.
-  selectSession: (id) =>
+  selectSession: (id) => {
+    void get().ensureMessages(id);
     set((s) => {
       const sess = s.sessions.find((x) => x.id === id);
       // Helper rows belong to the run that produced them; carrying them
@@ -158,7 +166,8 @@ export const createSessionsSlice: Slice<SessionsSlice> = (set, get) => ({
             ? sess.model
             : (sess.model ?? s.activeModel),
       };
-    }),
+    });
+  },
 
   switchTrack: (track) => {
     const st = get();
@@ -394,6 +403,38 @@ export const createSessionsSlice: Slice<SessionsSlice> = (set, get) => ({
       ),
     }));
     get().persistMessage(sessionId, messageId);
+  },
+
+  ensureMessages: async (sessionId) => {
+    const sess = get().sessions.find((x) => x.id === sessionId);
+    if (!sess || sess.messagesLoaded) return;
+    // Mark loaded up front so two rapid opens do not both read the DB.
+    set((s) => ({
+      sessions: s.sessions.map((x) => (x.id === sessionId ? { ...x, messagesLoaded: true } : x)),
+    }));
+    try {
+      const rows = await db.loadMessages(sessionId);
+      set((s) => ({
+        sessions: s.sessions.map((x) =>
+          x.id === sessionId
+            ? {
+                ...x,
+                messages: rows.map((r) => ({
+                  id: r.id,
+                  role: r.role as ChatMessage["role"],
+                  content: r.content,
+                  model: r.model ?? undefined,
+                  attachments: fromMetadata(r.attachments),
+                  createdAt: r.createdAt,
+                })),
+              }
+            : x,
+        ),
+      }));
+    } catch {
+      // A failed load leaves messagesLoaded true so it is not retried in a
+      // loop; the conversation shows empty, which is honest about the failure.
+    }
   },
 
   persistMessage: (sessionId, messageId) => {

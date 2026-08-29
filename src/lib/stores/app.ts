@@ -1,7 +1,6 @@
-import { fromMetadata } from "../attachments";
 import { db } from "../db";
 import { reportError, reportPromise } from "../errors";
-import type { ChatMessage, Connection, Session } from "../types";
+import type { Connection, Session } from "../types";
 import type { Slice } from "./state";
 
 /* ==========================================================================
@@ -71,40 +70,31 @@ export const createAppSlice: Slice<AppSlice> = (set, get) => ({
       const projects = await db.listProjects();
       set({ projects });
       const metas = await db.listSessions();
-      const sessions: Session[] = await Promise.all(
-        metas.map(async (m) => {
-          const rows = await db.loadMessages(m.id);
-          return {
-            id: m.id,
-            title: m.title,
-            connectionId: m.connectionId ?? undefined,
-            model: m.model ?? undefined,
-            summary: m.summary ?? undefined,
-            summaryUpToId: m.summaryUpToId ?? undefined,
-            projectId: m.projectId ?? undefined,
-            // Conversations that predate tracks are agent chats: that is
-            // all Magnetar had, and every one of them was tool-enabled.
-            track: (m.track as Session["track"]) ?? "agent",
-            // Pre-flag chats keep seeing the project (old behaviour).
-            seesProject: m.seesProject ?? true,
-            createdAt: m.createdAt,
-            updatedAt: m.updatedAt,
-            messages: rows.map((r) => ({
-              id: r.id,
-              role: r.role as ChatMessage["role"],
-              content: r.content,
-              model: r.model ?? undefined,
-              // Metadata only. The bytes are fetched when the attachment is
-              // actually rendered, so opening the app does not read every
-              // image anyone ever attached.
-              attachments: fromMetadata(r.attachments),
-              createdAt: r.createdAt,
-            })),
-          };
-        }),
-      );
+      // Only the metadata is read here. The messages of a conversation load
+      // when it is first opened (see ensureMessages), so launching the app does
+      // not read every message of every conversation ever held.
+      const sessions: Session[] = metas.map((m) => ({
+        id: m.id,
+        title: m.title,
+        connectionId: m.connectionId ?? undefined,
+        model: m.model ?? undefined,
+        summary: m.summary ?? undefined,
+        summaryUpToId: m.summaryUpToId ?? undefined,
+        projectId: m.projectId ?? undefined,
+        // Conversations that predate tracks are agent chats: that is all
+        // Magnetar had, and every one of them was tool-enabled.
+        track: (m.track as Session["track"]) ?? "agent",
+        seesProject: m.seesProject ?? true,
+        createdAt: m.createdAt,
+        updatedAt: m.updatedAt,
+        messages: [],
+        messagesLoaded: false,
+      }));
       set((s) => {
         const activeId = s.activeSessionId ?? sessions[0]?.id;
+        // The one open conversation loads its messages now; the rest wait until
+        // opened.
+        if (activeId) void get().ensureMessages(activeId);
         return {
           sessions,
           activeSessionId: activeId,

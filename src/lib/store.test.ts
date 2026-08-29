@@ -4,9 +4,12 @@ import type { Divergence, MemoryFact, Project, Session } from "./types";
 // Every write-through goes to SQLite in the background. The store's job here is
 // the in-memory transition; the DB call is stubbed so a missing Tauri host does
 // not turn a state assertion into a connection error.
+const loadMessages = vi.fn(async () => [
+  { id: "m1", role: "user", content: "hi", model: null, attachments: null, createdAt: 1 },
+]);
 vi.mock("./db", () => ({
   db: new Proxy({} as Record<string, unknown>, {
-    get: () => vi.fn(async () => []),
+    get: (_t, prop) => (prop === "loadMessages" ? loadMessages : vi.fn(async () => [])),
   }),
 }));
 
@@ -314,6 +317,34 @@ describe("a model choice belongs to its conversation", () => {
     expect(st.activeModel).toBe("model-b");
     expect(st.activeConnectionId).toBe("c2");
     expect(st.activeTrack).toBe("agent");
+  });
+
+  it("loads a session's messages only when it is opened", async () => {
+    // Launching with a hundred old conversations must not read them all; the
+    // messages arrive when a conversation is opened.
+    loadMessages.mockClear();
+    useStore.setState({
+      sessions: [
+        session({ id: "a", messages: [], messagesLoaded: false }),
+        session({ id: "b", messages: [], messagesLoaded: false }),
+      ],
+      activeSessionId: "a",
+    });
+
+    await useStore.getState().ensureMessages("a");
+    expect(loadMessages).toHaveBeenCalledWith("a");
+    expect(useStore.getState().sessions.find((x) => x.id === "a")?.messages).toHaveLength(1);
+
+    // A second call does nothing — it is already loaded.
+    loadMessages.mockClear();
+    await useStore.getState().ensureMessages("a");
+    expect(loadMessages).not.toHaveBeenCalled();
+
+    // Opening the other one loads it.
+    useStore.getState().selectSession("b");
+    await vi.waitFor(() =>
+      expect(useStore.getState().sessions.find((x) => x.id === "b")?.messages).toHaveLength(1),
+    );
   });
 
   it("starts a new conversation on the current track and model", () => {
