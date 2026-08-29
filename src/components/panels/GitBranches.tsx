@@ -2,18 +2,22 @@ import { useEffect, useRef, useState } from "react";
 import { GitBranch, Plus, Check, Trash2, Loader2, Archive } from "../icons";
 import { useT } from "../../lib/i18n";
 import {
+  addRemote,
   checkout,
   createBranch,
   deleteBranch,
   gitError,
   listBranches,
+  listRemotes,
   listStashes,
   merge,
   rebase,
+  removeRemote,
   stashDrop,
   stashPop,
   stashPush,
   type Branch,
+  type Remote,
   type Stash,
 } from "../../lib/git";
 
@@ -34,6 +38,10 @@ export function GitBranches({
   const [open, setOpen] = useState(false);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [stashes, setStashes] = useState<Stash[]>([]);
+  const [remoteList, setRemoteList] = useState<Remote[]>([]);
+  const [addingRemote, setAddingRemote] = useState(false);
+  const [remoteName, setRemoteName] = useState("");
+  const [remoteUrl, setRemoteUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -43,6 +51,7 @@ export function GitBranches({
   const load = () => {
     void listBranches(root).then(setBranches);
     void listStashes(root).then(setStashes);
+    void listRemotes(root).then(setRemoteList);
   };
 
   useEffect(() => {
@@ -227,6 +236,57 @@ export function GitBranches({
               </div>
             ))
           )}
+
+          <div className="section-label flex items-center gap-1.5 px-3">
+            {t("gitRemotes")}
+            <button
+              className="ml-auto text-[length:var(--fs-2xs)] text-[var(--color-accent)] hover:underline"
+              onClick={() => setAddingRemote((v) => !v)}
+            >
+              {t("gitAddRemote")}
+            </button>
+          </div>
+          {addingRemote && (
+            <div className="flex flex-col gap-1 px-2 py-1">
+              <input
+                value={remoteName}
+                onChange={(e) => setRemoteName(e.target.value)}
+                placeholder={t("gitRemoteName")}
+                className="h-6 rounded-[var(--r-sm)] border border-[var(--color-border)] bg-[var(--color-bg)] px-2 text-[length:var(--fs-2xs)] outline-none"
+              />
+              <input
+                value={remoteUrl}
+                onChange={(e) => setRemoteUrl(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && remoteName.trim() && remoteUrl.trim()) {
+                    void act(() => addRemote(root, remoteName.trim(), remoteUrl.trim()));
+                    setRemoteName("");
+                    setRemoteUrl("");
+                    setAddingRemote(false);
+                  }
+                }}
+                placeholder={t("gitRemoteUrl")}
+                className="h-6 rounded-[var(--r-sm)] border border-[var(--color-border)] bg-[var(--color-bg)] px-2 text-[length:var(--fs-2xs)] outline-none"
+              />
+            </div>
+          )}
+          {remoteList.map((r) => (
+            <div key={r.name} className="group/rm flex items-center px-1">
+              <span className="row min-w-0 flex-1" title={r.fetchUrl}>
+                <span className="shrink-0 font-medium">{r.name}</span>
+                <span className="min-w-0 flex-1 truncate text-[length:var(--fs-2xs)] text-[var(--color-text-mute)]">
+                  {r.fetchUrl}
+                </span>
+              </span>
+              <button
+                className="icon-btn h-6 w-6 shrink-0 opacity-0 group-hover/rm:opacity-100 hover:text-[var(--color-danger)]"
+                title={t("gitRemoveRemote")}
+                onClick={() => void act(() => removeRemote(root, r.name))}
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
 
           {busy && (
             <div className="flex justify-center py-1">
