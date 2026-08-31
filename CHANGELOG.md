@@ -102,6 +102,11 @@
 
 ### Fixed
 
+- Generation Studio: fixed dropdown list clipping in the settings sidebar.
+- Generation Studio: dynamic models loading for OpenRouter/TokenRouter, allowing generation through `chat-proxy` for all multimodal API models instead of hardcoding `openai/dall-e-3`.
+- Settings: fixed the provider model count hardcoding so proxy providers display the correct number of fetched models.
+
+
 - Path containment and repository trust were inert after a restart: the
   workspace root is restored from local storage, but the backend only heard
   about it through a user action. The first signed run found this.

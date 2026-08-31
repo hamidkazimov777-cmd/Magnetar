@@ -33,8 +33,8 @@ export interface GenerationProvider {
   endpoint: string;
   method: "POST";
   /** direct = synchronous; poll = fal-style async queue; replicate = Replicate's
-   *  prediction API (create with `Prefer: wait`, then poll). */
-  strategy?: "direct" | "poll" | "replicate";
+   *  prediction API (create with `Prefer: wait`, then poll); chat-proxy = OpenRouter. */
+  strategy?: "direct" | "poll" | "replicate" | "chat-proxy";
   /** Request-level option like b64_json, when the provider needs it. */
   responseFormat?: string | null;
   /** Where output assets live in the response JSON. Default "data". */
@@ -90,6 +90,52 @@ export const GEN_PROVIDERS: GenerationProvider[] = [
     strategy: "direct",
     responseFormat: "b64_json",
     models: ["dall-e-3", "gpt-image-1", "dall-e-2"],
+    params: [
+      {
+        key: "size",
+        label: "genParamSize",
+        type: "select",
+        options: ["1024x1024", "1792x1024", "1024x1792", "512x512"],
+        default: "1024x1024",
+      },
+      { key: "n", label: "genParamCount", type: "number", min: 1, max: 4, default: 1 },
+    ],
+  },
+  {
+    id: "openrouter-image",
+    name: "OpenRouter",
+    kind: "image",
+    available: true,
+    baseUrl: "https://openrouter.ai/api/v1",
+    authType: "bearer",
+    endpoint: "chat/completions",
+    method: "POST",
+    strategy: "chat-proxy",
+    responseFormat: "url",
+    models: ["openai/dall-e-3"],
+    params: [
+      {
+        key: "size",
+        label: "genParamSize",
+        type: "select",
+        options: ["1024x1024", "1792x1024", "1024x1792", "512x512"],
+        default: "1024x1024",
+      },
+      { key: "n", label: "genParamCount", type: "number", min: 1, max: 4, default: 1 },
+    ],
+  },
+  {
+    id: "tokenrouter-image",
+    name: "TokenRouter",
+    kind: "image",
+    available: true,
+    baseUrl: "https://tokenrouter.ai/api/v1", // Using typical proxy URL format
+    authType: "bearer",
+    endpoint: "chat/completions",
+    method: "POST",
+    strategy: "chat-proxy",
+    responseFormat: "url",
+    models: ["openai/dall-e-3"],
     params: [
       {
         key: "size",

@@ -1394,3 +1394,73 @@ pub async fn attachment_read(id: String) -> Result<Option<String>, String> {
     })
     .await
 }
+
+#[tauri::command]
+pub async fn generate_chat_proxy(
+    connection: Connection,
+    kind: String,
+    model: String,
+    prompt: String,
+    params: Option<serde_json::Value>,
+) -> Result<GenerationResult, String> {
+    let _permit = GEN_SEM.acquire().await.map_err(|e| e.to_string())?;
+    let key = resolve_key(&connection).await?;
+    let url = connection.endpoint("chat/completions");
+
+    let mut body = serde_json::json!({
+        "model": model,
+        "messages": [
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+    });
+
+    if let Some(serde_json::Value::Object(map)) = params {
+        for (k, v) in map {
+            body[k] = v;
+        }
+    }
+
+    let req = GEN_HTTP.post(&url).bearer_auth(&key).json(&body);
+    let resp = req.send().await.map_err(|e| format!("network error: {e}"))?;
+
+    if !resp.status().is_success() {
+        let code = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("{code}: {text}"));
+    }
+
+    let v: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    
+    let content = v.get("choices")
+        .and_then(|c| c.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|first| first.get("message"))
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_str())
+        .ok_or_else(|| "provider returned no content".to_string())?;
+
+    let mut assets = Vec::new();
+    for word in content.split_whitespace() {
+        let clean = word.trim_matches(|c| c == '(' || c == ')' || c == '[' || c == ']' || c == '<' || c == '>' || c == '!' || c == '"' || c == '\'');
+        if clean.starts_with("http") {
+            assets.push(GenerationAsset {
+                url: Some(clean.to_string()),
+                b64: None,
+                mime_type: None,
+            });
+        }
+    }
+
+    if assets.is_empty() {
+        assets.push(GenerationAsset {
+            url: Some(content.to_string()),
+            b64: None,
+            mime_type: None,
+        });
+    }
+
+    Ok(GenerationResult { kind, assets })
+}

@@ -243,9 +243,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     setTesting(c.id);
     setTestResult((prev) => ({ ...prev, [c.id]: t("connectionTesting") }));
     try {
-      await api.listModels(c);
+      const models = await api.listModels(c);
       const provider = providerForBaseUrl(c.baseUrl);
-      const count = provider?.models.length ?? 0;
+      const count = provider?.strategy === "chat-proxy" ? models.length : (provider?.models.length ?? 0);
       setTestResult((prev) => ({
         ...prev,
         [c.id]: count

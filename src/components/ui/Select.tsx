@@ -33,7 +33,7 @@ export function Select({
 
   const current = options.find((o) => o.value === value);
   return (
-    <div ref={ref} className={cn("relative", className)}>
+    <div ref={ref} className={cn("relative", open && "z-40", className)}>
       <button
         type="button"
         disabled={disabled}
@@ -48,7 +48,7 @@ export function Select({
         <ChevronDown size={13} className="shrink-0 text-[var(--color-text-mute)]" />
       </button>
       {open && !disabled && (
-        <div className="anim-in absolute right-0 top-full z-30 mt-1 max-h-64 w-max min-w-full max-w-[340px] overflow-auto rounded-[var(--r-md)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-1 shadow-[var(--e-3)]">
+        <div className="anim-in absolute left-0 top-full z-30 mt-1 max-h-64 w-full overflow-auto rounded-[var(--r-md)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-1 shadow-[var(--e-3)]">
           {options.length === 0 && (
             <div className="px-2 py-1.5 text-[length:var(--fs-xs)] text-[var(--color-text-mute)]">
               {placeholder ?? "—"}

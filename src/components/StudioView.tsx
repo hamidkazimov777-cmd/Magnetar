@@ -160,11 +160,25 @@ export function StudioView() {
 
   // Generation connections: those pointing at an available generative provider.
   const genConns = useMemo(
-    () => connections.filter((c) => providerForBaseUrl(c.baseUrl)?.available),
+    () => connections.filter((c) => c.kind === "generative" && providerForBaseUrl(c.baseUrl)?.available),
     [connections],
   );
   // Models to offer for this modality: the provider's catalogue.
-  const modelOptions = useMemo(() => provider?.models ?? [], [provider]);
+  const [dynamicModels, setDynamicModels] = useState<string[]>([]);
+  
+  useEffect(() => {
+    if (provider?.strategy === "chat-proxy" && conn) {
+      api.listModels(conn).then(list => setDynamicModels(list.map(m => m.id))).catch(() => {});
+    } else {
+      setDynamicModels([]);
+    }
+  }, [provider?.strategy, conn]);
+
+  const modelOptions = useMemo(() => 
+    provider?.strategy === "chat-proxy" && dynamicModels.length > 0 
+      ? dynamicModels 
+      : (provider?.models ?? []), 
+  [provider, dynamicModels]);
 
   // Reset the parameter values to the provider's defaults whenever the provider
   // changes, so the controls never carry stale keys from another model.
@@ -185,13 +199,27 @@ export function StudioView() {
         ? conn
         : (genConns.find((x) => providerFor(x.baseUrl, modality)) ?? genConns[0]);
     const p = providerFor(target.baseUrl, modality);
+    
+    // For chat-proxy, we might not have fetched dynamicModels yet, or they might be huge.
+    // If we have dynamicModels, we must ensure activeModel is in it.
+    // If not fetched yet (length 0), we temporarily accept activeModel.
+    const isValidModel = p?.strategy === "chat-proxy" 
+      ? (dynamicModels.length === 0 ? Boolean(activeModel) : dynamicModels.includes(activeModel ?? ""))
+      : (p?.models.includes(activeModel ?? "") ?? false);
+
     const needFix =
       target.id !== activeConnectionId ||
       !activeModel ||
-      !(p?.models.includes(activeModel) ?? false);
-    if (needFix) setActive(target.id, p?.models[0] ?? "");
+      !isValidModel;
+      
+    if (needFix) {
+      const fallback = p?.strategy === "chat-proxy" && dynamicModels.length > 0
+        ? dynamicModels[0]
+        : (p?.models[0] ?? "");
+      setActive(target.id, fallback);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [genConns, conn?.id, modality]);
+  }, [genConns, conn?.id, modality, dynamicModels]);
 
   // Reference images only make sense for providers that accept image input.
   const imageInput = provider?.imageInput;
@@ -285,13 +313,15 @@ export function StudioView() {
         modelInBody: provider.modelInPath ? false : undefined,
       };
       // Route by provider shape: Replicate's prediction API, fal's async queue
-      // (video/audio), or the plain synchronous call.
+      // (video/audio), Chat proxy (OpenRouter), or the plain synchronous call.
       const res =
         provider.strategy === "replicate"
           ? await api.generateReplicate(conn, req)
           : provider.strategy === "poll"
             ? await api.generateAsync(conn, req)
-            : await api.generate(conn, req);
+            : provider.strategy === "chat-proxy"
+              ? await api.generateChatProxy(conn, req)
+              : await api.generate(conn, req);
       const now = Date.now();
       const next: Result[] = res.assets.map((a, i) => ({
         id: crypto.randomUUID(),

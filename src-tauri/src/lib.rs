@@ -107,6 +107,7 @@ pub fn run() {
             commands::complete,
             commands::generate,
             commands::generate_async,
+            commands::generate_chat_proxy,
             commands::generate_replicate,
             commands::chat_stream,
             commands::cancel_stream,

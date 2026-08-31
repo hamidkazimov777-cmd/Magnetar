@@ -124,6 +124,17 @@ export const api = {
       params: req.params,
     }),
 
+  /** Generation via Chat proxy (OpenRouter): wraps prompt in a chat message
+   *  and extracts the image URL from the text completion. */
+  generateChatProxy: (connection: Connection, req: GenerationRequest) =>
+    invoke<GenerationResult>("generate_chat_proxy", {
+      connection: toRustConn(connection),
+      kind: req.kind,
+      model: req.model,
+      prompt: req.prompt,
+      params: req.params,
+    }),
+
   /** Single-shot non-streaming completion (router / summarizer). */
   complete: (
     connection: Connection,

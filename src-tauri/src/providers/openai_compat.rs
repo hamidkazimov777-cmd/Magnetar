@@ -558,7 +558,7 @@ impl Provider for OpenAiCompat {
         // the network splits wherever it likes (see utf8.rs).
         let mut decoder = crate::utf8::Utf8Stream::new();
 
-        while let Some(chunk) = stream.next().await {
+        'stream_loop: while let Some(chunk) = stream.next().await {
             if cancel.load(Ordering::Relaxed) {
                 break;
             }
@@ -570,10 +570,24 @@ impl Provider for OpenAiCompat {
                 buf.drain(..=idx);
                 let Some(data) = line.strip_prefix("data:") else { continue };
                 let data = data.trim();
-                if data.is_empty() || data == "[DONE]" {
+                if data.is_empty() {
                     continue;
                 }
+                if data == "[DONE]" {
+                    // The server closes the SSE stream here. Stop reading so
+                    // reqwest doesn't hang waiting on a half-closed connection.
+                    break 'stream_loop;
+                }
                 let Ok(v) = serde_json::from_str::<Value>(data) else { continue };
+
+                if let Some(err) = v.get("error") {
+                    let message = err
+                        .as_str()
+                        .map(String::from)
+                        .or_else(|| err.get("message").and_then(|m| m.as_str()).map(String::from))
+                        .unwrap_or_else(|| err.to_string());
+                    return Err(ProviderError::Api(message));
+                }
 
                 if let Some(u) = v.get("usage") {
                     let _ = channel.send(StreamEvent::Usage {

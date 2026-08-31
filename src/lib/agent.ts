@@ -12,6 +12,23 @@ import { tr } from "./i18n";
 import { reportError } from "./errors";
 import type { ChatMessage, Connection, MemoryFact } from "./types";
 
+/** Maximum combined stdout+stderr we hand back to the model. Build logs can
+ *  easily run to megabytes and would blow the token budget. */
+const BASH_OUTPUT_LIMIT = 15_000;
+const TRUNCATION_NOTE = "… [вывод обрезан, превышен лимит] …";
+
+/** Trim bash output to the limit, keeping the head and the tail of the log. */
+function truncateBashOutput(stdout: string, stderr: string): string {
+  const body = stderr ? `${stdout}\n[stderr]\n${stderr}` : stdout;
+  if (body.length <= BASH_OUTPUT_LIMIT) return body;
+
+  // Keep roughly the first two-thirds and the last one-third — the start has
+  // the command's progress and the tail usually has the actual error.
+  const headLen = Math.floor(BASH_OUTPUT_LIMIT * 0.7);
+  const tailLen = BASH_OUTPUT_LIMIT - headLen;
+  return `${body.slice(0, headLen)}\n${TRUNCATION_NOTE}\n${body.slice(body.length - tailLen)}`;
+}
+
 /** Tools exposed to the model (OpenAI function schemas). */
 export const AGENT_TOOLS: ToolDef[] = [
   {
@@ -404,7 +421,7 @@ async function executeToolRaw(name: string, args: ToolArgs): Promise<string> {
           args.cwd ? String(args.cwd) : useStore.getState().workspaceRoot,
           useStore.getState().prefs.bashTimeoutSecs,
         );
-        return `exit ${r.code}\n${r.stdout}${r.stderr ? `\n[stderr]\n${r.stderr}` : ""}`;
+        return `exit ${r.code}\n${truncateBashOutput(r.stdout, r.stderr)}`;
       }
       case "ask_decision": {
         const question = String(args.question ?? "").trim();
