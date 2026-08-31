@@ -27,6 +27,7 @@ import {
 import { buildGenerationContext } from "../lib/memory";
 import { cn } from "../lib/cn";
 import { Select } from "./ui/Select";
+import { TrackSwitcher } from "./TrackSwitcher";
 
 /* ==========================================================================
    GENERATION STUDIO
@@ -337,6 +338,8 @@ export function StudioView() {
         data-tauri-drag-region
         className="flex h-[var(--h-titlebar)] shrink-0 items-center gap-2 border-b border-[var(--color-border)] px-3"
       >
+        <TrackSwitcher />
+        <div className="flex-1" />
         <div className="segmented shrink-0">
           {tabs.map((tab) => (
             <button key={tab.id} data-on={modality === tab.id} onClick={() => setModality(tab.id)}>

@@ -2,11 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Sparkles,
   ArrowUpRight,
-  Bot,
+  
   TriangleAlert,
   Plus,
   PanelRightClose,
-  MessagesSquare,
+  
   Eye,
   Folder,
   MoreHorizontal,
@@ -37,6 +37,7 @@ import { ChatTranscript } from "./ChatTranscript";
 import { ModelSwitcher } from "./ModelSwitcher";
 import type { Attachment } from "../lib/types";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import { TrackSwitcher } from "./TrackSwitcher";
 
 /** The agent panel: model picker, mode switches, the transcript, and the
  *  composer. It is the one place where work is requested and reported. */
@@ -465,16 +466,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
         data-tauri-drag-region
         className="flex h-[var(--h-titlebar)] shrink-0 items-center gap-1.5 border-b border-[var(--color-border)] px-2"
       >
-        {/* Identity of the panel. The mode switch itself lives in the left
-            rail now, so this is a label, not a control. */}
-        {activeTrack === "agent" ? (
-          <Bot size={15} className="shrink-0 text-[var(--color-ai)]" />
-        ) : (
-          <MessagesSquare size={15} className="shrink-0 text-[var(--color-text-dim)]" />
-        )}
-        <span className="shrink-0 text-[length:var(--fs-base)] font-semibold">
-          {activeTrack === "agent" ? t("agent") : t("trackChat")}
-        </span>
+        <TrackSwitcher />
         <div className="flex-1" />
         <Hint text={t("hintNewChat")} side="left">
           <button className="icon-btn" title={t("newChat")} onClick={() => newSession()}>
