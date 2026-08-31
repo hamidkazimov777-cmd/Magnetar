@@ -117,6 +117,17 @@ export function StudioView() {
   const [refs, setRefs] = useState<Ref[]>([]);
   const promptRef = useRef<HTMLTextAreaElement>(null);
 
+  const pendingStudioPrompt = useStore((s) => s.pendingStudioPrompt);
+  const consumeStudioPrompt = useStore((s) => s.consumeStudioPrompt);
+
+  useEffect(() => {
+    if (!pendingStudioPrompt) return;
+    const injected = consumeStudioPrompt();
+    if (!injected) return;
+    setPrompt(injected);
+    requestAnimationFrame(() => promptRef.current?.focus());
+  }, [pendingStudioPrompt, consumeStudioPrompt]);
+
   // Load the persisted gallery once — results survive leaving the studio.
   useEffect(() => {
     let alive = true;

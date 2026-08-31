@@ -16,12 +16,19 @@ export interface SlashCommand {
 
 export const SLASH_COMMANDS: SlashCommand[] = [
   { id: "/промт", insert: "/промт ", descKey: "slashPromt" },
+  { id: "/prompt", insert: "/prompt ", descKey: "slashPromt" },
   { id: "/cto", insert: "/cto", descKey: "slashCto" },
   { id: "/explain", insert: "/explain ", descKey: "slashExplain" },
   { id: "/fix", insert: "/fix ", descKey: "slashFix" },
   { id: "/test", insert: "/test ", descKey: "slashTest" },
   { id: "/review", insert: "/review ", descKey: "slashReview" },
 ];
+
+const PROMPT_MODELS = ["Kling", "Seedance", "Veo", "Flux", "Nano Banana", "Stable Audio", "Midjourney"];
+for (const m of PROMPT_MODELS) {
+  SLASH_COMMANDS.push({ id: `/prompt ${m}`, insert: `/prompt ${m} `, descKey: "slashPromt" });
+  SLASH_COMMANDS.push({ id: `/промт ${m}`, insert: `/промт ${m} `, descKey: "slashPromt" });
+}
 
 /** The prompt-maker: turn a rough request into a production-grade generation
  *  prompt for the studio. Shared by the Russian and English triggers. */
@@ -51,6 +58,22 @@ export const SLASH_PROMPTS: Record<string, string> = {
 /** Expand a leading slash command into the instruction the model receives.
  *  Command names may be Latin or Cyrillic (e.g. `/промт`). */
 export function expandSlash(text: string): string {
+  const promptMatch = text.match(/^\/(?:prompt|промт)\s+([a-zA-Z0-9.\- ]*)\s*([\s\S]*)$/i);
+  if (promptMatch) {
+    const model = promptMatch[1].trim();
+    const userText = promptMatch[2].trim();
+    const target = model ? `the ${model} model` : "the right generator";
+    const instruction = 
+      `You are a world-class prompt engineer for generative media (image, video, audio). ` +
+      `The user will describe — often roughly, in their own language — what they want to generate. ` +
+      `Turn it into ONE production-grade generation prompt for ${target}, then stop.\n` +
+      `- Write the final prompt in English (generators perform best in English) while staying faithful to the user's subject and intent.\n` +
+      `- Be vivid and concrete: subject, composition, style, lighting, mood. For video add camera movement, motion and pacing; for audio add genre, instruments, tempo and mood.\n` +
+      `- If the user refers to attached reference photos, cite them exactly as @image1, @image2 in the prompt — that is how the studio passes them to the model.\n` +
+      `- Output ONLY the final prompt inside a <MagnetarPrompt>...</MagnetarPrompt> tag. No preamble, no alternatives, no explanation.`;
+    return userText ? `${instruction}\n\nUser request:\n${userText}` : instruction;
+  }
+
   const m = text.match(/^(\/[a-zа-яё]+)\s*([\s\S]*)$/i);
   if (!m) return text;
   const prompt = SLASH_PROMPTS[m[1].toLowerCase()];

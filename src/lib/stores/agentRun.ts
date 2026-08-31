@@ -75,6 +75,11 @@ export interface AgentRunSlice {
   pendingPrompt?: string;
   requestPrompt: (text: string) => void;
   consumePrompt: () => string | undefined;
+
+  /** Text sent to the Studio tab by the prompt builder. */
+  pendingStudioPrompt?: string;
+  requestStudioPrompt: (text: string) => void;
+  consumeStudioPrompt: () => string | undefined;
 }
 
 export const createAgentRunSlice: Slice<AgentRunSlice> = (set, get) => ({
@@ -153,6 +158,13 @@ export const createAgentRunSlice: Slice<AgentRunSlice> = (set, get) => ({
   consumePrompt: () => {
     const p = get().pendingPrompt;
     if (p) set({ pendingPrompt: undefined });
+    return p;
+  },
+
+  requestStudioPrompt: (text) => set({ pendingStudioPrompt: text, activeTrack: "generation", centerView: "studio" }),
+  consumeStudioPrompt: () => {
+    const p = get().pendingStudioPrompt;
+    if (p) set({ pendingStudioPrompt: undefined });
     return p;
   },
 });

@@ -135,16 +135,22 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     // the model changed since the previous turn.
     const { system, messages: outgoing } = await buildOutgoing(current, model);
     const history = outgoing.filter((m) => m.id !== assistantId);
+    
+    // Slash commands like /prompt work in both Discussion and Agent tracks.
+    const isCto = text.startsWith("/cto");
+    const slashInstruction = isCto
+      ? "\n\n## Task\nPerform a comprehensive CTO audit of this project. Check for tech debt, architectural flaws, and suggest concrete tasks for the Roadmap."
+      : expandSlash(text) !== text
+        ? `\n\n## Task\n${expandSlash(text)}`
+        : "";
+
     // Files the user attached with @ ride along in the system prompt, so the
     // canon keeps the readable message while the model sees the content.
     const mentions = await buildMentionContext(text);
-    // The discussion track gets the project's memory too — facts and decisions,
-    // selected for what was just asked. Without it the model on this side knows
-    // nothing about the project, and you end up re-explaining the stack by hand
-    // the way you would to a browser tab. It gets no tools: this track talks
-    // things through, it does not change files.
+    // The discussion track gets the project's memory too.
     const memory = buildProjectMemory(current, text);
-    setLastContext({ system: system + memory + mentions, model, at: Date.now() });
+    const finalSystem = system + memory + slashInstruction + mentions;
+    setLastContext({ system: finalSystem, model, at: Date.now() });
 
     setStreaming(true);
     // Timing is measured here rather than in the provider: what matters to the
@@ -154,7 +160,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     let thinkingMs = 0;
 
     const stop = api.chatStream(connection, model, history, {
-      system: system + memory + mentions,
+      system: finalSystem,
       onDelta: (d) => {
         if (thinkingStart !== null) {
           thinkingMs += Date.now() - thinkingStart;
