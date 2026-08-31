@@ -173,6 +173,13 @@ pub fn create_project_dir(home: &str, name: &str) -> Result<String, String> {
     Ok(target.to_string_lossy().into_owned())
 }
 
+pub fn create_dir(path: &str) -> Result<(), String> {
+    let p = std::path::Path::new(path);
+    if p.exists() {
+        return Err(format!("{path}: already exists"));
+    }
+    std::fs::create_dir_all(p).map_err(|e| format!("{path}: {e}"))
+}
 pub fn write_file(path: &str, content: &str) -> Result<usize, String> {
     if let Some(parent) = Path::new(path).parent() {
         if !parent.as_os_str().is_empty() {

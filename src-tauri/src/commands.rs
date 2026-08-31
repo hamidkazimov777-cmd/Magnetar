@@ -854,6 +854,16 @@ pub async fn tool_grep(
 }
 
 #[tauri::command]
+pub async fn tool_create_dir(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<(), String> {
+    policy::require(Access::Write)?;
+    let path = ensure_allowed(&app, &path).await?;
+    blocking(move || tools::create_dir(&path.to_string_lossy())).await
+}
+
+#[tauri::command]
 pub async fn tool_write_file(
     app: tauri::AppHandle,
     path: String,

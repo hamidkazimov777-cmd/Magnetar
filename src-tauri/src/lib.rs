@@ -121,7 +121,7 @@ pub fn run() {
             commands::tool_read_file,
             commands::tool_list_dir,
             commands::tool_grep,
-            commands::tool_write_file,
+            commands::tool_create_dir, commands::tool_write_file,
             commands::tool_delete_file,
             commands::list_project_files,
             commands::tool_edit_file,

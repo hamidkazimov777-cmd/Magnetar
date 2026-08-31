@@ -329,6 +329,7 @@ export const api = {
     }),
   toolWriteFile: (path: string, content: string) =>
     invoke<number>("tool_write_file", { path, content }),
+    toolCreateDir: (path: string) => invoke<void>("tool_create_dir", { path }),
   createProjectDir: (name: string) =>
     invoke<string>("create_project_dir", { name }),
   listProjectFiles: (root: string) =>

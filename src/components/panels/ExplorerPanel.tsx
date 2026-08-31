@@ -16,6 +16,8 @@ import {
   FolderOpen as FolderOpenIcon,
   FolderX,
   Clock,
+  FilePlus2,
+  FolderPlus,
 } from "../icons";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api } from "../../lib/api";
@@ -213,6 +215,8 @@ export function ExplorerPanel() {
   const openTab = useStore((s) => s.openTab);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzed, setAnalyzed] = useState<string | null>(null);
+  const [creating, setCreating] = useState<"file" | "dir" | null>(null);
+  const [createName, setCreateName] = useState("");
   const [tree, setTree] = useState<Record<string, NodeState>>(() =>
     workspaceRoot
       ? { [workspaceRoot]: { expanded: true, children: null, loading: false } }
@@ -307,6 +311,26 @@ export function ExplorerPanel() {
     },
   });
 
+
+  const finishCreate = async () => {
+    if (!creating || !createName.trim() || !workspaceRoot) return;
+    const name = createName.trim();
+    // basic path join
+    const fullPath = workspaceRoot + (workspaceRoot.endsWith("/") ? "" : "/") + name;
+    try {
+      if (creating === "file") {
+        await api.toolWriteFile(fullPath, "");
+      } else {
+        await api.toolCreateDir(fullPath);
+      }
+      refreshExplorer();
+    } catch (e: any) {
+      alert("Error: " + e);
+    }
+    setCreating(null);
+    setCreateName("");
+  };
+
   const analyze = async () => {
     if (!workspaceRoot) return;
     setAnalyzing(true);
@@ -340,6 +364,12 @@ export function ExplorerPanel() {
         <span className="panel-title flex-1 truncate" title={workspaceRoot}>
           {rootName}
         </span>
+        <button className="icon-btn" title={t("newFile") || "New File"} onClick={() => { setCreating("file"); setCreateName(""); }}>
+          <FilePlus2 size={14} />
+        </button>
+        <button className="icon-btn" title={t("newFolder") || "New Folder"} onClick={() => { setCreating("dir"); setCreateName(""); }}>
+          <FolderPlus size={14} />
+        </button>
         <button
           className="icon-btn"
           title={
@@ -364,6 +394,25 @@ export function ExplorerPanel() {
         </button>
         <FolderMenu />
       </header>
+
+      
+      {creating && (
+        <div className="flex items-center gap-2 border-b border-[var(--color-border)] px-3 py-1.5">
+          {creating === "file" ? <FilePlus2 size={13} className="opacity-70" /> : <FolderPlus size={13} className="opacity-70" />}
+          <input
+            autoFocus
+            className="input w-full bg-[var(--color-surface-2)] text-[length:var(--fs-xs)] px-1.5 py-0.5 min-h-[22px]"
+            placeholder={creating === "file" ? "File name..." : "Folder name..."}
+            value={createName}
+            onChange={(e) => setCreateName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void finishCreate();
+              if (e.key === "Escape") setCreating(null);
+            }}
+            onBlur={() => setCreating(null)}
+          />
+        </div>
+      )}
 
       {analyzing && (
         <div className="flex items-center gap-2 border-b border-[var(--color-border)] px-3 py-1.5 text-[length:var(--fs-xs)] text-[var(--color-accent-strong)]">
