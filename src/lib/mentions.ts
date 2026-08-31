@@ -15,8 +15,6 @@ export interface SlashCommand {
 }
 
 export const SLASH_COMMANDS: SlashCommand[] = [
-  { id: "/промт", insert: "/промт ", descKey: "slashPromt" },
-  { id: "/prompt", insert: "/prompt ", descKey: "slashPromt" },
   { id: "/cto", insert: "/cto", descKey: "slashCto" },
   { id: "/explain", insert: "/explain ", descKey: "slashExplain" },
   { id: "/fix", insert: "/fix ", descKey: "slashFix" },
@@ -27,7 +25,6 @@ export const SLASH_COMMANDS: SlashCommand[] = [
 const PROMPT_MODELS = ["Kling", "Seedance", "Veo", "Flux", "Nano Banana", "Stable Audio", "Midjourney"];
 for (const m of PROMPT_MODELS) {
   SLASH_COMMANDS.push({ id: `/prompt ${m}`, insert: `/prompt ${m} `, descKey: "slashPromt" });
-  SLASH_COMMANDS.push({ id: `/промт ${m}`, insert: `/промт ${m} `, descKey: "slashPromt" });
 }
 
 /** Plain-language expansions for the commands that are just prompts. */
@@ -41,9 +38,9 @@ export const SLASH_PROMPTS: Record<string, string> = {
 };
 
 /** Expand a leading slash command into the instruction the model receives.
- *  Command names may be Latin or Cyrillic (e.g. `/промт`). */
+ *  Command names may be Latin or Cyrillic. */
 export function expandSlash(text: string): string {
-  const promptMatch = text.match(/^\/(?:prompt|промт)\s+([a-zA-Z0-9.\- ]*)\s*([\s\S]*)$/i);
+  const promptMatch = text.match(/^\/prompt\s+([a-zA-Z0-9.\- ]*)\s*([\s\S]*)$/i);
   if (promptMatch) {
     const model = promptMatch[1].trim();
     const userText = promptMatch[2].trim();
