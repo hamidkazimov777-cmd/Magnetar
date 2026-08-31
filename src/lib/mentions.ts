@@ -30,23 +30,8 @@ for (const m of PROMPT_MODELS) {
   SLASH_COMMANDS.push({ id: `/промт ${m}`, insert: `/промт ${m} `, descKey: "slashPromt" });
 }
 
-/** The prompt-maker: turn a rough request into a production-grade generation
- *  prompt for the studio. Shared by the Russian and English triggers. */
-const PROMPT_MAKER =
-  "You are a world-class prompt engineer for generative media (image, video, audio). " +
-  "The user will describe — often roughly, in their own language — what they want to generate. " +
-  "Turn it into ONE production-grade generation prompt for the right generator, then stop.\n" +
-  "- Detect the modality (image / video / audio) and, if the user names one, the model " +
-  "(Seedance, Kling, Veo, Flux, Nano Banana, Stable Audio…); follow that model's conventions.\n" +
-  "- Write the final prompt in English (generators perform best in English) while staying faithful to the user's subject and intent.\n" +
-  "- Be vivid and concrete: subject, composition, style, lighting, mood. For video add camera movement, motion and pacing; for audio add genre, instruments, tempo and mood.\n" +
-  "- If the user refers to attached reference photos, cite them exactly as @image1, @image2 in the prompt — that is how the studio passes them to the model.\n" +
-  "- Output ONLY the final prompt inside a single fenced code block, then one short line saying which studio tab and model to run it in. No preamble, no alternatives, no explanation.";
-
 /** Plain-language expansions for the commands that are just prompts. */
 export const SLASH_PROMPTS: Record<string, string> = {
-  "/промт": PROMPT_MAKER,
-  "/prompt": PROMPT_MAKER,
   "/explain":
     "Explain how this works, using the project files. Be concrete and reference real paths.",
   "/fix": "Find and fix this problem in the project. Verify the fix when you can.",
