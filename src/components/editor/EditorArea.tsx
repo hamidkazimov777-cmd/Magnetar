@@ -241,6 +241,8 @@ export function EditorArea() {
     }
   }, [tabs]);
 
+  const saveRef = useRef<() => Promise<void>>(async () => {});
+
   const save = useCallback(async () => {
     if (!active || active.kind === "diff") return;
     let content = buffers[active.path];
@@ -272,6 +274,8 @@ export function EditorArea() {
       setSaving(false);
     }
   }, [active, buffers, formatOnSave, refreshExplorer, t]);
+
+  saveRef.current = save;
 
   // Autosave: write the file once it has stopped changing.
   //
@@ -311,7 +315,7 @@ export function EditorArea() {
     // Monaco owns ⌘S inside the editor; wire it to the same save path.
     editor.addCommand(
       monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyS,
-      () => void save(),
+      () => void saveRef.current(),
     );
     // Wire language-server features (hover, definition, …) to the editor.
     // Idempotent — safe on every mount.
