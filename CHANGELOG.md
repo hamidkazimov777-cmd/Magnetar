@@ -161,6 +161,9 @@
 
 ### Changed
 
+- (UI) Moved the track switcher (Chat / Agent / Generation) from the left Activity Bar directly into the headers of the Agent/Chat and Studio panels for better contextual UX.
+- (Fix) Fixed a stale closure bug in the Monaco editor where pressing Cmd+S would save an empty string, breaking Project Memory fact extraction for newly created files.
+
 - Removed the confirmed unreachable duplicate `new_project` agent case and the
   redundant dynamic imports; only the known Monaco chunk-size warning remains.
 - Routed store persistence/hydration and background memory, graph and LSP
