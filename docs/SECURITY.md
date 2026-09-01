@@ -27,6 +27,9 @@ configured by the user or to a local provider.
   in as they are found, and each is deleted only after the merged item has been
   written.
 - SQLite stores provider metadata but should not store credential material.
+- The generation registry (`GEN_MODELS`) and run chain hold no keys: every
+  provider call resolves credentials from the connection's Keychain entry, so
+  generation data written to SQLite never contains provider keys.
 - File paths are authorized in the backend (see below). Shell and Git commands
   are now gated on their working directory and recorded, but a command is an
   opaque string: containment can say where `bash` starts, not where it goes, and

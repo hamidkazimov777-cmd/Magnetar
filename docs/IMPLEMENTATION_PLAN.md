@@ -159,3 +159,13 @@ headless core with a durable run_id, an event log, pause/resume, cancellation
 that reaches the provider and the process group, retry with backoff, a provider
 circuit breaker, context compaction, token and monetary budgets, and resume
 after an app restart.
+
+In parallel with the step roadmap, the Generation Studio was rebuilt as a
+data-driven design (HANDOFF Entry 134): a curated `GEN_MODELS` registry
+(`src/lib/genStudio.ts`) whose settings panel renders from each model's `params`,
+and a linear run chain (`src/lib/genRun.ts`) — optional LLM prompt refinement then
+image/async-video generation — reusing the Tauri provider commands. Schema v3 adds
+durable `workflows` and `generations.run_id` as a placeholder. Note: an earlier
+version of this note described a full "Workflow Engine V1" DAG (HANDOFF Entry 133)
+that was not built; the graph engine remains an open decision, and the simpler
+Studio supersedes the generation-history work called for in Step 13.

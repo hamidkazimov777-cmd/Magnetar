@@ -1,7 +1,7 @@
 # Magnetar — состояние проекта для следующего ИИ
 
 > Прочитай этот файл + последние записи `HANDOFF.md` — и за несколько минут
-> поймёшь текущее состояние. Актуально на **2026-08-25** (после Записи 78).
+> поймёшь текущее состояние. Актуально на **2026-09-01** (после Записи 133).
 >
 > Полный разбор продукта — `OVERVIEW.md`: философия, память, агент, данные,
 > и почему каждое решение принято именно так.
@@ -12,7 +12,40 @@
 
 ---
 
-## 0. Текущий фокус: внешний аудит производительности
+## 0. Текущий фокус: Студия генерации (data-driven)
+
+Генерация живёт во вкладке «Генерация» как отдельная студия. Реально отгружено
+(коммит `79ab0a5`) — простой, **линейный** дизайн из двух файлов, без графового
+движка:
+- **Реестр моделей** (`lib/genStudio.ts`): `GEN_MODELS` — курируемый список,
+  каждая модель = одна JSON-запись с `params`. Панель настроек справа рендерится
+  из `params`, поэтому смена модели мгновенно перестраивает UI без хардкода на
+  каждую модель. Три wire-формата: `openai_images`, `chat_image`, `video_poll`.
+- **Цепочка запуска** (`lib/genRun.ts`): один поток — опциональное LLM-уточнение
+  промпта (тумблер) → генерация (image или async video-poll) → результат как
+  URL/data-URI. Живёт во фронте, переиспользует Tauri-команды `complete`/`generate*`.
+- **UI** (`components/StudioView.tsx`): полноэкранная студия, вход через
+  `centerView: "studio"` при `activeTrack === "generation"`.
+- **Схема** (SQLite v3): таблица `workflows` и `generations.run_id` заведены как
+  durable-задел, но V1-студия их пока не использует.
+
+Проверки (на `79ab0a5`): `npx tsc --noEmit` чисто, Vitest 237/237 (28 файлов),
+Rust 97/97, `scan:secrets` чисто.
+
+> **ВНИМАНИЕ (расхождение, найдено 2026-09-01).** Прежняя версия этого раздела
+> описывала «Workflow Engine V1» — графовый DAG с файлами `modelRegistry.ts`,
+> `workflow.ts`, `workflowEngine.ts`, `WorkflowBuilder.tsx` и пикером нод. **Этот
+> движок в коде не построен** (файлов нет); отгружена простая студия выше. Нужно
+> решение Hamid: остаётся ли графовый Workflow Engine целью (тогда его ещё строить)
+> или простая студия — это финальный дизайн V1.
+
+Ограничения / следующие шаги простой студии:
+- нет цепочки из нескольких генеративных шагов (только один шаг + опц. LLM);
+- text-only результат в галерее не персистится;
+- vision через hosted-URL не работает (только inline data-URI);
+- `@image1`-референсы (paperclip) — задел есть, связка не завершена.
+
+### История (ниже — до Workflow Engine V1)
 
 Работа ведётся строго по приоритетам внешнего аудита. Закрыто:
 
@@ -201,7 +234,9 @@ Tauri v2 (Rust) + React 19 + TypeScript + Tailwind v4 + zustand + SQLite
     генеративных провайдеров (`ProviderKind."generative"`, каталог `generation.ts`).
     Не сливать дорожки в один транскрипт: обсуждение, шаги инструментов и
     генерация перемешиваются, и найти договорённость через час невозможно
-    (Запись 70).
+    (Запись 70). Генерация исполняется как workflow — линейный DAG
+    `input`/`llm`/`generation`/`output`; нода хранит только `ModelRef`
+    (`connectionId`+`modelId`), без вендор-ключей (Запись 133).
 12. **Ссылки — только через `lib/links.ts`.** `<a href>` в webview навигирует
     окно приложения: клик по ссылке подменял весь Magnetar страницей, и крестик
     закрывал приложение (Запись 39). Глобальный перехватчик уже стоит в
@@ -447,6 +482,7 @@ ActivityBar (48px) │ Primary panel │ Центр (редактор/стран
 | `ChatView.tsx` | Панель агента: транскрипт, ошибки с retry, подтверждения |
 | `AgentTrace.tsx` | Шаги агента карточками (инструмент, статус, вывод) |
 | `Composer.tsx` | Ввод, `@`-файлы, `/`-команды, вложения, приём внешнего промпта |
+| `StudioView.tsx` | Полноэкранная студия генерации: реестр `GEN_MODELS`, панель настроек из `params`, опц. LLM-уточнение, галерея |
 | `lib/links.ts` | Перехват ссылок: localhost → окно превью, прочее → браузер |
 | `lib/mentions.ts` | Список файлов, fuzzy-поиск, разбор `@`, слэш-команды |
 | `FactsEditor.tsx` / `DecisionLog.tsx` / `DivergenceQueue.tsx` | Память на странице «Проекты»: факты с происхождением, журнал решений, разбор расхождений |
@@ -460,7 +496,7 @@ ActivityBar (48px) │ Primary panel │ Центр (редактор/стран
 | Файл | Роль |
 |---|---|
 | `lib/store.ts` | zustand: канон в памяти + write-through в SQLite; оболочка, вкладки, `agentTrace`, `lastError`, `memoryError`, `pendingPrompt`, `theme`, `hintsOn`, `memoryLog`, `indexState`, `checkRuns`, `pendingReveal`, `subsSafariUa` |
-| `lib/i18n.ts` | 330 ключей × ru/en/es; `useT()` в компонентах, `tr()` вне React |
+| `lib/i18n.ts` | 686 ключей × ru/en/es; `useT()` в компонентах, `tr()` вне React |
 | `lib/monaco.ts` | Monaco: локальные воркеры, **две темы** (`magnetar-light`/`-dark`), `monacoThemeFor`, TS/JS IntelliSense |
 | `lib/agent.ts` | Цикл агента: native tool-use и ReAct, инструменты (включая `delegate`, `new_project`, `flag_memory`, `ask_decision`), события `onTool` |
 | `lib/handoff.ts` | Системный промт, rolling-summary, передача контекста между моделями |
@@ -481,16 +517,20 @@ ActivityBar (48px) │ Primary panel │ Центр (редактор/стран
 | `lib/theme.ts` / `lib/useTheme.ts` / `lib/hljs-theme.ts` | Тема: применение к `<html>`, хук текущей палитры, подсветка кода под тему |
 | `lib/clipboard.ts` | `copyText()` с fallback на `execCommand` и честным результатом |
 | `lib/adaptive.ts` | Подбор модели под запрос |
-| `lib/api.ts` / `lib/db.ts` | Обёртки над Tauri-командами |
+| `lib/api.ts` / `lib/db.ts` | Обёртки над Tauri-командами; `db.ts` — `workflows`/`generations` |
+| `lib/genStudio.ts` | Data-driven реестр `GEN_MODELS` (fal.ai, GPT Image, …); панель настроек рендерится из `params` каждой модели (wire: `openai_images`/`chat_image`/`video_poll`) |
+| `lib/genRun.ts` | Цепочка запуска: опц. LLM-уточнение промпта → генерация (image / async video-poll) → результат URL/data-URI |
 | `src/index.css` | Дизайн-система: токены + `@layer components` |
 
 ### Бэкенд (`src-tauri/src/`)
 
-`lib.rs` (регистрация команд) · `commands.rs` · `db.rs` (схема + миграции) ·
-`canon.rs` (сессии/сообщения, дорожка) · `utf8.rs` (инкрементальный UTF-8) ·
-`workspace.rs` (проекты, **факты памяти, решения, расхождения**, задачи, граф, хронология, connections) · `keychain.rs` · `tools.rs` (агентские инструменты,
-git_exec, kill_bash) · `index.rs` (BM25) · `pty.rs` ·
-`providers/{mod,openai_compat,gigachat,anthropic}.rs`.
+`lib.rs` (регистрация команд) · `commands.rs` (в т.ч. `list_workflows`/
+`save_workflow`/`delete_workflow`) · `db.rs` (схема v3 + миграции: `workflows`,
+`generations.run_id`) · `canon.rs` (сессии/сообщения, дорожка) · `utf8.rs`
+(инкрементальный UTF-8) · `workspace.rs` (проекты, **факты памяти, решения,
+расхождения**, задачи, граф, хронология, connections, workflows) · `keychain.rs` ·
+`tools.rs` (агентские инструменты, git_exec, kill_bash) · `index.rs` (FTS5-индекс) ·
+`pty.rs` · `providers/{mod,openai_compat,gigachat,anthropic}.rs`.
 
 **Запись 34 добавила в бэкенд ровно одну команду:** `tool_delete_file`
 (`tools::delete_file`) — нужна для отката файлов, созданных агентом.
@@ -717,6 +757,12 @@ tool-use. GigaChat function-calling не имеет — всегда ReAct.
 > Порядок работ до публикации — в `RELEASE_PLAN.md`: долги редактора →
 > субагенты → языковые серверы → обвязка подписи. Список ниже — то, что вне
 > этих этапов.
+
+**Студия генерации — следующие шаги:**
+- `@image1`-референсы в промпте (paperclip) — задел есть, связка не завершена;
+- text-only результат в галерее не персистится;
+- vision через hosted-URL не работает (только inline data-URI);
+- решение по графовому Workflow Engine (см. раздел 0) — строить или снять с плана.
 
 0. **Вкладки «Обсуждение»/«Агент» проверены владельцем 2026-08-21**: обсуждение
    с одной моделью, сборка сайта другой, передача промпта между дорожками —

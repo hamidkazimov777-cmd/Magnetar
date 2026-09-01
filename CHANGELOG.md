@@ -19,6 +19,16 @@
 - README section documenting the five offline verification gates.
 - Cross-domain store tests covering folder close, reveal-in-file, project
   adoption, model-per-conversation, track switching and the memory queue.
+- Generation Studio (data-driven): a curated `GEN_MODELS` registry
+  (`src/lib/genStudio.ts`) where each model is one JSON entry and the settings
+  panel renders from its `params` — switching model rebuilds the UI with no
+  per-model hardcoding (`openai_images` / `chat_image` / `video_poll` wire shapes).
+- A generation run chain (`src/lib/genRun.ts`): an optional LLM prompt-refinement
+  step, then image or async-video generation, reusing the Tauri provider commands.
+- SQLite schema v3 adds a durable `workflows` table and `generations.run_id` as a
+  placeholder for a future graph engine (not yet used by the Studio). Note: an
+  earlier changelog entry described a full "Workflow Engine V1" DAG that was not
+  built; the shipped Studio is the simpler linear design above.
 
 ### Git, tasks and debugging
 
@@ -105,6 +115,9 @@
 - Generation Studio: fixed dropdown list clipping in the settings sidebar.
 - Generation Studio: dynamic models loading for OpenRouter/TokenRouter, allowing generation through `chat-proxy` for all multimodal API models instead of hardcoding `openai/dall-e-3`.
 - Settings: fixed the provider model count hardcoding so proxy providers display the correct number of fetched models.
+- Generation Studio: the model picker now selects a provider first and lists only
+  that provider's generative models, instead of showing every OpenRouter text
+  model. The LLM node picker applies the same provider-first filtering.
 
 
 - Path containment and repository trust were inert after a restart: the

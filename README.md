@@ -40,7 +40,8 @@ around.
 | **Project memory** | Facts that carry where they came from and whether a machine confirmed them — stack, architecture, constraints, current state. Collected automatically, editable by hand, selected per request |
 | **Decision log** | What was decided, when, why, what was rejected, which files it touches, at which commit |
 | **Agent** | Reads, writes and edits files, searches the code, runs shell commands. Every edit is reviewable and revertible |
-| **Discussion track** | A second conversation with its own model and no tools: talk the task through, then hand the prompt to the agent |
+| **Discussion track** | A conversation with its own model and no tools: talk the task through, then hand the prompt to the agent |
+| **Generation Studio** | Full-screen image and video studio: a data-driven model registry (settings render from each model's params) with an optional LLM prompt-refinement step before generation |
 | **Editor** | Monaco (the engine behind VS Code) with tabs, side-by-side diffs and TypeScript IntelliSense — bundled locally, no CDN |
 | **Source control** | Branch, staging, commit, diff, log, fetch/pull/push |
 | **Terminal** | A real PTY in the project root, sharing the shell the agent uses |
@@ -153,8 +154,9 @@ Then, in this order — it matters:
    builds the code index, collects the first facts and verifies the checkable
    ones. The agent track turns itself on.
 4. **Work.** Use the **Agent** tab to change the project, the **Discussion** tab
-   to think out loud — each keeps its own model. "To agent" under a reply moves
-   a prompt from one to the other.
+   to think out loud, and the **Generation** tab to produce images, video or
+   audio — each keeps its own model. "To agent" under a reply moves a prompt
+   from one to the other.
 5. **Switch models freely.** The handoff note is written for you.
 
 New to the interface? The **`i`** button at the top of the rail turns on hint
@@ -216,8 +218,9 @@ src/
   components/shell/    Rail, status bar, command palette, terminal dock
   components/panels/   Files, Search, Git, Problems, Changes, Project memory
   components/editor/   Monaco editor and diff viewer
-  lib/                 Store, agent loop, guards, memory facts, verification,
-                       decisions, divergences, relevance, problems, theme, i18n
+  lib/                 Store, agent loop, generation studio (registry + run chain),
+                       guards, memory facts, verification, decisions, divergences,
+                       relevance, problems, theme, i18n
 ```
 
 The core abstraction is the **provider-neutral canon**: one transcript that each
@@ -232,10 +235,10 @@ Version 0.1.0, macOS, actively built. This is a development build, not a
 public release. The authoritative delivery plan and acceptance criteria are in
 [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md).
 
-**Works and is used daily** — chat and agent across all three provider families,
-editor, git, terminal, code search, project memory with provenance and machine
-verification, the decision log, the divergence queue, roadmap,
-subscriptions bridge, light and dark themes, RU/EN/ES interface.
+**Works and is used daily** — chat, agent and the generation studio across the
+provider families, editor, git, terminal, code search, project memory with
+provenance and machine verification, the decision log, the divergence queue,
+roadmap, subscriptions bridge, light and dark themes, RU/EN/ES interface.
 
 **Rough edges and release blockers**
 - Built and tested on the current development Mac; universal build and
