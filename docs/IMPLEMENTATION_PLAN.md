@@ -167,5 +167,6 @@ and a linear run chain (`src/lib/genRun.ts`) — optional LLM prompt refinement 
 image/async-video generation — reusing the Tauri provider commands. Schema v3 adds
 durable `workflows` and `generations.run_id` as a placeholder. Note: an earlier
 version of this note described a full "Workflow Engine V1" DAG (HANDOFF Entry 133)
-that was not built; the graph engine remains an open decision, and the simpler
-Studio supersedes the generation-history work called for in Step 13.
+that was not built. Decided (owner, 2026-09-01): the simple Studio is the final
+V1 and the graph engine is not planned; the simpler Studio supersedes the
+generation-history work called for in Step 13.

@@ -75,8 +75,8 @@ runs in the frontend and reuses the Tauri provider commands (`complete`,
 > a "Workflow Engine V1" — a linear DAG of `input`/`llm`/`generation`/`output`
 > nodes with `ModelRef`, `src/lib/modelRegistry.ts`, `src/lib/workflow.ts` and
 > `src/lib/workflowEngine.ts`. **That engine is not built** (the files do not
-> exist); the simple Studio above is what ships. Whether to build the graph engine
-> is an open owner decision.
+> exist); the simple Studio above is what ships. **Decided (owner, 2026-09-01):
+> the simple Studio is the final V1; the graph engine is not planned.**
 
 ## Trust boundaries
 
