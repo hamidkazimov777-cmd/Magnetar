@@ -64,6 +64,27 @@ describe("beginRunLog", () => {
     expect(inner.onUsage).toHaveBeenCalledTimes(2);
   });
 
+  it("stops the run when the token budget is spent", () => {
+    const log = beginRunLog({ ...meta, budgetTokens: 20 });
+    const h = log.wrap(baseHandlers());
+
+    expect(h.overBudget!()).toBeNull();
+    h.onUsage!({ inputTokens: 15, outputTokens: 4 }); // 19 < 20, still fine
+    expect(h.overBudget!()).toBeNull();
+    h.onUsage!({ inputTokens: 2, outputTokens: 0 }); // 21 ≥ 20
+    const reason = h.overBudget!();
+    expect(reason).toMatch(/Token budget reached/);
+    expect(log.budgetHit()).toBe(true);
+  });
+
+  it("does not enforce a budget when the ceiling is zero", () => {
+    const log = beginRunLog({ ...meta, budgetTokens: 0 });
+    const h = log.wrap(baseHandlers());
+    h.onUsage!({ inputTokens: 999999, outputTokens: 999999 });
+    expect(h.overBudget!()).toBeNull();
+    expect(log.budgetHit()).toBe(false);
+  });
+
   it("closes the run with its final status and an error event", async () => {
     const log = beginRunLog(meta);
     await log.finish("error", "boom");

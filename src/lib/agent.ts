@@ -612,6 +612,10 @@ export interface AgentHandlers {
   setStop?: (stop: () => void) => void;
   /** Returns true when the user pressed Stop — the loop halts between steps. */
   cancelled?: () => boolean;
+  /** Consulted between steps: returns a stop reason when the run has spent its
+   *  budget (tokens), or null to carry on. Keeps token accounting in one place
+   *  (the run log) while the loop stays the thing that can actually halt. */
+  overBudget?: () => string | null;
   /** What the model is told when `confirm` says no. A helper agent is refused
    *  for a different reason than a user declining, and saying "the user
    *  declined" would have it wait for a person who is not there. */
@@ -706,6 +710,8 @@ async function runAgentNative(
 
   for (let i = 0; i < budget; i++) {
     if (h.cancelled?.()) return;
+    const budgetStop = h.overBudget?.();
+    if (budgetStop) return void h.onText(`\n\n⚠️ ${budgetStop}`);
 
     // Anything the user typed while the run was going gets folded in here,
     // before the next request — so they can steer or ask a question mid-run
@@ -1016,6 +1022,8 @@ async function runAgentReAct(
 
   for (let i = 0; i < budget; i++) {
     if (h.cancelled?.()) return;
+    const budgetStop = h.overBudget?.();
+    if (budgetStop) return void h.onText(`\n\n⚠️ ${budgetStop}`);
 
     for (const said of takeInterjections()) messages.push(mk("user", said));
 

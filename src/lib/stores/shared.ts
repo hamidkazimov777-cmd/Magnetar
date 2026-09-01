@@ -87,6 +87,11 @@ export interface Prefs {
   confirmBash: boolean;
   /** How many tool-use rounds the agent may take before stopping. */
   agentMaxSteps: number;
+  /** Token ceiling for one run (input + output, summed across turns). A run
+   *  that crosses it stops with an explainable reason instead of burning
+   *  tokens until the provider runs out of credit — the failure mode that
+   *  motivated the agent guardrails. 0 disables the ceiling. */
+  agentMaxTokens: number;
   /** Seconds a single shell command may run (npm install/cargo build are slow). */
   bashTimeoutSecs: number;
   /** Model used for background work: project memory, handoff notes, knowledge
@@ -113,6 +118,7 @@ export const DEFAULT_PREFS: Prefs = {
   autosaveDelayMs: 1000,
   confirmBash: true,
   agentMaxSteps: 80,
+  agentMaxTokens: 400_000,
   bashTimeoutSecs: 600,
   subagentParallel: 3,
   subagentRoster: [],

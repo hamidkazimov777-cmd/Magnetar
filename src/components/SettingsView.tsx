@@ -3,6 +3,7 @@ import {
   Bot,
   FileCode2,
   Gauge,
+  Zap,
   Timer,
   BrainCircuit,
   Palette,
@@ -64,6 +65,17 @@ export function SettingsView() {
             max={300}
             step={5}
             onChange={(v) => setPrefs({ agentMaxSteps: v })}
+          />
+          <Slider
+            icon={Zap}
+            label={t("prefMaxTokens")}
+            hint={t("prefMaxTokensHint")}
+            value={prefs.agentMaxTokens}
+            min={0}
+            max={2_000_000}
+            step={50_000}
+            suffix=" tok"
+            onChange={(v) => setPrefs({ agentMaxTokens: v })}
           />
           <Slider
             icon={Timer}

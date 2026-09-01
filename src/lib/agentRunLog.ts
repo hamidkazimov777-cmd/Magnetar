@@ -26,12 +26,18 @@ export interface RunLogMeta {
   model: string | null;
   budgetSteps?: number | null;
   budgetUsd?: number | null;
+  /** Token ceiling (input + output). 0 or null disables it. */
+  budgetTokens?: number | null;
 }
 
 export interface RunLog {
   runId: string;
-  /** Decorate the caller's handlers so tool and usage events are persisted. */
+  /** Decorate the caller's handlers so tool and usage events are persisted and
+   *  the token budget is enforced between steps. */
   wrap(h: AgentHandlers): AgentHandlers;
+  /** True once the token budget stopped the run — so the caller can record the
+   *  outcome as a budget stop rather than a plain finish. */
+  budgetHit(): boolean;
   /** Close the run with its final status. */
   finish(status: AgentRunRow["status"], error?: string | null): Promise<void>;
 }
@@ -57,6 +63,8 @@ export function beginRunLog(meta: RunLogMeta): RunLog {
     budgetUsd: meta.budgetUsd ?? null,
     error: null,
   };
+  const tokenCeiling = meta.budgetTokens ?? 0;
+  let budgetStopped = false;
 
   const save = () => {
     void db.saveAgentRun({ ...run }).catch(() => {});
@@ -97,11 +105,27 @@ export function beginRunLog(meta: RunLogMeta): RunLog {
           save();
           h.onUsage?.(u);
         },
+        overBudget: () => {
+          if (tokenCeiling > 0 && run.tokensIn + run.tokensOut >= tokenCeiling) {
+            const spent = run.tokensIn + run.tokensOut;
+            const reason = `Token budget reached (${spent} ≥ ${tokenCeiling} tokens). Stopping the run — raise the limit in Settings to continue.`;
+            if (!budgetStopped) {
+              budgetStopped = true;
+              run.error = reason;
+              event("error", { budget: "tokens", reason });
+            }
+            return reason;
+          }
+          return h.overBudget?.() ?? null;
+        },
       };
     },
+    budgetHit: () => budgetStopped,
     finish(status, error) {
       run.status = status;
-      run.error = error ?? null;
+      // Only overwrite the reason when the caller supplies one — a budget stop
+      // already recorded its explanation, and finishing must not erase it.
+      if (error !== undefined) run.error = error;
       run.endedAt = Date.now();
       run.updatedAt = run.endedAt;
       if (status === "error" && error) event("error", { error });

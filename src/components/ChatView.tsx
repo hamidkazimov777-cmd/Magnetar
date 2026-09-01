@@ -245,14 +245,17 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     // The durable record of this run: it survives a restart, so a killed app can
     // show what was in flight and (later) resume it. Wraps the handlers below so
     // the live loop stays untouched.
+    const prefs = useStore.getState().prefs;
     const runLog = beginRunLog({
       sessionId,
       projectId: useStore.getState().activeProjectId ?? null,
       connectionId: connId,
       model,
+      budgetSteps: prefs?.agentMaxSteps ?? null,
+      budgetTokens: prefs?.agentMaxTokens ?? null,
     });
     let runStatus: "done" | "cancelled" | "error" = "done";
-    let runError: string | null = null;
+    let runError: string | undefined;
     try {
       const sess = useStore.getState().sessions.find((s) => s.id === sessionId);
       const projectMemory =
