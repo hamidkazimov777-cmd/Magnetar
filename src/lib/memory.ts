@@ -214,7 +214,7 @@ export async function analyzeFolderIntoMemory(
     createdAt: 0,
   };
 
-  let parsed: Record<string, unknown> | null = null;
+  let parsed: Record<string, unknown> | null;
   try {
     const res = await api.complete(
       connection,

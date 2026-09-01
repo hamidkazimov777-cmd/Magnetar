@@ -46,6 +46,14 @@ pub fn run() {
                 keychain::init(&dir);
                 audit::init(&dir);
                 policy::init(&dir);
+                // Seed the network allowlist from every saved connection, so a
+                // provider configured before this gate existed stays reachable
+                // and BYOK keeps working without any migration step.
+                if let Ok(conns) = workspace::list_connections() {
+                    for c in &conns {
+                        policy::allow_network(&c.base_url);
+                    }
+                }
                 index::init(&dir);
                 // The theme the frontend last persisted (see persist_window_theme).
                 dark = std::fs::read_to_string(dir.join("window-theme"))

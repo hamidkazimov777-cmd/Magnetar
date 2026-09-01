@@ -115,9 +115,9 @@ configured by the user or to a local provider.
    symlink escapes and external paths by default; explicit user grants are
    scoped and auditable.
 4. Enforce read/write/execute/network capabilities in Rust commands, not just
-   in React (read/write/execute done; network is not yet a declared capability).
-   Read-only mode and repository trust are backend decisions (done). Outbound
-   network is recorded rather than gated — see below.
+   in React (all four done: read/write/execute via the policy gate; network via
+   a host allowlist seeded from saved connections — see below).
+   Read-only mode and repository trust are backend decisions (done).
 5. Run shell commands with bounded timeout, process group cancellation,
    output budgets, non-interactive defaults, confirmation for risky commands,
    and an append-only local audit record without sensitive arguments.
@@ -127,20 +127,27 @@ configured by the user or to a local provider.
 7. Treat model output and repository content as untrusted input (done for tool
    output: see below). Confirmation before privilege changes and credential
    access is enforced by path containment, trust and the secret-path guard;
-   outbound network is recorded rather than gated — see below.
+   outbound network is both recorded and gated by a host allowlist — see below.
 
 ## Outbound network
 
 Magnetar is BYOK, so which endpoints may be contacted is the user's decision,
 not a list this app gets to police: a local model on an unusual port is exactly
-as legitimate as a well-known provider. Gating it would either forbid the
-product's own premise or become a rubber stamp.
+as legitimate as a well-known provider. The insight that makes gating possible
+without forbidding the premise or becoming a rubber stamp is that the list is
+not one the app invents — it *is* the set of connections the user configured.
 
-What can honestly be offered is visibility. `build_provider` is the single
-place every adapter is constructed, so each host reached is written to the
-audit log once per run — host and port only, never the path or query, because a
-provider URL routinely carries a key in its query string and this record has to
-be safe to read.
+So the network gate is a host allowlist that follows the connections. A host is
+added when a connection to it is saved (and when it is tested, one step
+earlier), every saved connection is seeded into the list on startup, and the
+built-in GigaChat hosts are always present. `build_provider` — the single place
+every adapter is constructed — refuses to build one for a host that is not on
+the list, so a compromised webview cannot redirect a request to an exfiltration
+host it invents, even though the app has no fixed provider allowlist. The list
+is persisted (`network-hosts.json`, 0600) so it survives a restart, and each
+host reached is still written to the audit log once per run — host and port
+only, never the path or query, because a provider URL routinely carries a key
+in its query string and this record has to be safe to read.
 
 ## Embedded browser isolation
 

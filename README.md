@@ -133,7 +133,10 @@ agents at all.
   in SQLite, localStorage or git
 - Conversations, memory and the code index live in a local **SQLite** database
 - The app talks to exactly the endpoints you configured — there is no telemetry,
-  no analytics and no "home" to phone
+  no analytics and no "home" to phone. This is **enforced**, not just promised:
+  outbound requests go through a host allowlist seeded from the connections you
+  save (plus the built-in GigaChat hosts), so a compromised page cannot redirect
+  a request to a host it invents
 
 ---
 
@@ -166,15 +169,19 @@ mode: hover any control to learn what it does and when it runs.
 
 ### Verifying a change
 
-Five gates, all offline — no API key and no network are needed:
+Six gates, all offline — no API key and no network are needed:
 
 ```bash
 npm run typecheck
+npm run lint
 npm run test:unit -- --run
 npm run build
 cargo test --manifest-path src-tauri/Cargo.toml
 npm run smoke
 ```
+
+Formatting is available too (`npm run format` / `npm run format:check`, Prettier),
+though it is not yet enforced as a gate.
 
 The smoke fixture is generated into the OS temp directory; set
 `MAGNETAR_FIXTURE_DIR` to put it somewhere else. Targets and current baseline
@@ -267,9 +274,6 @@ agent runs with per-run rollback, light and dark themes, RU/EN/ES interface.
 - MCP support is deferred
 - One folder at a time: multi-root is deliberately not built, see
   [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
-- Network access is recorded in the audit log but not yet gated by a capability
-  the way files and commands are (path containment, trust and read-only cover
-  file, shell, index, terminal, LSP and DAP; the network is next)
 - Monaco is split into its own lazy ~4.45 MB (~1.14 MB gzip) chunk via
   `manualChunks`, separate from the app shell (~447.93 KB gzip); the size
   warning now trips only on that deliberately-large editor chunk

@@ -31,13 +31,14 @@ never required for an offline build.
 
 ## Current baseline
 
-- Rust: 107 tests passed (1 ignored: the 50k-file index scale benchmark),
+- Rust: 109 tests passed (1 ignored: the 50k-file index scale benchmark),
   covering tools, DB migrations (including the workflow
   table and `generations.run_id`), LSP framing, UTF-8 streaming, the
   workspace/memory round trip and the persistent FTS5 index (tokenising, skip
   rules, ranking, result budget and rebuild-on-root-change), the security
   controls: path containment and symlink escape, the read-only and
-  trust policy (including that spawning a process stays gated on Execute),
+  trust policy (including that spawning a process stays gated on Execute), the
+  outbound-network host allowlist (host parsing and the allow/refuse gate),
   credential redaction in the audit log, the content security
   policy and the capability file, the provider parsers (GigaChat JSON-fence
   stripping, OpenAI temperature-refusal detection and system-prompt caching,
@@ -59,6 +60,10 @@ never required for an offline build.
   prompt-injection detector including its false-positive cases, memory import
   attachment persistence, the search matcher, keybinding chords and VS Code
   import, and the portable settings file.
+- Frontend lint: `npm run lint` (ESLint flat config, typescript-eslint + the
+  classic Rules of Hooks) passes with 0 errors; a handful of warnings remain
+  (exhaustive-deps and fast-refresh) and are non-blocking. Prettier is available
+  (`npm run format`) but not yet a gate. Lint runs in CI before the tests.
 - Frontend production build: passed.
 - Build warning: Monaco is now split into its own `monaco` chunk via
   `manualChunks` (~4.45 MB raw / ~1.14 MB gzip, loaded lazily), so it no longer

@@ -324,8 +324,8 @@ export function ExplorerPanel() {
         await api.toolCreateDir(fullPath);
       }
       refreshExplorer();
-    } catch (e: any) {
-      alert("Error: " + e);
+    } catch (e) {
+      alert("Error: " + String(e));
     }
     setCreating(null);
     setCreateName("");

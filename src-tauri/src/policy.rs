@@ -59,6 +59,22 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 /// Called once from `setup` with the app data directory.
 pub fn init(app_dir: &Path) {
     *lock(&DIR) = Some(app_dir.to_path_buf());
+
+    // The network allowlist starts with the built-in provider hosts and adds any
+    // it persisted before. Saved connections are seeded separately in `setup`,
+    // where the database is available.
+    {
+        let mut hosts = lock(&NETWORK);
+        for h in BUILTIN_HOSTS {
+            hosts.insert((*h).to_string());
+        }
+        if let Ok(text) = std::fs::read_to_string(app_dir.join(NETWORK_FILE)) {
+            if let Ok(list) = serde_json::from_str::<Vec<String>>(&text) {
+                hosts.extend(list);
+            }
+        }
+    }
+
     let path = app_dir.join(TRUSTED_FILE);
     let Ok(text) = std::fs::read_to_string(path) else { return };
     if let Ok(list) = serde_json::from_str::<Vec<String>>(&text) {
@@ -115,6 +131,96 @@ pub fn distrust_workspace() {
     let mut trusted = lock(&TRUSTED);
     trusted.remove(&root);
     persist_trusted(&trusted);
+}
+
+/* --------------------------------------------------------------------------
+   NETWORK ALLOWLIST
+
+   Every outbound request this app makes goes to a provider the user configured:
+   an OpenAI-compatible base URL, Anthropic, or GigaChat's fixed endpoints. There
+   is no "fetch an arbitrary URL" surface. So the network rule is not read-only
+   or trust — a chat has to work before any folder is open — it is containment of
+   a different kind: the app may reach the hosts of connections the user saved,
+   and nothing else. A compromised webview cannot redirect a request to an
+   exfiltration host it invents, because that host is not on the list.
+
+   The list is seeded from saved connections (on startup and on save) plus the
+   built-in GigaChat hosts, and persisted so it survives a restart.
+   -------------------------------------------------------------------------- */
+
+const NETWORK_FILE: &str = "network-hosts.json";
+
+static NETWORK: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
+
+/// GigaChat reaches fixed hosts that are not expressed as a connection base URL,
+/// so they are allowed by construction.
+const BUILTIN_HOSTS: &[&str] = &[
+    "gigachat.devices.sberbank.ru",
+    "ngw.devices.sberbank.ru:9443",
+];
+
+/// The host (with port, if any) of a URL — the unit the allowlist is keyed on.
+/// A deliberately small parse: scheme, then everything up to the next `/`, with
+/// any `user@` and query stripped. Returns None for an empty or path-less value.
+pub fn host_of(url: &str) -> Option<String> {
+    let after_scheme = url.split("://").nth(1).unwrap_or(url);
+    let authority = after_scheme.split(['/', '?', '#']).next().unwrap_or("");
+    let host = authority.rsplit('@').next().unwrap_or(authority).trim();
+    if host.is_empty() {
+        None
+    } else {
+        Some(host.to_ascii_lowercase())
+    }
+}
+
+fn persist_network(hosts: &HashSet<String>) {
+    let Some(dir) = lock(&DIR).clone() else { return };
+    let list: Vec<String> = hosts.iter().cloned().collect();
+    let Ok(json) = serde_json::to_string_pretty(&list) else { return };
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    if let Ok(mut f) = opts.open(dir.join(NETWORK_FILE)) {
+        let _ = f.write_all(json.as_bytes());
+    }
+}
+
+/// Add a URL's host to the allowlist and persist. Called when a connection is
+/// saved, and for each saved connection at startup, so configuring a provider is
+/// what authorizes reaching it. A URL with no host is ignored.
+pub fn allow_network(url: &str) {
+    let Some(host) = host_of(url) else { return };
+    let mut hosts = lock(&NETWORK);
+    if hosts.insert(host) {
+        persist_network(&hosts);
+    }
+}
+
+/// Whether a URL's host is on the allowlist. A URL with no host is treated as
+/// nothing to gate (Ok), so an empty provider base URL — GigaChat expresses its
+/// endpoints as built-ins, not a base URL — does not wrongly fail.
+pub fn network_allowed(url: &str) -> bool {
+    match host_of(url) {
+        None => true,
+        Some(host) => lock(&NETWORK).contains(&host),
+    }
+}
+
+/// The gate every outbound provider call goes through.
+pub fn require_network(url: &str) -> Result<(), String> {
+    if network_allowed(url) {
+        Ok(())
+    } else {
+        Err(format!(
+            "network host not allowed: {}. It is not one of the configured \
+             connections. Add or save the connection to reach it.",
+            host_of(url).unwrap_or_default()
+        ))
+    }
 }
 
 pub fn set_read_only(on: bool) {
@@ -203,6 +309,32 @@ mod tests {
         assert!(decide(Access::Execute, true, true).is_err(), "read-only must refuse a spawn");
         assert!(decide(Access::Execute, false, false).is_err(), "untrusted must refuse a spawn");
         assert!(decide(Access::Execute, false, true).is_ok(), "trusted + writable may spawn");
+    }
+
+    #[test]
+    fn host_of_extracts_host_with_port_and_ignores_userinfo() {
+        assert_eq!(host_of("https://api.openai.com/v1"), Some("api.openai.com".into()));
+        assert_eq!(
+            host_of("https://ngw.devices.sberbank.ru:9443/api/v2/oauth"),
+            Some("ngw.devices.sberbank.ru:9443".into())
+        );
+        assert_eq!(host_of("http://user@host.local:8080/x"), Some("host.local:8080".into()));
+        assert_eq!(host_of(""), None);
+        assert_eq!(host_of("   "), None);
+    }
+
+    #[test]
+    fn the_network_gate_allows_a_configured_host_and_refuses_an_unknown_one() {
+        // A unique host, since NETWORK is process-wide and tests share it.
+        let url = "https://byok-test.example/v1/chat";
+        assert!(!network_allowed(url), "an unconfigured host is not allowed");
+        assert!(require_network(url).is_err());
+        allow_network(url);
+        assert!(network_allowed("https://byok-test.example/anything"));
+        assert!(require_network(url).is_ok());
+        // A URL with no host is nothing to gate.
+        assert!(network_allowed(""));
+        assert!(require_network("").is_ok());
     }
 
     #[test]

@@ -346,6 +346,10 @@ async fn resolve_key(conn: &Connection) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn list_models(connection: Connection) -> Result<Vec<ModelInfo>, String> {
+    // Testing a connection ("Load models") happens before it is saved, so the
+    // act of testing a host the user just typed authorizes reaching it — the
+    // same intent a save carries, one step earlier.
+    policy::allow_network(&connection.base_url);
     let key = resolve_key(&connection).await?;
     let provider = build_provider(&connection, key).map_err(|e| e.to_string())?;
     provider.list_models().await.map_err(|e| e.to_string())

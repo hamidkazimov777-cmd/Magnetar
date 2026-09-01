@@ -53,7 +53,10 @@ pub fn save_connection(c0: ConnectionRow) -> Result<(), String> {
         )
         .map_err(|e| e.to_string())?;
         Ok(())
-    })
+    })?;
+    // Saving a connection is what authorizes reaching its host over the network.
+    crate::policy::allow_network(&c0.base_url);
+    Ok(())
 }
 
 pub fn delete_connection(id: &str) -> Result<(), String> {

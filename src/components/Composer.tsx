@@ -94,7 +94,6 @@ export function Composer({
       cancelled = true;
       unlisten?.();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Another surface (e.g. "Run audit") can hand us a prompt to pre-fill.

@@ -207,7 +207,6 @@ export function StudioView({ onOpenSettings }: { onOpenSettings: () => void }) {
         writeTurns((prev) => (prev.length > 0 ? prev : restored));
       })
       .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // The LLM-prompter's own provider+model, chosen in the Studio (persisted),

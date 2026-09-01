@@ -207,7 +207,10 @@ pub fn build_provider(
     api_key: String,
 ) -> Result<Box<dyn Provider>, ProviderError> {
     // Every outbound provider call is built here, which makes it the one place
-    // that can honestly say where this machine reached.
+    // that can honestly say — and decide — where this machine reaches. The host
+    // must be on the allowlist (seeded from saved connections); the record is
+    // kept either way.
+    crate::policy::require_network(&conn.base_url).map_err(ProviderError::Api)?;
     crate::audit::record_destination(&conn.base_url);
 
     match conn.kind {

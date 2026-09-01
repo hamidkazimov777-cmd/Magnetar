@@ -197,6 +197,8 @@ export function parseProblems(output: string, root?: string): Problem[] {
   };
 
   for (const raw of output.split("\n")) {
+    // ANSI colour codes are exactly the control characters we strip here.
+    // eslint-disable-next-line no-control-regex
     const line = raw.replace(/\x1b\[[0-9;]*m/g, "").trimEnd();
     if (!line.trim()) continue;
 

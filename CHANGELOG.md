@@ -4,6 +4,16 @@
 
 ### Added
 
+- Outbound-network host allowlist. Every provider call goes through
+  `build_provider`, which now refuses to reach a host that is not on an
+  allowlist. The list follows the user's own connections — a host is added when
+  a connection is saved or tested, all saved connections are seeded on startup,
+  and the built-in GigaChat hosts are always present — so BYOK is unaffected
+  while a compromised webview can no longer redirect a request to a host it
+  invents. Persisted to `network-hosts.json` (0600).
+- Frontend linting: ESLint (flat config, typescript-eslint + the classic Rules
+  of Hooks) and Prettier, with `npm run lint` / `format` scripts; lint runs in
+  CI before the tests and passes with no errors.
 - Rust debugging over DAP. The debugger now speaks to `lldb-dap`: opening a
   `.rs` file and starting a session runs `cargo build --message-format=json`,
   resolves the produced binary from the artifact stream (preferring a `bin`
