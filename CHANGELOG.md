@@ -4,6 +4,15 @@
 
 ### Added
 
+- Rust debugging over DAP. The debugger now speaks to `lldb-dap`: opening a
+  `.rs` file and starting a session runs `cargo build --message-format=json`,
+  resolves the produced binary from the artifact stream (preferring a `bin`
+  target, falling back to cargo's final product), and launches it under
+  lldb-dap — breakpoints on the source, call stack, scopes, variables and
+  expression evaluation. The adapter is resolved on PATH or at known keg-only
+  Homebrew paths; when it is absent it is offered with an install hint rather
+  than failing opaquely. Verified live: a breakpoint in a Rust binary stops with
+  the expected locals and evaluates an expression before continuing.
 - Durable agent runs. A run is recorded in SQLite (schema v4: `agent_runs` plus
   an append-only `agent_events` trace) so it survives a restart instead of
   vanishing with the store; the record carries status, steps, tokens and budgets.

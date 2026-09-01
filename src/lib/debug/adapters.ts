@@ -12,7 +12,7 @@
    shape of a launch config are testable without spawning anything.
    ========================================================================== */
 
-export type DebuggerId = "python" | "node";
+export type DebuggerId = "python" | "node" | "rust";
 
 export interface AdapterSpec {
   id: DebuggerId;
@@ -24,6 +24,14 @@ export interface AdapterSpec {
   /** False for adapters not yet wired for launch — offered with an install
    *  hint rather than pretended to work. */
   ready: boolean;
+  /** Absolute paths to try when `command` is not on PATH. lldb-dap ships with a
+   *  keg-only Homebrew LLVM that does not link into /usr/local/bin, so the
+   *  binary is present but invisible to a plain `which`. */
+  fallbacks?: string[];
+  /** A compiled-language adapter debugs an executable, not a source file, so the
+   *  source has to be built first and the artifact path resolved. Interpreted
+   *  adapters (python) leave this unset and debug the file directly. */
+  build?: "cargo";
 }
 
 export const ADAPTERS: Record<DebuggerId, AdapterSpec> = {
@@ -35,6 +43,21 @@ export const ADAPTERS: Record<DebuggerId, AdapterSpec> = {
     command: "python3",
     args: ["-m", "debugpy.adapter"],
     ready: true,
+  },
+  rust: {
+    id: "rust",
+    label: "Rust (lldb-dap)",
+    probe: "lldb-dap",
+    install: "lldb-dap is needed (LLVM 18+ / Xcode 16+, or `brew install llvm`)",
+    command: "lldb-dap",
+    args: [],
+    ready: true,
+    fallbacks: [
+      "/usr/local/opt/llvm/bin/lldb-dap",
+      "/opt/homebrew/opt/llvm/bin/lldb-dap",
+      "/Library/Developer/CommandLineTools/usr/bin/lldb-dap",
+    ],
+    build: "cargo",
   },
   node: {
     id: "node",
@@ -49,6 +72,7 @@ export const ADAPTERS: Record<DebuggerId, AdapterSpec> = {
 
 const EXT_TO_DEBUGGER: Record<string, DebuggerId> = {
   py: "python",
+  rs: "rust",
   js: "node",
   mjs: "node",
   cjs: "node",
@@ -93,5 +117,20 @@ export function debugpyLaunchBody(config: LaunchConfig): Record<string, unknown>
     stopOnEntry: config.stopOnEntry ?? false,
     console: "internalConsole",
     justMyCode: true,
+  };
+}
+
+/** The `launch` body lldb-dap expects. Unlike debugpy, `program` is a compiled
+ *  executable (resolved from `cargo build`), not a source file; breakpoints are
+ *  still set against the `.rs` source and matched through the binary's DWARF.
+ *  `initCommands` disables colour so the debug console output stays clean. */
+export function lldbLaunchBody(config: LaunchConfig): Record<string, unknown> {
+  return {
+    request: "launch",
+    program: config.program,
+    args: config.args ?? [],
+    cwd: config.cwd,
+    stopOnEntry: config.stopOnEntry ?? false,
+    initCommands: ["settings set use-color false"],
   };
 }

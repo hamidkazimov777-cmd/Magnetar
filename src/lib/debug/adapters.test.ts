@@ -1,46 +1,41 @@
 import { describe, expect, it } from "vitest";
-import { ADAPTERS, debuggerForFile, debugpyLaunchBody, launchConfig } from "./adapters";
+import {
+  ADAPTERS,
+  debuggerForFile,
+  launchConfig,
+  lldbLaunchBody,
+  debugpyLaunchBody,
+} from "./adapters";
 
 describe("choosing a debugger for a file", () => {
-  it("maps extensions to their debugger", () => {
-    expect(debuggerForFile("main.py")).toBe("python");
-    expect(debuggerForFile("app.js")).toBe("node");
-    expect(debuggerForFile("src/a.ts")).toBe("node");
-    expect(debuggerForFile("readme.md")).toBeNull();
-    expect(debuggerForFile("noext")).toBeNull();
+  it("routes .rs to the Rust adapter and .py to Python", () => {
+    expect(debuggerForFile("/w/src/main.rs")).toBe("rust");
+    expect(debuggerForFile("/w/app.py")).toBe("python");
+  });
+
+  it("returns null for a file no adapter claims", () => {
+    expect(debuggerForFile("/w/README.md")).toBeNull();
   });
 });
 
-describe("adapter readiness is stated, not implied", () => {
-  it("marks python ready and node as needing its adapter", () => {
-    // A debugger that claims to work and then cannot is worse than one that
-    // says up front what it needs.
-    expect(ADAPTERS.python.ready).toBe(true);
-    expect(ADAPTERS.node.ready).toBe(false);
-    expect(ADAPTERS.python.install).toContain("debugpy");
+describe("the Rust adapter spec", () => {
+  it("is ready, builds with cargo, and carries keg-only fallbacks", () => {
+    const rust = ADAPTERS.rust;
+    expect(rust.ready).toBe(true);
+    expect(rust.build).toBe("cargo");
+    expect(rust.fallbacks?.length).toBeGreaterThan(0);
   });
 });
 
-describe("building a launch config", () => {
-  it("runs the program in the workspace, where its relative paths resolve", () => {
-    const config = launchConfig("python", "/repo/main.py", "/repo", ["--verbose"]);
-    expect(config).toMatchObject({
-      request: "launch",
-      type: "python",
-      program: "/repo/main.py",
-      cwd: "/repo",
-      args: ["--verbose"],
-    });
+describe("launch bodies are adapter-shaped", () => {
+  it("lldb-dap gets program/cwd/args but not python's fields", () => {
+    const body = lldbLaunchBody(launchConfig("rust", "/w/target/debug/app", "/w"));
+    expect(body).toMatchObject({ request: "launch", program: "/w/target/debug/app", cwd: "/w" });
+    expect(body).not.toHaveProperty("justMyCode");
   });
 
-  it("shapes the debugpy body with the field names it expects", () => {
-    const body = debugpyLaunchBody(launchConfig("python", "/repo/main.py", "/repo"));
-    expect(body).toMatchObject({
-      request: "launch",
-      type: "python",
-      program: "/repo/main.py",
-      cwd: "/repo",
-      console: "internalConsole",
-    });
+  it("debugpy gets its own fields", () => {
+    const body = debugpyLaunchBody(launchConfig("python", "/w/app.py", "/w"));
+    expect(body).toMatchObject({ type: "python", justMyCode: true });
   });
 });

@@ -44,7 +44,7 @@ around.
 | **Generation Studio** | Full-screen image and video studio: a data-driven model registry (settings render from each model's params) with an optional LLM prompt-refinement step before generation |
 | **Editor** | Monaco (the engine behind VS Code) with tabs, side-by-side diffs, AI inline completion (ghost text), and real language intelligence over LSP — hover, go-to-definition, rename, references, completion and diagnostics — bundled locally, no CDN |
 | **Language servers** | Real LSP clients for Rust (rust-analyzer), Python (Pyright), Go (gopls) and TypeScript/JavaScript, spawned by the Rust backend and offered with an install hint when a server is missing |
-| **Debugger** | Debug Adapter Protocol client — breakpoints, stepping, call stack, scopes, variables and expression evaluation. Python (debugpy) is wired end-to-end; other adapters are offered with an install hint |
+| **Debugger** | Debug Adapter Protocol client — breakpoints, stepping, call stack, scopes, variables and expression evaluation. Python (debugpy) and Rust (lldb-dap, with an automatic `cargo build` and binary resolve) are wired end-to-end; other adapters are offered with an install hint |
 | **Source control** | Branch, staging, commit, diff, log, fetch/pull/push |
 | **Terminal** | A real PTY in the project root, sharing the shell the agent uses |
 | **Problems** | Runs the project's own type-check, linter and tests; output is parsed into a clickable list |
@@ -260,9 +260,10 @@ agent runs with per-run rollback, light and dark themes, RU/EN/ES interface.
 - LSP is present for Rust, Python, Go and TypeScript/JavaScript (hover,
   definition, rename, references, completion, diagnostics, formatting), but
   parser fallback and some navigation edges are incomplete
-- The debugger speaks DAP end-to-end but only Python (debugpy) is wired for
-  launch today; Node's adapter is not bundled and there is no native (Rust/C++)
-  adapter yet — the project's own Rust code cannot be stepped through in-app
+- The debugger speaks DAP end-to-end for Python (debugpy) and Rust (lldb-dap,
+  built with `cargo build` first). Rust needs `lldb-dap` present — LLVM 18+ /
+  Xcode 16+, or `brew install llvm`; on older toolchains it is offered with an
+  install hint. Node's adapter is not bundled
 - MCP support is deferred
 - One folder at a time: multi-root is deliberately not built, see
   [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)

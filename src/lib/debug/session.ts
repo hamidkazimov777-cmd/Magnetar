@@ -1,5 +1,5 @@
 import { DapClient } from "./dap";
-import { debugpyLaunchBody, launchConfig, type DebuggerId, type LaunchConfig } from "./adapters";
+import { debugpyLaunchBody, lldbLaunchBody, launchConfig, type DebuggerId, type LaunchConfig } from "./adapters";
 
 /* ==========================================================================
    ONE DEBUG SESSION, DRIVEN THROUGH DAP
@@ -98,7 +98,11 @@ export class DebugSession {
     });
 
     const body =
-      this.dbg === "python" ? debugpyLaunchBody(config) : { ...config };
+      this.dbg === "python"
+        ? debugpyLaunchBody(config)
+        : this.dbg === "rust"
+          ? lldbLaunchBody(config)
+          : { ...config };
     await this.client.request("launch", body);
   }
 

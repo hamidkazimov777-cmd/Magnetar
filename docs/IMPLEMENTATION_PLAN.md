@@ -78,7 +78,7 @@ target or intentionally manual. Test IDs are mapped to quality gates below.
 | Signed commits | ✅ detected and applied | ✅ | ✅ | ✅ | ✅ | Detect configured signing, report unavailable identity, never prompt invisibly. `GIT-04` | P2 |
 | Tasks and test execution | ✅ discovered from manifests | ✅ | ✅ | ✅ | ✅ | Discover package.json/Cargo/Make/pyproject/just, run one test and suite. `TEST-01` | P0 |
 | Test Explorer | ◐ tasks panel groups tests; no per-case tree | ✅ | ✅ | ✅ | ✅ | Discover, group, run, cancel and navigate individual tests. `TEST-02` | P1 |
-| Debugger / DAP | ✅ Python; Node needs js-debug | ✅ | ✅ | ✅ | ✅ | Node/Python baseline: breakpoint, variables, stack, step and console. `DEBUG-01` | P1 |
+| Debugger / DAP | ✅ Python (debugpy) + Rust (lldb-dap, cargo build + binary resolve); Node needs js-debug | ✅ | ✅ | ✅ | ✅ | Python/Rust baseline: breakpoint, variables, stack, step and console. `DEBUG-01` | P1 |
 | Persistent incremental index | ✅ FTS5, watcher, no cap | ✅ | ✅ | ✅ | ✅ | 1k/10k/50k/100k fixture, restart, watcher update, ignore rules, coverage shown. `PERF-01` | P0 |
 | Lazy tree and large-file slicing | ✅ lazy tree, streamed reads | ✅ | ✅ | ✅ | ✅ | Open 1 GB-ish fixture metadata without full read; paginate tree and messages. `PERF-02` | P0 |
 | Agent durable runs / event log | ✅ SQLite runs + event trace, restart reconcile | — | ✅ | ✅ | ◐ | Kill/restart during a run and resume from persisted `run_id`. `AGENT-01` | P0 |
