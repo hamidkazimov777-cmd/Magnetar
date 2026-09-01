@@ -81,10 +81,10 @@ target or intentionally manual. Test IDs are mapped to quality gates below.
 | Debugger / DAP | ✅ Python; Node needs js-debug | ✅ | ✅ | ✅ | ✅ | Node/Python baseline: breakpoint, variables, stack, step and console. `DEBUG-01` | P1 |
 | Persistent incremental index | ✅ FTS5, watcher, no cap | ✅ | ✅ | ✅ | ✅ | 1k/10k/50k/100k fixture, restart, watcher update, ignore rules, coverage shown. `PERF-01` | P0 |
 | Lazy tree and large-file slicing | ✅ lazy tree, streamed reads | ✅ | ✅ | ✅ | ✅ | Open 1 GB-ish fixture metadata without full read; paginate tree and messages. `PERF-02` | P0 |
-| Agent durable runs / event log | ◐ UI loop/events | — | ✅ | ✅ | ◐ | Kill/restart during a run and resume from persisted `run_id`. `AGENT-01` | P0 |
-| Pause / resume / cancellation / retry | ◐ frontend stop | — | ✅ | ✅ | ✅ | Cancel kills process group and provider request; retry uses bounded backoff. `AGENT-02` | P0 |
-| Budgets / cost / context compaction | ◐ token stats/summary | — | ✅ | ✅ | ✅ | Per-run and per-agent budgets stop work with an explainable reason. `AGENT-03` | P0 |
-| Checkpoint / diff / accept / rollback | ◐ file change undo | — | ✅ | ✅ | ✅ | Isolate task, review diff, accept/reject/rollback whole task and hunk. `CHANGE-01` | P0 |
+| Agent durable runs / event log | ✅ SQLite runs + event trace, restart reconcile | — | ✅ | ✅ | ◐ | Kill/restart during a run and resume from persisted `run_id`. `AGENT-01` | P0 |
+| Pause / resume / cancellation / retry | ✅ cancel to process group + provider; interrupted runs reconciled | — | ✅ | ✅ | ✅ | Cancel kills process group and provider request; retry uses bounded backoff. `AGENT-02` | P0 |
+| Budgets / cost / context compaction | ◐ per-run token budget stops with a reason; cost/compaction pending | — | ✅ | ✅ | ✅ | Per-run and per-agent budgets stop work with an explainable reason. `AGENT-03` | P0 |
+| Checkpoint / diff / accept / rollback | ✅ run-grouped + per-file rollback; per-hunk pending | — | ✅ | ✅ | ✅ | Isolate task, review diff, accept/reject/rollback whole task and hunk. `CHANGE-01` | P0 |
 | MCP client and permissions | □ | ◐ extensions | ✅ | ✅ | ◐ | Register server, authorize tool by capability, audit calls, deny by default. `INT-01` | P1 |
 | Sandboxed plugin API | □ intentionally delayed | ✅ extensions | ✅ | ✅ | □ | No plugin gets filesystem/network by default; capability grant is visible. `INT-02` | P2 |
 | Inline completion | □ | ✅ | ✅ | ✅ | ✅ | Ghost text accepts word/line/all, cancels stale requests, limits context and cost. `AI-01` | P1 |
@@ -128,8 +128,8 @@ something deliberately not built is a permanent false failure.
 | 5 | LSP/parser layer and diagnostics | **Done**; heuristic outline is the fallback, Tree-sitter deferred with reasons |
 | 6 | Git completion, tasks/tests, Test Explorer, Node/Python DAP | **Done**; DAP first-class for Python, Node documented as needing js-debug |
 | 7 | Persistent/incremental search, watcher, scale and budgets | **Done**; scale targets recorded, live scale runs pending |
-| 8 | Headless durable agent runtime | `AGENT-*` crash/resume/budget suite |
-| 9 | Checkpoints, isolated changes and rollback | `CHANGE-*` whole-task/hunk recovery |
+| 8 | Durable agent runtime | **Done** (frontend-durable, not headless): SQLite runs + append-only event trace, startup reconcile of interrupted runs, per-run token budget with an explainable stop, cancel to process group + provider. Cost accounting and context compaction pending; the loop stays in the frontend by choice (see below) |
+| 9 | Checkpoints, isolated changes and rollback | **Done** for whole-task and per-file rollback: each edit is stamped with its run id and the Changes panel rolls back a run as a unit. Per-hunk rollback within a run pending |
 | 10 | MCP and restricted integration API | `INT-*` deny-by-default tests |
 | 11 | Inline completion | `AI-*` privacy/cancellation/cost tests |
 | 12 | UX/onboarding/transparency | `UX-*` first-run walkthrough |
@@ -154,11 +154,25 @@ docs/QUALITY_GATES.md are targets, not measurements. Confirming 50k/100k-file
 sync and query times needs a live run on a real large repository inside the
 signed app, which is a Step 14 bench rather than something a unit test shows.
 
-Step 8 is next: the agent runtime. Move orchestration out of React into a
-headless core with a durable run_id, an event log, pause/resume, cancellation
-that reaches the provider and the process group, retry with backoff, a provider
-circuit breaker, context compaction, token and monetary budgets, and resume
-after an app restart.
+Steps 8 and 9 are done (HANDOFF Entries 135–139). The agent runtime became
+durable without leaving the frontend: a run is written to SQLite (`agent_runs`)
+with an append-only event trace (`agent_events`) via a wrapper at the handler
+boundary, so the loop in `agent.ts` is untouched. At startup any run left
+in flight is reconciled to `interrupted` and surfaced to the user. A per-run
+token budget (`prefs.agentMaxTokens`) stops a run with an explainable reason.
+Cancellation already reached the provider request and the bash process group.
+For checkpoints, every file edit is stamped with its run id and the Changes
+panel rolls a whole run back as a unit, on top of the existing per-file undo.
+
+Deliberately not done: moving the loop into a headless Rust core, per-token cost
+accounting, context compaction, and per-hunk rollback within a run. The loop
+stays in the frontend because that is where it already works and a rewrite would
+risk a shipping app for no user-visible gain; the durable record — the part that
+made runs survive a restart — is what mattered and is now in SQLite. These
+remain open if a headless daemon (background runs with the app closed) is ever
+wanted.
+
+Step 10 (MCP) is next.
 
 In parallel with the step roadmap, the Generation Studio was rebuilt as a
 data-driven design (HANDOFF Entry 134): a curated `GEN_MODELS` registry

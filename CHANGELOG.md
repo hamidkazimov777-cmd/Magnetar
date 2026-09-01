@@ -4,6 +4,17 @@
 
 ### Added
 
+- Durable agent runs. A run is recorded in SQLite (schema v4: `agent_runs` plus
+  an append-only `agent_events` trace) so it survives a restart instead of
+  vanishing with the store; the record carries status, steps, tokens and budgets.
+- Startup reconciliation: runs left in flight when the app closed are marked
+  `interrupted` and surfaced as a dismissible banner (ru/en/es).
+- Per-run token budget (`agentMaxTokens`, Settings slider, default 400k, 0 = off)
+  that stops a run with an explainable reason before it burns tokens unbounded.
+- Roll back a whole agent run: every edit is stamped with its run id and the
+  Changes panel groups a run's edits under one "roll back the whole run" action,
+  alongside the existing per-file undo.
+
 - Step 0 baseline implementation plan with feature-parity matrix and acceptance IDs.
 - Quality gates, security policy, architecture baseline and release checklist.
 - Frontend Vitest harness and a frontend/Rust CI workflow.
