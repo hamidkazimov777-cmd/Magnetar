@@ -134,6 +134,20 @@ describe("the folder is the unit of work", () => {
     expect(after.recentFolders).toEqual(["/repo"]);
   });
 
+  it("stamps the active run id onto file changes, so a task can be grouped", () => {
+    useStore.setState({ changes: [] });
+    const st = useStore.getState();
+
+    st.setActiveRunId("run-1");
+    st.addChange({ path: "/repo/a.ts", before: null, after: "x", tool: "write_file" });
+    st.addChange({ path: "/repo/b.ts", before: "old", after: "new", tool: "edit_file" });
+    st.setActiveRunId(undefined);
+    st.addChange({ path: "/repo/c.ts", before: null, after: "y", tool: "write_file" });
+
+    const changes = useStore.getState().changes;
+    expect(changes.map((c) => c.runId)).toEqual(["run-1", "run-1", undefined]);
+  });
+
   it("asks whether a newly opened folder is trusted, and mirrors the answer", async () => {
     const workspaceTrusted = vi.mocked(api.workspaceTrusted);
     workspaceTrusted.mockClear().mockResolvedValue(false);

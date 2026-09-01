@@ -254,6 +254,9 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
       budgetSteps: prefs?.agentMaxSteps ?? null,
       budgetTokens: prefs?.agentMaxTokens ?? null,
     });
+    // Stamp this run's id onto every file change it makes, so the Changes panel
+    // can group the task's edits and roll them back together.
+    useStore.getState().setActiveRunId(runLog.runId);
     let runStatus: "done" | "cancelled" | "error" = "done";
     let runError: string | undefined;
     try {
@@ -307,6 +310,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
       setLastError({ message: String(e), sessionId: sessionId! });
     } finally {
       void runLog.finish(runStatus, runError);
+      useStore.getState().setActiveRunId(undefined);
       useStore.getState().setMessageMeta(sessionId!, assistantId, {
         durationMs: Date.now() - agentStartedAt,
       });

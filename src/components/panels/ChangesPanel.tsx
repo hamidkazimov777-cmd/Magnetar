@@ -48,6 +48,67 @@ export function ChangesPanel() {
     for (const c of [...pending].reverse()) await revert(c);
   };
 
+  const revertRun = async (runId: string) => {
+    const inRun = pending.filter((c) => c.runId === runId);
+    for (const c of [...inRun].reverse()) await revert(c);
+  };
+
+  // Consecutive edits from the same run form one task: a group the user can
+  // roll back whole, which is what "checkpoint" means here — the run is the
+  // checkpoint, and its edits undo together.
+  const groups: { runId?: string; items: FileChange[] }[] = [];
+  for (const c of changes) {
+    const last = groups[groups.length - 1];
+    if (c.runId && last && last.runId === c.runId) last.items.push(c);
+    else groups.push({ runId: c.runId, items: [c] });
+  }
+
+  const renderRow = (c: FileChange) => (
+    <div
+      key={c.id}
+      className={cn(
+        "group/ch relative mb-1 flex items-center gap-2 rounded-[var(--r-md)] px-2 py-1.5",
+        c.reverted ? "opacity-45" : "hover:bg-[var(--color-surface-2)]",
+      )}
+    >
+      {c.before === null ? (
+        <FilePlus2 size={13} className="shrink-0 text-[var(--color-added)]" />
+      ) : (
+        <FilePenLine size={13} className="shrink-0 text-[var(--color-modified)]" />
+      )}
+
+      <button
+        className="min-w-0 flex-1 text-left"
+        title={c.path}
+        onClick={() =>
+          openTab({
+            path: c.path,
+            name: c.path.split(/[/\\]/).pop() || c.path,
+            kind: "file",
+          })
+        }
+      >
+        <div className={cn("truncate text-[length:var(--fs-base)]", c.reverted && "line-through")}>
+          {c.path.split(/[/\\]/).pop()}
+        </div>
+        <div className="truncate text-[length:var(--fs-xs)] text-[var(--color-text-mute)]">
+          {c.before === null ? t("changesCreated") : t("changesEdited")}
+        </div>
+      </button>
+
+      {!c.reverted && (
+        <button
+          className="icon-btn h-6 w-6 shrink-0 opacity-0 transition-opacity group-hover/ch:opacity-100 hover:text-[var(--color-danger)]"
+          title={t("changesRevert")}
+          onClick={() => void revert(c)}
+          disabled={busy !== null}
+        >
+          {busy === c.id ? <Loader2 size={12} className="animate-spin" /> : <Undo2 size={12} />}
+        </button>
+      )}
+    </div>
+  );
+
   if (changes.length === 0) {
     return (
       <div className="flex h-full flex-col">
@@ -86,60 +147,31 @@ export function ChangesPanel() {
       <div className="min-h-0 flex-1 overflow-auto px-2 pb-2">
         {error && <div className="alert my-2 text-[length:var(--fs-xs)]">{error}</div>}
 
-        {[...changes].reverse().map((c) => (
-          <div
-            key={c.id}
-            className={cn(
-              "group/ch relative mb-1 flex items-center gap-2 rounded-[var(--r-md)] px-2 py-1.5",
-              c.reverted ? "opacity-45" : "hover:bg-[var(--color-surface-2)]",
-            )}
-          >
-            {c.before === null ? (
-              <FilePlus2 size={13} className="shrink-0 text-[var(--color-added)]" />
-            ) : (
-              <FilePenLine size={13} className="shrink-0 text-[var(--color-modified)]" />
-            )}
-
-            <button
-              className="min-w-0 flex-1 text-left"
-              title={c.path}
-              onClick={() =>
-                openTab({
-                  path: c.path,
-                  name: c.path.split(/[/\\]/).pop() || c.path,
-                  kind: "file",
-                })
-              }
-            >
-              <div
-                className={cn(
-                  "truncate text-[length:var(--fs-base)]",
-                  c.reverted && "line-through",
-                )}
-              >
-                {c.path.split(/[/\\]/).pop()}
-              </div>
-              <div className="truncate text-[length:var(--fs-xs)] text-[var(--color-text-mute)]">
-                {c.before === null ? t("changesCreated") : t("changesEdited")}
-              </div>
-            </button>
-
-            {!c.reverted && (
-              <button
-                className="icon-btn h-6 w-6 shrink-0 opacity-0 transition-opacity group-hover/ch:opacity-100 hover:text-[var(--color-danger)]"
-                title={t("changesRevert")}
-                onClick={() => void revert(c)}
-                disabled={busy !== null}
-              >
-                {busy === c.id ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : (
-                  <Undo2 size={12} />
-                )}
-              </button>
-            )}
-          </div>
-        ))}
+        {[...groups].reverse().map((g, gi) => {
+          const runPending = g.items.filter((c) => !c.reverted).length;
+          return (
+            <div key={g.runId ?? `loose-${gi}`} className={g.runId ? "mb-1.5" : ""}>
+              {g.runId && (
+                <div className="flex items-center gap-1.5 px-1 pb-0.5 pt-1">
+                  <span className="flex-1 truncate text-[length:var(--fs-xs)] uppercase tracking-wide text-[var(--color-text-mute)]">
+                    {t("changesRunLabel")} · {g.items.length}
+                  </span>
+                  {runPending > 0 && (
+                    <button
+                      className="icon-btn h-5 w-5 shrink-0 hover:text-[var(--color-danger)]"
+                      title={t("changesRevertRun")}
+                      onClick={() => void revertRun(g.runId!)}
+                      disabled={busy !== null}
+                    >
+                      <Undo2 size={12} />
+                    </button>
+                  )}
+                </div>
+              )}
+              {[...g.items].reverse().map(renderRow)}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

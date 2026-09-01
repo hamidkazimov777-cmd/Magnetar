@@ -20,6 +20,12 @@ export interface AgentRunSlice {
   markReverted: (id: string) => void;
   clearChanges: () => void;
 
+  /** The run currently editing files, stamped onto each change so the Changes
+   *  panel can group and roll back a whole task. Set when a run begins, cleared
+   *  when it ends. */
+  activeRunId?: string;
+  setActiveRunId: (id: string | undefined) => void;
+
   /** The shell command (or other tool) running right now, if any. The composer
    *  uses it to offer "interrupt and deliver my message": while a command is
    *  running the agent loop is blocked awaiting it, so a queued message would
@@ -81,8 +87,13 @@ export const createAgentRunSlice: Slice<AgentRunSlice> = (set, get) => ({
   changes: [],
   addChange: (c) =>
     set((s) => ({
-      changes: [...s.changes, { ...c, id: uid(), at: Date.now() }],
+      changes: [
+        ...s.changes,
+        { ...c, id: uid(), at: Date.now(), runId: c.runId ?? s.activeRunId },
+      ],
     })),
+
+  setActiveRunId: (activeRunId) => set({ activeRunId }),
   markReverted: (id) =>
     set((s) => ({
       changes: s.changes.map((c) => (c.id === id ? { ...c, reverted: true } : c)),

@@ -62,6 +62,10 @@ export interface FileChange {
   tool: "write_file" | "edit_file";
   at: number;
   reverted?: boolean;
+  /** The agent run that made this edit, so the Changes panel can group a task's
+   *  edits and roll the whole task back at once. Absent for edits made outside a
+   *  run. */
+  runId?: string;
 }
 
 /** User-facing behaviour switches, surfaced in Settings. */
