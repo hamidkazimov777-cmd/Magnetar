@@ -208,7 +208,8 @@ pub fn sync(root: &str) -> Result<IndexStats, String> {
             // Unchanged: same size and mtime as stored. The cheap fingerprint is
             // enough — a file edited without changing size keeps its mtime only
             // if nothing wrote it, which does not happen.
-            if let Some((s, m)) = stored.get(path) {
+            let known = stored.get(path);
+            if let Some((s, m)) = known {
                 if *s == *size && *m == *mtime {
                     continue;
                 }
@@ -217,9 +218,16 @@ pub fn sync(root: &str) -> Result<IndexStats, String> {
                 skipped += 1;
                 continue;
             };
-            // Replace any existing row for this path, then re-insert.
-            tx.execute("DELETE FROM docs WHERE path = ?1", params![path])
-                .map_err(|e| e.to_string())?;
+            // Replace any existing row for this path, then re-insert. `docs` is
+            // an FTS5 table, and `DELETE ... WHERE path = ?` cannot use an index
+            // there — it scans. On an initial sync every file is new, so doing
+            // that delete for all of them was a scan of an ever-growing index
+            // per file: quadratic, and the reason a 50k-file first build took
+            // minutes. Only delete when the path was actually stored before.
+            if known.is_some() {
+                tx.execute("DELETE FROM docs WHERE path = ?1", params![path])
+                    .map_err(|e| e.to_string())?;
+            }
             tx.execute(
                 "INSERT INTO docs (path, body) VALUES (?1, ?2)",
                 params![path, body],
@@ -510,6 +518,66 @@ mod tests {
         let stats = sync(&fx.root()).unwrap();
         // The old index stopped at 5,000; this must see them all.
         assert_eq!(stats.files, 6000);
+        drop_index(&fx.root()).unwrap();
+    }
+
+    /// A real scale bench, not a unit test — `#[ignore]` so the normal suite
+    /// stays fast. Run it to turn the scale *targets* in QUALITY_GATES into
+    /// measurements:
+    ///
+    ///   cargo test --manifest-path src-tauri/Cargo.toml -- --ignored --nocapture bench_index_scale
+    ///
+    /// File count defaults to 50k; set MAGNETAR_BENCH_FILES=100000 for the
+    /// larger target. Files are spread across 200 directories so the walk is
+    /// realistic rather than one giant folder.
+    #[test]
+    #[ignore]
+    fn bench_index_scale() {
+        use std::time::Instant;
+        let _g = serial();
+        let n: usize = std::env::var("MAGNETAR_BENCH_FILES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(50_000);
+        let dirs = 200;
+        let fx = Fixture::new();
+
+        let t_write = Instant::now();
+        for i in 0..n {
+            fx.write(
+                &format!("d{}/f{i}.rs", i % dirs),
+                &format!("fn f{i}() {{ let needle_{i} = {i}; }}\n// token_common here\n"),
+            );
+        }
+        let write_ms = t_write.elapsed().as_millis();
+
+        let t_sync = Instant::now();
+        let stats = sync(&fx.root()).unwrap();
+        let sync_ms = t_sync.elapsed().as_millis();
+        assert_eq!(stats.files, n);
+
+        // A no-change re-sync: the incremental path (size+mtime), which is what a
+        // branch switch or a save triggers, not a full rebuild.
+        let t_resync = Instant::now();
+        let restats = sync(&fx.root()).unwrap();
+        let resync_ms = t_resync.elapsed().as_millis();
+        assert_eq!(restats.files, n);
+
+        // A handful of queries: a rare token (one hit) and a common one (capped).
+        let t_q = Instant::now();
+        let rare = search(&fx.root(), "needle_42", 10).unwrap();
+        let common = search(&fx.root(), "token_common", 20).unwrap();
+        let query_ms = t_q.elapsed().as_millis();
+        assert_eq!(rare.len(), 1);
+        assert!(!common.is_empty());
+
+        eprintln!(
+            "\n=== index scale bench: {n} files across {dirs} dirs ===\n\
+             write fixture : {write_ms} ms\n\
+             initial sync  : {sync_ms} ms\n\
+             no-op re-sync : {resync_ms} ms\n\
+             2 queries     : {query_ms} ms\n",
+        );
         drop_index(&fx.root()).unwrap();
     }
 
