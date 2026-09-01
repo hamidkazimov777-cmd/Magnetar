@@ -83,6 +83,28 @@ never required for an offline build.
 Performance measurements must record machine, OS, repository fixture, cold vs
 warm state, and command version. Do not hide a regression by raising a budget.
 
+### Search scale — measured
+
+The 50k/100k figures were previously targets, not measurements. The
+`bench_index_scale` benchmark in `src-tauri/src/index.rs` (`#[ignore]`d; run with
+`cargo test -- --ignored --nocapture bench_index_scale`, `MAGNETAR_BENCH_FILES`
+to set the count) now measures them on a generated fixture of N files across 200
+directories.
+
+50,000 files, debug build, on the development Mac:
+
+| Phase | Before | After |
+|---|---:|---:|
+| Initial sync (cold build) | ~621 s | **~5.6 s** |
+| No-op re-sync (branch switch) | ~2.1 s | ~1.9 s |
+| Two queries (rare + common token) | ~0.12 s | ~0.12 s |
+
+The initial build was quadratic — an FTS5 `DELETE ... WHERE path = ?` per file,
+each scanning a growing index — and is fixed (commit history). The remaining
+numbers were already within budget. A release-build run on a real 100k-file
+repository inside the signed app is still a Step 14 bench; these are debug-build
+figures from a synthetic fixture.
+
 ## Acceptance-test IDs
 
 The authoritative feature scenarios are in `docs/IMPLEMENTATION_PLAN.md`. Each

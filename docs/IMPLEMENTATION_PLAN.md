@@ -133,7 +133,7 @@ something deliberately not built is a permanent false failure.
 | 10 | MCP and restricted integration API | **Deferred with reasons** (see below): needs live MCP servers and in-app testing to build safely; a blind implementation would ship an unverifiable surface |
 | 11 | Inline completion | **Done**: opt-in ghost text from the user's model, capped context window, 300ms debounce, stale requests dropped on cancel; `prefs.inlineCompletion` off by default |
 | 12 | UX/onboarding/transparency | `UX-*` first-run walkthrough |
-| 13 | Keep Studio as secondary IDE utility | Generation history/asset metadata tests |
+| 13 | Keep Studio as secondary IDE utility | **Done**: generation gallery persists to the durable `generations` table and restores on open; `@image1` references work. More providers (Replicate/Imagen/ElevenLabs) pending live-key verification |
 | 14 | Release candidate | All release gates green; no Apple account action |
 | 15 | Apple signing/notarization/publication | Explicit user confirmation and external credentials |
 
@@ -149,10 +149,13 @@ conversations load their messages only when opened, and background memory work
 runs through a bounded, prioritised queue. Coverage is a number in the status
 bar.
 
-One thing is deliberately not claimed as verified: the scale targets in
-docs/QUALITY_GATES.md are targets, not measurements. Confirming 50k/100k-file
-sync and query times needs a live run on a real large repository inside the
-signed app, which is a Step 14 bench rather than something a unit test shows.
+The scale targets in docs/QUALITY_GATES.md are now partly measured, not just
+targets. A `bench_index_scale` benchmark (in `src-tauri/src/index.rs`, `#[ignore]`d)
+builds an N-file fixture and times sync and queries. Running it at 50k exposed a
+real bug — the initial build was quadratic (an FTS5 `DELETE ... WHERE path = ?`
+per file, each scanning a growing index) and took ~10 minutes; fixed, it is ~5.6s.
+A release-build run on a real 100k-file repo inside the signed app remains a
+Step 14 bench, but the algorithmic scaling problem is found and gone.
 
 Steps 8 and 9 are done (HANDOFF Entries 135–139). The agent runtime became
 durable without leaving the frontend: a run is written to SQLite (`agent_runs`)

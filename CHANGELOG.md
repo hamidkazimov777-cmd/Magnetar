@@ -17,6 +17,15 @@
 - Opt-in AI inline completion (ghost text) in the editor, from the user's own
   model, with a capped context window, debounced requests and stale-request
   cancellation (`agentMaxTokens` unaffected; `inlineCompletion` off by default).
+- The generation Studio gallery is now durable: results are saved to SQLite and
+  restored when the Studio reopens, instead of vanishing with the session.
+
+### Fixed
+
+- Indexing a large project no longer takes minutes. The initial index build was
+  quadratic (a per-file FTS5 delete that scanned a growing index); a 50k-file
+  first sync dropped from ~10 minutes to ~5.6 seconds. Incremental re-sync and
+  query times were already fast and are unchanged.
 
 - Step 0 baseline implementation plan with feature-parity matrix and acceptance IDs.
 - Quality gates, security policy, architecture baseline and release checklist.
