@@ -42,11 +42,13 @@ around.
 | **Agent** | Reads, writes and edits files, searches the code, runs shell commands. Every edit is reviewable and revertible |
 | **Discussion track** | A conversation with its own model and no tools: talk the task through, then hand the prompt to the agent |
 | **Generation Studio** | Full-screen image and video studio: a data-driven model registry (settings render from each model's params) with an optional LLM prompt-refinement step before generation |
-| **Editor** | Monaco (the engine behind VS Code) with tabs, side-by-side diffs and TypeScript IntelliSense — bundled locally, no CDN |
+| **Editor** | Monaco (the engine behind VS Code) with tabs, side-by-side diffs, AI inline completion (ghost text), and real language intelligence over LSP — hover, go-to-definition, rename, references, completion and diagnostics — bundled locally, no CDN |
+| **Language servers** | Real LSP clients for Rust (rust-analyzer), Python (Pyright), Go (gopls) and TypeScript/JavaScript, spawned by the Rust backend and offered with an install hint when a server is missing |
+| **Debugger** | Debug Adapter Protocol client — breakpoints, stepping, call stack, scopes, variables and expression evaluation. Python (debugpy) is wired end-to-end; other adapters are offered with an install hint |
 | **Source control** | Branch, staging, commit, diff, log, fetch/pull/push |
 | **Terminal** | A real PTY in the project root, sharing the shell the agent uses |
 | **Problems** | Runs the project's own type-check, linter and tests; output is parsed into a clickable list |
-| **Code search** | Local BM25 index — ranked search with no embeddings and no network |
+| **Code search** | Local BM25 index — ranked search with no embeddings and no network, and no file cap (measured to 50k files) |
 | **Knowledge graph & roadmap** | Entities and relations mined from your work; a Kanban board of tasks |
 | **Subscriptions** | Open ChatGPT / Claude / Gemini / DeepSeek in a built-in browser and move project context in and out by hand |
 
@@ -236,23 +238,35 @@ public release. The authoritative delivery plan and acceptance criteria are in
 [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md).
 
 **Works and is used daily** — chat, agent and the generation studio across the
-provider families, editor, git, terminal, code search, project memory with
-provenance and machine verification, the decision log, the divergence queue,
-roadmap, subscriptions bridge, light and dark themes, RU/EN/ES interface.
+provider families, editor with AI inline completion and LSP navigation, git,
+terminal, code search, project memory with provenance and machine verification,
+the decision log, the divergence queue, roadmap, subscriptions bridge, durable
+agent runs with per-run rollback, light and dark themes, RU/EN/ES interface.
+
+**Recently landed** (development phases)
+- Durable agent runs: persisted through an event log, interrupted runs
+  reconciled on startup, a per-run token budget with an explainable stop, and
+  file changes grouped by run so a whole task can be rolled back (Phase 1)
+- AI inline completion — ghost text in the editor (Phase 2)
+- Generation gallery persisted to SQLite (Phase 3)
+- Code index O(n²) initial sync fixed — 50k files from 621s to 5.6s, and the
+  5,000-file cap removed (Phase 4)
 
 **Rough edges and release blockers**
 - Built and tested on the current development Mac; universal build and
   notarization are not complete
 - Provider secrets currently use a 0600 `secrets.json` fallback; production
   must return to Keychain
-- LSP is present for Rust, Python, Go and TypeScript/JavaScript, but parser
-  fallback, formatting and full IDE navigation are incomplete
-- Search is an in-memory BM25 index capped at 5,000 files (the search panel and
-  replace use a separate text engine and are not capped)
+- LSP is present for Rust, Python, Go and TypeScript/JavaScript (hover,
+  definition, rename, references, completion, diagnostics, formatting), but
+  parser fallback and some navigation edges are incomplete
+- The debugger speaks DAP end-to-end but only Python (debugpy) is wired for
+  launch today; Node's adapter is not bundled and there is no native (Rust/C++)
+  adapter yet — the project's own Rust code cannot be stepped through in-app
+- MCP support is deferred
 - One folder at a time: multi-root is deliberately not built, see
   [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
-- Backend path authorization, trust/read-only mode, durable agent runs,
-  checkpoints/rollback, DAP debugger, MCP and inline completion are incomplete
+- Backend path authorization and trust/read-only mode are incomplete
 - The production build keeps Monaco in a lazy ~3.96 MB chunk; the initial
   route is ~408.75 KB gzip and the lazy-asset warning remains visible
 - Embedded browser sign-in for Google-backed services needs a compatibility
