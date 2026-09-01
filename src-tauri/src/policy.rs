@@ -193,6 +193,19 @@ mod tests {
     }
 
     #[test]
+    fn spawning_a_process_is_execute_and_stays_gated() {
+        // pty_spawn, lsp_spawn and dap_spawn each spawn a real process — a
+        // language server runs build scripts and proc-macros, a terminal runs
+        // the shell — so they are gated on Access::Execute. This pins the
+        // contract those commands now depend on: neither read-only nor an
+        // untrusted folder may spawn, and only a trusted, writable folder may.
+        // A regression that downgraded the requirement would surface here.
+        assert!(decide(Access::Execute, true, true).is_err(), "read-only must refuse a spawn");
+        assert!(decide(Access::Execute, false, false).is_err(), "untrusted must refuse a spawn");
+        assert!(decide(Access::Execute, false, true).is_ok(), "trusted + writable may spawn");
+    }
+
+    #[test]
     fn everything_is_allowed_when_the_mode_is_off() {
         for access in [Access::Read, Access::Write, Access::Execute] {
             assert!(decide(access, false, true).is_ok());

@@ -100,9 +100,10 @@ fn open_index(root: &str) -> Result<Connection, String> {
             size  INTEGER NOT NULL,
             mtime INTEGER NOT NULL
         );
-        -- The searchable content. `content=''` makes it a contentless FTS5
-        -- table: it stores the terms for matching but not a second copy of the
-        -- file, and the snippet is read from disk when a hit is shown.
+        -- The searchable content. This is an ordinary (not contentless) FTS5
+        -- table: `body` is indexed and also stored in FTS5's shadow tables, so
+        -- matching needs no second lookup. `path` is stored UNINDEXED so a hit
+        -- carries its file without a join.
         CREATE VIRTUAL TABLE IF NOT EXISTS docs USING fts5(
             path UNINDEXED,
             body,

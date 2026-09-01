@@ -409,3 +409,24 @@ impl Provider for GigaChat {
         Ok(strip_json_fence(content))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strips_a_fence_and_keeps_the_object() {
+        // GigaChat sometimes wraps JSON in a ```json fence; the object between
+        // the first { and last } is what the caller needs.
+        assert_eq!(strip_json_fence("```json\n{\"a\":1}\n```"), "{\"a\":1}");
+        assert_eq!(strip_json_fence("```\n{\"x\": true}\n```"), "{\"x\": true}");
+    }
+
+    #[test]
+    fn leaves_unfenced_or_fenceless_text_untouched() {
+        assert_eq!(strip_json_fence("{\"a\":1}"), "{\"a\":1}");
+        assert_eq!(strip_json_fence("just text"), "just text");
+        // A fence with no object is returned as-is rather than mangled.
+        assert_eq!(strip_json_fence("```\nno object\n```"), "```\nno object\n```");
+    }
+}

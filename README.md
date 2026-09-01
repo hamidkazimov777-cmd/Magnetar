@@ -125,12 +125,12 @@ agents at all.
 
 ## Privacy
 
-- API keys live in **`secrets.json`** in the app data directory, created with
-  `0600` permissions — owner-only. The file is not encrypted: a deliberate
-  trade-off at the level of `~/.aws/credentials`, made because macOS ties a
-  Keychain entry's ACL to the code signature, so every rebuild asked for the
-  password again and "Always Allow" never stuck. Keys are still never kept in
-  SQLite, localStorage or git
+- API keys live in the **macOS Keychain**, in a single encrypted entry.
+  A release build never writes a key to disk in the clear under any
+  circumstance. The only fallback is a `0600` `secrets.json` in **debug builds**,
+  for an unsigned developer build the Keychain refuses; keys found in that old
+  file are migrated into the Keychain and the file deleted. Keys are never kept
+  in SQLite, localStorage or git
 - Conversations, memory and the code index live in a local **SQLite** database
 - The app talks to exactly the endpoints you configured — there is no telemetry,
   no analytics and no "home" to phone
@@ -214,7 +214,7 @@ src-tauri/src/
   tools.rs         Agent tools, git, process control
   index.rs         BM25 code index
   pty.rs           Terminal sessions
-  keychain.rs      Secret storage (secrets.json, 0600) + one-time Keychain migration
+  keychain.rs      Secret storage (Keychain-first; 0600 secrets.json only in debug) + migration
   utf8.rs          Incremental UTF-8 decoding for streamed output
 src/
   components/shell/    Rail, status bar, command palette, terminal dock
@@ -244,9 +244,11 @@ the decision log, the divergence queue, roadmap, subscriptions bridge, durable
 agent runs with per-run rollback, light and dark themes, RU/EN/ES interface.
 
 **Recently landed** (development phases)
-- Durable agent runs: persisted through an event log, interrupted runs
-  reconciled on startup, a per-run token budget with an explainable stop, and
-  file changes grouped by run so a whole task can be rolled back (Phase 1)
+- Durable agent runs: each run is persisted through an append-only event log, a
+  per-run token budget stops it with an explainable reason, and file changes are
+  grouped by run so a whole task can be rolled back. On startup, runs left
+  in flight are reconciled — **marked interrupted and surfaced**, not resumed;
+  replaying an interrupted run from its event log is future work (Phase 1)
 - AI inline completion — ghost text in the editor (Phase 2)
 - Generation gallery persisted to SQLite (Phase 3)
 - Code index O(n²) initial sync fixed — 50k files from 621s to 5.6s, and the
@@ -255,8 +257,6 @@ agent runs with per-run rollback, light and dark themes, RU/EN/ES interface.
 **Rough edges and release blockers**
 - Built and tested on the current development Mac; universal build and
   notarization are not complete
-- Provider secrets currently use a 0600 `secrets.json` fallback; production
-  must return to Keychain
 - LSP is present for Rust, Python, Go and TypeScript/JavaScript (hover,
   definition, rename, references, completion, diagnostics, formatting), but
   parser fallback and some navigation edges are incomplete
@@ -267,9 +267,12 @@ agent runs with per-run rollback, light and dark themes, RU/EN/ES interface.
 - MCP support is deferred
 - One folder at a time: multi-root is deliberately not built, see
   [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
-- Backend path authorization and trust/read-only mode are incomplete
-- The production build keeps Monaco in a lazy ~3.96 MB chunk; the initial
-  route is ~408.75 KB gzip and the lazy-asset warning remains visible
+- Network access is recorded in the audit log but not yet gated by a capability
+  the way files and commands are (path containment, trust and read-only cover
+  file, shell, index, terminal, LSP and DAP; the network is next)
+- Monaco is split into its own lazy ~4.45 MB (~1.14 MB gzip) chunk via
+  `manualChunks`, separate from the app shell (~447.93 KB gzip); the size
+  warning now trips only on that deliberately-large editor chunk
 - Embedded browser sign-in for Google-backed services needs a compatibility
   toggle, and some sites behave better in a real browser
 

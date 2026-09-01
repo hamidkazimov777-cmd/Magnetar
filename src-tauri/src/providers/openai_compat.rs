@@ -661,3 +661,58 @@ impl Provider for OpenAiCompat {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_temperature_refusal_is_a_400_that_names_temperature() {
+        // The retry-without-temperature path hinges on this: a 400 mentioning
+        // temperature is retried, anything else is a real error.
+        assert!(is_temperature_refusal(
+            reqwest::StatusCode::BAD_REQUEST,
+            "Unsupported value: 'temperature' is not supported",
+        ));
+        assert!(!is_temperature_refusal(
+            reqwest::StatusCode::BAD_REQUEST,
+            "invalid api key",
+        ));
+        assert!(!is_temperature_refusal(
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+            "temperature",
+        ));
+    }
+
+    #[test]
+    fn prompt_cache_is_openrouter_plus_an_anthropic_family_model() {
+        assert!(supports_prompt_cache(
+            "https://openrouter.ai/api/v1",
+            "anthropic/claude-3.5-sonnet"
+        ));
+        assert!(supports_prompt_cache("https://OpenRouter.ai", "google/gemini-pro"));
+        // Not OpenRouter, or not a cacheable family:
+        assert!(!supports_prompt_cache("https://api.openai.com/v1", "gpt-4o"));
+        assert!(!supports_prompt_cache("https://openrouter.ai", "meta/llama-3"));
+    }
+
+    #[test]
+    fn caching_wraps_only_the_system_prompt() {
+        let mut msgs = vec![
+            json!({"role": "system", "content": "S"}),
+            json!({"role": "user", "content": "U"}),
+        ];
+        maybe_cache_system(&mut msgs, true);
+        assert_eq!(msgs[0]["content"][0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(msgs[0]["content"][0]["text"], "S");
+        // The user turn is left exactly as it was.
+        assert_eq!(msgs[1]["content"], "U");
+    }
+
+    #[test]
+    fn caching_disabled_changes_nothing() {
+        let mut msgs = vec![json!({"role": "system", "content": "S"})];
+        maybe_cache_system(&mut msgs, false);
+        assert_eq!(msgs[0]["content"], "S");
+    }
+}

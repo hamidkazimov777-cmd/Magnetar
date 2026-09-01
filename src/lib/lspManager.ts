@@ -406,7 +406,10 @@ async function ensureServer(config: ServerConfig): Promise<Server | null> {
     // into editor squiggles.
     client.onNotification("textDocument/publishDiagnostics", (params) => {
       const p = params as { uri: string; diagnostics?: LspDiagnostic[] };
-      void applyDiagnostics(p.uri, p.diagnostics ?? []);
+      // Applying touches Monaco, which can throw if the model was disposed
+      // between the push and here; swallow it rather than leaving an unhandled
+      // rejection on every diagnostics update during teardown.
+      void applyDiagnostics(p.uri, p.diagnostics ?? []).catch(() => {});
     });
 
     // A crashed or stopped server clears its slot; if documents are still open,

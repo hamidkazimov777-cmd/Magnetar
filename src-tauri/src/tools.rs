@@ -569,11 +569,34 @@ pub fn git_apply(cwd: &str, args: Vec<String>, patch: &str) -> Result<BashResult
         stdin.write_all(body.as_bytes()).map_err(|e| e.to_string())?;
     }
 
-    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    // Bound the wait the same way `git_exec` does: `git apply` is local and
+    // should be instant, but "no git command hangs forever" is an invariant, not
+    // a hope. The output is a line or two, well under a pipe buffer, so reading
+    // it after the process exits cannot deadlock.
+    use std::io::Read;
+    let status = match child
+        .wait_timeout(Duration::from_secs(GIT_TIMEOUT_SECS))
+        .map_err(|e| e.to_string())?
+    {
+        Some(status) => status,
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!("git apply timed out after {GIT_TIMEOUT_SECS}s"));
+        }
+    };
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    if let Some(mut so) = child.stdout.take() {
+        let _ = so.read_to_end(&mut stdout);
+    }
+    if let Some(mut se) = child.stderr.take() {
+        let _ = se.read_to_end(&mut stderr);
+    }
     Ok(BashResult {
-        stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
-        code: out.status.code().unwrap_or(-1),
+        stdout: String::from_utf8_lossy(&stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&stderr).into_owned(),
+        code: status.code().unwrap_or(-1),
         truncated: false,
     })
 }

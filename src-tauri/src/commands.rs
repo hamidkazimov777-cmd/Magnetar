@@ -565,7 +565,9 @@ pub async fn tool_write_file(
 }
 
 #[tauri::command]
-pub async fn list_project_files(root: String) -> Result<Vec<String>, String> {
+pub async fn list_project_files(app: tauri::AppHandle, root: String) -> Result<Vec<String>, String> {
+    policy::require(Access::Read)?;
+    let root = ensure_allowed(&app, &root).await?.to_string_lossy().into_owned();
     blocking(move || crate::index::list_files(&root)).await
 }
 
@@ -799,7 +801,9 @@ pub fn search_cancel(id: String) {
 // ---- Codebase index (BM25 retrieval) --------------------------------------
 
 #[tauri::command]
-pub async fn index_build(root: String) -> Result<crate::index::IndexStats, String> {
+pub async fn index_build(app: tauri::AppHandle, root: String) -> Result<crate::index::IndexStats, String> {
+    policy::require(Access::Read)?;
+    let root = ensure_allowed(&app, &root).await?.to_string_lossy().into_owned();
     blocking(move || crate::index::sync(&root)).await
 }
 
@@ -818,10 +822,13 @@ pub fn index_unwatch(root: String) {
 
 #[tauri::command]
 pub async fn index_search(
+    app: tauri::AppHandle,
     root: String,
     query: String,
     top_k: Option<usize>,
 ) -> Result<Vec<crate::index::SearchHit>, String> {
+    policy::require(Access::Read)?;
+    let root = ensure_allowed(&app, &root).await?.to_string_lossy().into_owned();
     blocking(move || crate::index::search(&root, &query, top_k.unwrap_or(8))).await
 }
 
@@ -899,14 +906,29 @@ pub async fn git_apply(
 // ---- Embedded terminal (PTY) ----------------------------------------------
 
 #[tauri::command]
-pub fn pty_spawn(
+pub async fn pty_spawn(
+    app: tauri::AppHandle,
     id: String,
     cwd: Option<String>,
     cols: u16,
     rows: u16,
     on_data: Channel<String>,
 ) -> Result<(), String> {
-    crate::pty::spawn(id, cwd, cols, rows, on_data)
+    // A terminal runs the user's shell — execution — in a directory that must be
+    // inside the project the same way a bash tool call is. The webview is the
+    // untrusted side, so this cannot be left ungated.
+    policy::require(Access::Execute)?;
+    let requested = cwd.unwrap_or_else(|| ".".into());
+    let dir = match ensure_allowed(&app, &requested).await {
+        Ok(d) => d,
+        Err(refusal) => {
+            audit::record("pty", &requested, "<shell>", &refusal);
+            return Err(refusal);
+        }
+    };
+    let dir = dir.to_string_lossy().into_owned();
+    audit::record("pty", &dir, "<shell>", "spawn");
+    crate::pty::spawn(id, Some(dir), cols, rows, on_data)
 }
 
 #[tauri::command]
@@ -930,14 +952,29 @@ pub fn lsp_which(bin: String) -> Option<String> {
 }
 
 #[tauri::command]
-pub fn lsp_spawn(
+pub async fn lsp_spawn(
+    app: tauri::AppHandle,
     id: String,
     cmd: String,
     args: Vec<String>,
     cwd: Option<String>,
     on_msg: Channel<String>,
 ) -> Result<(), String> {
-    crate::lsp::spawn(id, cmd, args, cwd, on_msg)
+    // A language server is a spawned process that runs build scripts and
+    // proc-macros (rust-analyzer does both) — execution — so it is gated and
+    // contained to the project like any other command.
+    policy::require(Access::Execute)?;
+    let requested = cwd.unwrap_or_else(|| ".".into());
+    let dir = match ensure_allowed(&app, &requested).await {
+        Ok(d) => d,
+        Err(refusal) => {
+            audit::record("lsp", &requested, &cmd, &refusal);
+            return Err(refusal);
+        }
+    };
+    let dir = dir.to_string_lossy().into_owned();
+    audit::record("lsp", &dir, &format!("{cmd} {}", args.join(" ")), "spawn");
+    crate::lsp::spawn(id, cmd, args, Some(dir), on_msg)
 }
 
 #[tauri::command]
@@ -959,7 +996,7 @@ pub fn lsp_kill(id: String) -> Result<(), String> {
 // the process reaping and pipe-drain behaviour right.
 
 #[tauri::command]
-pub fn dap_spawn(
+pub async fn dap_spawn(
     app: tauri::AppHandle,
     id: String,
     cmd: String,
@@ -968,12 +1005,20 @@ pub fn dap_spawn(
     on_msg: Channel<String>,
 ) -> Result<(), String> {
     // A debug adapter launches the user's own program, so it is execution and
-    // gated as such. The working directory is recorded like any command.
+    // gated as such — and contained to the project, so the working directory is
+    // authorized like any command, not merely recorded.
     policy::require(Access::Execute)?;
-    let where_ = cwd.clone().unwrap_or_default();
-    audit::record("dap", &where_, &format!("{cmd} {}", args.join(" ")), "spawn");
-    let _ = app;
-    crate::lsp::spawn(id, cmd, args, cwd, on_msg)
+    let requested = cwd.unwrap_or_else(|| ".".into());
+    let dir = match ensure_allowed(&app, &requested).await {
+        Ok(d) => d,
+        Err(refusal) => {
+            audit::record("dap", &requested, &cmd, &refusal);
+            return Err(refusal);
+        }
+    };
+    let dir = dir.to_string_lossy().into_owned();
+    audit::record("dap", &dir, &format!("{cmd} {}", args.join(" ")), "spawn");
+    crate::lsp::spawn(id, cmd, args, Some(dir), on_msg)
 }
 
 #[tauri::command]

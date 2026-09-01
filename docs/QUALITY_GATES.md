@@ -31,14 +31,18 @@ never required for an offline build.
 
 ## Current baseline
 
-- Rust: 97 tests passed, covering tools, DB migrations (including the workflow
+- Rust: 107 tests passed (1 ignored: the 50k-file index scale benchmark),
+  covering tools, DB migrations (including the workflow
   table and `generations.run_id`), LSP framing, UTF-8 streaming, the
   workspace/memory round trip and the persistent FTS5 index (tokenising, skip
-  rules, ranking, result budget and rebuild-on-root-change), plus the Step 2
-  security controls: path containment and symlink escape, the read-only and
-  trust policy, credential redaction in the audit log, the content security
-  policy and the capability file, plus the schema migration that gives a project
-  ownership of its memory, the database health check and the backup.
+  rules, ranking, result budget and rebuild-on-root-change), the security
+  controls: path containment and symlink escape, the read-only and
+  trust policy (including that spawning a process stays gated on Execute),
+  credential redaction in the audit log, the content security
+  policy and the capability file, the provider parsers (GigaChat JSON-fence
+  stripping, OpenAI temperature-refusal detection and system-prompt caching,
+  Anthropic thinking-model gating), plus the schema migration that gives a
+  project ownership of its memory, the database health check and the backup.
 - Migration rehearsal: `MAGNETAR_MIGRATE_FIXTURE=<copy> cargo test
   an_existing_database` runs the real migration against a copy of an existing
   database and fails if any row that belonged to a project is lost. It skips
@@ -47,7 +51,7 @@ never required for an offline build.
   of the live database contained 22 projects, 434 facts and no messages, while
   `VACUUM INTO` of the same database gave 24, 495 and 7 — the difference was
   sitting in the write-ahead log.
-- Frontend: 237 tests passed across 28 files, covering redaction, retry and
+- Frontend: 254 tests passed across 31 files, covering redaction, retry and
   cancellation, agent guards and text-tool-call recovery, memory prompt
   assembly and background-model selection, handoff/summarisation, fact
   provenance and rendering, machine verification, verify-spec construction and
@@ -56,9 +60,11 @@ never required for an offline build.
   attachment persistence, the search matcher, keybinding chords and VS Code
   import, and the portable settings file.
 - Frontend production build: passed.
-- Build warning: the lazy Monaco engine chunk is ~3.96 MB; the initial route is
-  ~1.4 MB raw / 408.75 KB gzip. Duplicate agent and redundant dynamic-import
-  warnings were removed in Step 1; the lazy asset budget remains explicit.
+- Build warning: Monaco is now split into its own `monaco` chunk via
+  `manualChunks` (~4.45 MB raw / ~1.14 MB gzip, loaded lazily), so it no longer
+  rides in the shell bundle; the app shell is ~1.52 MB raw / ~447.93 KB gzip.
+  The size warning threshold was raised to 1200 kB, above the shell, so only the
+  deliberately-large lazy Monaco chunk still trips it.
 - Smoke script exists; its fixture defaults to the OS temp directory and can be
   overridden with `MAGNETAR_FIXTURE_DIR`. Some UI checks remain manual.
 - CI workflow now runs frontend typecheck/unit/build and macOS Rust test/check;

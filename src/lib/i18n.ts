@@ -2439,6 +2439,49 @@ const es: Dict = {
   genError: "Error",
   genProviderUnavailable: "Este proveedor aún no está disponible",
   genEmpty: "El proveedor no devolvió archivos",
+  wfCustomModel: "O escribe un ID de modelo a mano",
+  wfResultText: "Revisar",
+  studioTitle: "Estudio",
+  studioBack: "Atrás",
+  studioImage: "Imagen",
+  studioClear: "Limpiar",
+  studioNoKey: "sin clave",
+  studioPrompter: "Promptor LLM",
+  studioPrompterHint: "Un LLM convierte tu texto en un prompt pulido antes de generar",
+  studioPrompterNoModel: "Elige un modelo de texto (en Chat/Agente) para el promptor",
+  studioPrompterModel: "vía {name} · {model}",
+  studioVia: "vía",
+  studioPrompterModelId: "id del modelo",
+  studioKeyFrom: "Clave: {name}",
+  studioConnKey: "Conexión (clave)",
+  studioPickConn: "Elige una conexión",
+  studioModelIdHint: "Elige de la lista o escribe un id",
+  studioLoadModels: "Cargar modelos",
+  studioLoadModelsHint: "Pulsa «Cargar modelos» para elegir de una lista, o escribe un id",
+  studioPickModelFromList: "Elige un modelo de la lista",
+  studioAddProvider: "Añadir un proveedor",
+  studioAddConnection: "Añadir una conexión",
+  studioAddModel: "Modelo",
+  studioEditModel: "Editar modelo",
+  studioResetModels: "Restablecer valores por defecto",
+  studioFieldLabel: "Nombre",
+  studioFieldConnection: "Conexión (clave)",
+  studioFieldModelId: "ID del modelo",
+  studioFieldKind: "Tipo",
+  studioFieldApi: "Forma de llamada",
+  studioApiImages: "images/generations (compatible con OpenAI)",
+  studioApiChat: "chat + modalidades (OpenRouter)",
+  studioGenerate: "Generar",
+  studioNoParams: "Este modelo no tiene parámetros ajustables.",
+  studioVideoCost: "El vídeo es de pago y se cobra al iniciar el trabajo (dólares por clip).",
+  studioWorking: "Generando…",
+  studioDownload: "Descargar",
+  studioDropRefs: "Suelta para adjuntar una referencia",
+  studioAttachRef: "Adjuntar una referencia",
+  studioNoConnection:
+    "No hay conexión para este modelo. Añade su proveedor (TokenRouter / OpenRouter) en Ajustes.",
+  connGenHint:
+    "Estas mismas conexiones alimentan el Estudio. Para imágenes/vídeo añade TokenRouter u OpenRouter — sus modelos aparecen en el Estudio.",
 };
 
 const DICTS: Record<Lang, Dict> = { ru, en, es };
@@ -2449,7 +2492,9 @@ export function translate(
   vars?: Record<string, string>,
 ): string {
   let s = DICTS[lang][key] ?? DICTS.en[key] ?? key;
-  if (vars) for (const [k, v] of Object.entries(vars)) s = s.replace(`{${k}}`, v);
+  // Replace every occurrence of each placeholder, not just the first — a string
+  // that mentions {name} twice would otherwise leave the second untouched.
+  if (vars) for (const [k, v] of Object.entries(vars)) s = s.split(`{${k}}`).join(v);
   return s;
 }
 
