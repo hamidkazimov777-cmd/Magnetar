@@ -21,10 +21,9 @@ import { buildCatalog, recommend, type Recommendation } from "../lib/adaptive";
 import { buildOutgoing, maybeSummarize } from "../lib/handoff";
 import { backgroundQueue } from "../lib/backgroundQueue";
 import { runAgent, AGENT_SYSTEM } from "../lib/agent";
-import { buildProjectMemory, buildGenerationContext } from "../lib/memory";
+import { buildProjectMemory } from "../lib/memory";
 import type { AskRequest } from "../lib/agent";
 import { buildMentionContext, expandSlash } from "../lib/mentions";
-import { providerForBaseUrl } from "../lib/generation";
 import { Hint } from "./ui/Hint";
 import { ToolPreview } from "./ToolPreview";
 import { AskDialog } from "./AskDialog";
@@ -302,70 +301,6 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     }
   };
 
-  const runGeneration = async (
-    text: string,
-    attachments: Attachment[],
-    connId: string,
-    model: string,
-    opts: SendOpts = {},
-  ) => {
-    const connection = useStore.getState().connections.find((c) => c.id === connId);
-    if (!connection) return;
-    let sessionId = useStore.getState().activeSessionId;
-    if (!sessionId) sessionId = newSession("generation");
-
-    if (!opts.skipUserMessage)
-      addMessage(sessionId, { role: "user", content: text, attachments });
-    const assistantId = addMessage(sessionId, { role: "assistant", content: "", model });
-
-    // The provider catalogue is the single source of truth for how to reach a
-    // generative model — base URL, endpoint, response format and defaults.
-    const provider = providerForBaseUrl(connection.baseUrl);
-    if (!provider || !provider.available) {
-      useStore.getState().setMessageContent(sessionId, assistantId, "");
-      setLastError({ message: t("genProviderUnavailable"), sessionId });
-      return;
-    }
-
-    const params: Record<string, unknown> = {};
-    for (const p of provider.params) if (p.default !== undefined) params[p.key] = p.default;
-    if (provider.responseFormat) params.response_format = provider.responseFormat;
-
-    // When this chat sees the project, steer generation with a one-line project
-    // descriptor — enough to place the request ("a hero image for my app")
-    // without burying the visual prompt in memory.
-    const sess = useStore.getState().sessions.find((s) => s.id === sessionId);
-    const brief = buildGenerationContext(sess);
-    const prompt = brief ? `${brief}\n\n${text}` : text;
-
-    setStreaming(true);
-    try {
-      const result = await api.generate(connection, {
-        kind: provider.kind,
-        model,
-        prompt,
-        endpoint: provider.endpoint,
-        params,
-      });
-      const assets: Attachment[] = result.assets.map((a, i) => ({
-        id: `${assistantId}-${i}`,
-        type: "image",
-        mimeType: a.mimeType ?? "image/png",
-        name: `${provider.name} · ${i + 1}`,
-        data: a.b64 ?? undefined,
-        path: a.url ?? undefined,
-      }));
-      const st = useStore.getState();
-      st.setMessageContent(sessionId, assistantId, assets.length ? t("genResult") : t("genEmpty"));
-      st.setMessageAttachments(sessionId, assistantId, assets);
-    } catch (e) {
-      useStore.getState().setMessageContent(sessionId, assistantId, "");
-      setLastError({ message: String(e), sessionId });
-    } finally {
-      setStreaming(false);
-    }
-  };
-
   const send = async (
     text: string,
     attachments: Attachment[] = [],
@@ -398,9 +333,8 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     let connId = activeConnectionId!;
     let model = activeModel;
 
-    // Adaptive routing picks among *text* models; generation runs on a
-    // generative provider and is dispatched directly.
-    if (activeTrack !== "generation" && adaptive) {
+    // Adaptive routing picks among *text* models.
+    if (adaptive) {
       const catalog = buildCatalog(connections, models);
       const rec = recommend(text, catalog, { connectionId: connId, model });
       const reason = t(`reason_${rec.tier}`);
@@ -413,10 +347,6 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
       if (rec.upgrade) setUpgrade(rec.upgrade);
     }
 
-    if (activeTrack === "generation") {
-      await runGeneration(text, attachments, connId, model, opts);
-      return;
-    }
     const isAgentTurn = activeTrack === "agent" || text.startsWith("/team ") || text.startsWith("/cto");
     if (isAgentTurn) await runAgentPath(text, attachments, connId, model, opts);
     else await runSend(text, attachments, connId, model, opts);
@@ -523,23 +453,19 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
             {t("connectModel")}
           </button>
         )}
-        {/* The bench of helper models and adaptive routing only apply to the
-            text tracks; generation is dispatched straight to its provider. */}
         {activeTrack === "agent" && <SubagentPicker />}
-        {activeTrack !== "generation" && (
-          <Hint text={t("hintAdaptive")} side="bottom">
-            <button
-              className="toggle-pill shrink-0 px-2"
-              data-ai="true"
-              data-on={adaptive}
-              onClick={() => setAdaptive(!adaptive)}
-              title={`${t("adaptive")} — ${t("adaptiveHint")}`}
-              aria-label={t("adaptive")}
-            >
-              <Sparkles size={13} />
-            </button>
-          </Hint>
-        )}
+        <Hint text={t("hintAdaptive")} side="bottom">
+          <button
+            className="toggle-pill shrink-0 px-2"
+            data-ai="true"
+            data-on={adaptive}
+            onClick={() => setAdaptive(!adaptive)}
+            title={`${t("adaptive")} — ${t("adaptiveHint")}`}
+            aria-label={t("adaptive")}
+          >
+            <Sparkles size={13} />
+          </button>
+        </Hint>
         <div className="flex-1" />
         {/* A real switch with a constant label: the words name the capability,
             the switch shows whether it's on — never ambiguous. */}

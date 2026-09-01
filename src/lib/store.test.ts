@@ -359,15 +359,6 @@ describe("a model choice belongs to its conversation", () => {
 });
 
 describe("switching tracks", () => {
-  it("takes the centre to the studio and back", () => {
-    useStore.setState({ centerView: "editor" });
-    useStore.getState().switchTrack("generation");
-    expect(useStore.getState().centerView).toBe("studio");
-
-    useStore.getState().switchTrack("agent");
-    expect(useStore.getState().centerView).toBe("editor");
-  });
-
   it("returns to the conversation you were having on that track", () => {
     useStore.setState({
       sessions: [

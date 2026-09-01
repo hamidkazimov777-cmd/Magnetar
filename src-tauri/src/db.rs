@@ -11,7 +11,7 @@ static DB: OnceCell<Mutex<Connection>> = OnceCell::new();
 /// Schema version recorded in `PRAGMA user_version`. Bump this and add a step
 /// in `migrate` whenever the schema changes — never append to the old
 /// best-effort `ALTER TABLE` list.
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
     std::fs::create_dir_all(app_dir).map_err(|e| e.to_string())?;
@@ -219,9 +219,28 @@ pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
             name       TEXT NOT NULL,
             prompt     TEXT,
             model      TEXT,
+            run_id     TEXT,
             created_at INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_generations_created ON generations(created_at);
+
+        -- Workflows: user-built generation pipelines. The definition is a JSON
+        -- document (nodes + edges) kept in one column — a V1 workflow is small
+        -- and edited wholesale, so normalising it into rows now would add schema
+        -- without a reader for it. Provider-neutral: nodes hold connection/model
+        -- references, never keys. `project_id` is optional and deliberately not a
+        -- foreign key — a workflow is a reusable personal asset, and deleting a
+        -- project must not delete it.
+        CREATE TABLE IF NOT EXISTS workflows (
+            id          TEXT PRIMARY KEY,
+            title       TEXT NOT NULL,
+            version     INTEGER NOT NULL DEFAULT 1,
+            project_id  TEXT,
+            definition  TEXT NOT NULL,
+            created_at  INTEGER NOT NULL,
+            updated_at  INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_workflows_updated ON workflows(updated_at);
         "#,
     )
     .map_err(|e| e.to_string())?;
@@ -244,6 +263,7 @@ fn migrate(conn: &Connection) -> Result<(), String> {
         match v {
             1 => migrate_v1(conn)?,
             2 => migrate_v2(conn)?,
+            3 => migrate_v3(conn)?,
             other => return Err(format!("unknown schema version {other}")),
         }
         conn.execute_batch(&format!("PRAGMA user_version = {v}"))
@@ -375,6 +395,28 @@ fn rebuild_project_tables(conn: &Connection) -> Result<(), String> {
     }
 
     tx.commit().map_err(|e| e.to_string())
+}
+
+/// v3: the workflow engine lands as a durable data model.
+///
+/// The `workflows` table is created by `init`'s idempotent schema block, which
+/// runs on every launch, so an existing database gets it without a migration
+/// step. What a migration must do is add `run_id` to the generation gallery —
+/// `CREATE TABLE IF NOT EXISTS` cannot add a column to a table that already
+/// exists. Guarded on existence because a synthetic pre-v1 test database has no
+/// `generations` table yet.
+fn migrate_v3(conn: &Connection) -> Result<(), String> {
+    let exists: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='generations'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    if exists > 0 {
+        add_column(conn, "ALTER TABLE generations ADD COLUMN run_id TEXT")?;
+    }
+    Ok(())
 }
 
 fn migrate_v1(conn: &Connection) -> Result<(), String> {
@@ -616,6 +658,31 @@ mod tests {
             "#,
         )
         .unwrap();
+    }
+
+    #[test]
+    fn v3_links_the_generation_gallery_to_runs() {
+        let conn = Connection::open_in_memory().unwrap();
+        old_schema(&conn);
+        // A database from before the workflow engine that already has the
+        // generation gallery, but not the run linkage.
+        conn.execute_batch(
+            "CREATE TABLE generations (
+                id TEXT PRIMARY KEY,
+                kind TEXT NOT NULL,
+                src TEXT NOT NULL,
+                name TEXT NOT NULL,
+                prompt TEXT,
+                model TEXT,
+                created_at INTEGER NOT NULL
+            );",
+        )
+        .unwrap();
+
+        migrate(&conn).unwrap();
+
+        let cols = column_names(&conn, "generations");
+        assert!(cols.contains(&"run_id".to_string()));
     }
 
     #[test]

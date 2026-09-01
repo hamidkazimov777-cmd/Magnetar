@@ -1,6 +1,5 @@
 import { invoke as tauriInvoke, Channel } from "@tauri-apps/api/core";
 import type { ChatMessage, Connection, ModelInfo, StreamEvent } from "./types";
-import type { GenerationRequest, GenerationResult } from "./generation";
 
 /** True when we are running inside the Tauri shell (not a plain browser tab). */
 export const HAS_BACKEND =
@@ -84,56 +83,47 @@ export const api = {
   listModels: (connection: Connection) =>
     invoke<ModelInfo[]>("list_models", { connection: toRustConn(connection) }),
 
-  /** Universal generative call: POST `{base}/{endpoint}` with
-   *  `{model, prompt, ...params}` and return the produced assets. Nothing here
-   *  is image-specific — `image` is just a provider whose endpoint happens to
-   *  be `images/generations`. */
-  generate: (connection: Connection, req: GenerationRequest) =>
-    invoke<GenerationResult>("generate", {
+  // ---- Media generation (image + video) ----
+  /** Generate an image. `api` picks the wire shape: "openai_images"
+   *  (`/images/generations` → b64_json) or "chat_image" (`/chat/completions`
+   *  with modalities → message.images[]). Returns produced assets. */
+  genImage: (
+    connection: Connection,
+    api: "openai_images" | "chat_image",
+    model: string,
+    prompt: string,
+    params?: Record<string, unknown>,
+    images?: string[],
+  ) =>
+    invoke<{ assets: { url?: string; b64?: string; mime?: string }[] }>("gen_image", {
       connection: toRustConn(connection),
-      kind: req.kind,
-      model: req.model,
-      prompt: req.prompt,
-      endpoint: req.endpoint,
-      params: req.params,
-      authScheme: req.authScheme ?? null,
-      resultPath: req.resultPath ?? null,
-      modelInBody: req.modelInBody ?? null,
+      api,
+      model,
+      prompt,
+      params: params ?? null,
+      images: images && images.length ? images : null,
     }),
 
-  /** Long-running generation (video/audio) via fal.ai's queue: submit, poll,
-   *  fetch. Resolves when the job finishes. */
-  generateAsync: (connection: Connection, req: GenerationRequest) =>
-    invoke<GenerationResult>("generate_async", {
+  /** Submit an async video job (TokenRouter). Returns the task id to poll. */
+  genVideoSubmit: (
+    connection: Connection,
+    model: string,
+    prompt: string,
+    params?: Record<string, unknown>,
+  ) =>
+    invoke<{ taskId: string }>("gen_video_submit", {
       connection: toRustConn(connection),
-      kind: req.kind,
-      model: req.model,
-      prompt: req.prompt,
-      params: req.params,
-      resultPath: req.resultPath ?? null,
+      model,
+      prompt,
+      params: params ?? null,
     }),
 
-  /** Generation via Replicate: create a prediction by model name and wait for
-   *  its output. Model is `owner/name`; params become the prediction `input`. */
-  generateReplicate: (connection: Connection, req: GenerationRequest) =>
-    invoke<GenerationResult>("generate_replicate", {
-      connection: toRustConn(connection),
-      kind: req.kind,
-      model: req.model,
-      prompt: req.prompt,
-      params: req.params,
-    }),
-
-  /** Generation via Chat proxy (OpenRouter): wraps prompt in a chat message
-   *  and extracts the image URL from the text completion. */
-  generateChatProxy: (connection: Connection, req: GenerationRequest) =>
-    invoke<GenerationResult>("generate_chat_proxy", {
-      connection: toRustConn(connection),
-      kind: req.kind,
-      model: req.model,
-      prompt: req.prompt,
-      params: req.params,
-    }),
+  /** Poll a video job. `url` is set once `status` reports success. */
+  genVideoPoll: (connection: Connection, taskId: string) =>
+    invoke<{ status: string; progress?: string; url?: string; failReason?: string }>(
+      "gen_video_poll",
+      { connection: toRustConn(connection), taskId },
+    ),
 
   /** Single-shot non-streaming completion (router / summarizer). */
   complete: (

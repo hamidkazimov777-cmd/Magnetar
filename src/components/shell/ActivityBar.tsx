@@ -18,6 +18,7 @@ import {
   Languages,
   Globe,
   Projects,
+  Sparkles,
   Check,
   Sun,
   Moon,
@@ -140,6 +141,14 @@ export function ActivityBar({
             label={t("subscriptions")}
             active={centerView === "subscriptions"}
             onClick={() => setCenterView("subscriptions")}
+          />
+        </Hint>
+        <Hint text={t("studioTitle")}>
+          <RailButton
+            icon={Sparkles}
+            label={t("studioTitle")}
+            active={centerView === "studio"}
+            onClick={() => setCenterView("studio")}
           />
         </Hint>
         <ThemeMenu />

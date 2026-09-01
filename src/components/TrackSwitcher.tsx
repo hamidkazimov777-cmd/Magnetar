@@ -1,6 +1,6 @@
 import { useStore } from "../lib/store";
 import { useT } from "../lib/i18n";
-import { MessagesSquare, Bot, Sparkles } from "./icons";
+import { MessagesSquare, Bot } from "./icons";
 
 export function TrackSwitcher() {
   const t = useT();
@@ -26,15 +26,6 @@ export function TrackSwitcher() {
       >
         <Bot size={14} className="shrink-0" />
         {t("agent")}
-      </button>
-      <button
-        onClick={() => switchTrack("generation")}
-        data-active={activeTrack === "generation"}
-        title={t("trackGeneration")}
-        className="row h-7 rounded-[var(--r-sm)] px-2.5 text-[length:var(--fs-xs)] font-medium text-[var(--color-text-mute)] hover:text-[var(--color-text)] data-[active=true]:bg-[var(--color-surface)] data-[active=true]:text-[var(--color-text)] data-[active=true]:shadow-sm transition-all"
-      >
-        <Sparkles size={14} className="shrink-0" />
-        {t("trackGeneration")}
       </button>
     </div>
   );

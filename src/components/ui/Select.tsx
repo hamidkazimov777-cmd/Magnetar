@@ -12,6 +12,7 @@ export function Select({
   placeholder,
   disabled,
   className,
+  up,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -19,6 +20,8 @@ export function Select({
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  /** Open the menu upward (for pickers anchored near the bottom of the view). */
+  up?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -48,7 +51,10 @@ export function Select({
         <ChevronDown size={13} className="shrink-0 text-[var(--color-text-mute)]" />
       </button>
       {open && !disabled && (
-        <div className="anim-in absolute left-0 top-full z-30 mt-1 max-h-64 w-full overflow-auto rounded-[var(--r-md)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-1 shadow-[var(--e-3)]">
+        <div className={cn(
+          "anim-in absolute left-0 z-30 max-h-64 w-full overflow-auto rounded-[var(--r-md)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-1 shadow-[var(--e-3)]",
+          up ? "bottom-full mb-1" : "top-full mt-1",
+        )}>
           {options.length === 0 && (
             <div className="px-2 py-1.5 text-[length:var(--fs-xs)] text-[var(--color-text-mute)]">
               {placeholder ?? "—"}
