@@ -39,11 +39,59 @@ export interface ConnectionRow {
   createdAt: number;
 }
 
+/** A durable agent run: the canon of one run, surviving restarts. Process state
+ *  (the live loop) still lives in the store; this is what happened and what it
+ *  is allowed to spend. Status: running | paused | done | cancelled | error. */
+export interface AgentRunRow {
+  id: string;
+  sessionId: string | null;
+  projectId: string | null;
+  connectionId: string | null;
+  model: string | null;
+  status: "running" | "paused" | "done" | "cancelled" | "error";
+  startedAt: number;
+  updatedAt: number;
+  endedAt: number | null;
+  steps: number;
+  tokensIn: number;
+  tokensOut: number;
+  costUsd: number;
+  budgetSteps: number | null;
+  budgetUsd: number | null;
+  error: string | null;
+}
+
+/** One entry in a run's append-only trace. `payload` is event-specific JSON. */
+export interface AgentEventRow {
+  id: string;
+  runId: string;
+  seq: number;
+  kind: "model_turn" | "tool_call" | "tool_result" | "text" | "error" | "checkpoint";
+  payload: string | null;
+  createdAt: number;
+}
+
 export const db = {
   listConnections: () => invoke<ConnectionRow[]>("list_connections"),
   saveConnection: (connection: ConnectionRow) =>
     invoke<void>("save_connection", { connection }),
   deleteConnection: (id: string) => invoke<void>("delete_connection", { id }),
+
+  // Durable agent runs.
+  saveAgentRun: (run: AgentRunRow) => invoke<void>("agent_run_save", { run }),
+  appendAgentEvent: (
+    runId: string,
+    id: string,
+    kind: AgentEventRow["kind"],
+    payload: string | null,
+    createdAt: number,
+  ) => invoke<number>("agent_event_append", { runId, id, kind, payload, createdAt }),
+  listAgentRuns: (sessionId?: string, limit?: number) =>
+    invoke<AgentRunRow[]>("agent_runs_list", { sessionId: sessionId ?? null, limit: limit ?? null }),
+  activeAgentRuns: () => invoke<AgentRunRow[]>("agent_runs_active"),
+  getAgentRun: (id: string) => invoke<AgentRunRow | null>("agent_run_get", { id }),
+  listAgentEvents: (runId: string) => invoke<AgentEventRow[]>("agent_events_list", { runId }),
+  deleteAgentRun: (id: string) => invoke<void>("agent_run_delete", { id }),
 
   listSessions: () => invoke<SessionMetaRow[]>("list_sessions"),
   loadMessages: (sessionId: string) =>

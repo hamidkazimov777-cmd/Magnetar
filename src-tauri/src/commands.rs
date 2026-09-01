@@ -2,8 +2,8 @@
 
 use crate::canon::{self, MessageRow, SessionMeta};
 use crate::workspace::{
-    self, ConnectionRow, Decision, Divergence, KnowledgeEdge, KnowledgeNode,
-    MemoryFact, Project, Proposal, Task,
+    self, AgentEventRow, AgentRunRow, ConnectionRow, Decision, Divergence, KnowledgeEdge,
+    KnowledgeNode, MemoryFact, Project, Proposal, Task,
     TimelineEvent,
 };
 use crate::keychain;
@@ -91,6 +91,49 @@ pub fn save_connection(connection: ConnectionRow) -> Result<(), String> {
 #[tauri::command]
 pub fn delete_connection(id: String) -> Result<(), String> {
     workspace::delete_connection(&id)
+}
+
+// ---- Agent runs (durable) --------------------------------------------------
+
+#[tauri::command]
+pub fn agent_run_save(run: AgentRunRow) -> Result<(), String> {
+    workspace::save_agent_run(run)
+}
+
+#[tauri::command]
+pub fn agent_event_append(
+    run_id: String,
+    id: String,
+    kind: String,
+    payload: Option<String>,
+    created_at: i64,
+) -> Result<i64, String> {
+    workspace::append_agent_event(&run_id, &id, &kind, payload, created_at)
+}
+
+#[tauri::command]
+pub fn agent_runs_list(session_id: Option<String>, limit: Option<i64>) -> Result<Vec<AgentRunRow>, String> {
+    workspace::list_agent_runs(session_id, limit.unwrap_or(50))
+}
+
+#[tauri::command]
+pub fn agent_runs_active() -> Result<Vec<AgentRunRow>, String> {
+    workspace::active_agent_runs()
+}
+
+#[tauri::command]
+pub fn agent_run_get(id: String) -> Result<Option<AgentRunRow>, String> {
+    workspace::get_agent_run(&id)
+}
+
+#[tauri::command]
+pub fn agent_events_list(run_id: String) -> Result<Vec<AgentEventRow>, String> {
+    workspace::list_agent_events(&run_id)
+}
+
+#[tauri::command]
+pub fn agent_run_delete(id: String) -> Result<(), String> {
+    workspace::delete_agent_run(&id)
 }
 
 // ---- Workspace (Projects, Tasks, Knowledge, Timeline) ----------------------
