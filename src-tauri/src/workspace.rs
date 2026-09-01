@@ -273,6 +273,74 @@ pub fn delete_agent_run(id: &str) -> Result<(), String> {
     })
 }
 
+// --- Generations (Studio gallery, durable) ---
+//
+// The Studio's results were kept only in a module cache, so a restart lost the
+// gallery. They live in the `generations` table now: one row per produced asset,
+// with the prompt and model that made it. `src` is a URL or a data-URI.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerationRow {
+    pub id: String,
+    pub kind: String,
+    pub src: String,
+    pub name: String,
+    pub prompt: Option<String>,
+    pub model: Option<String>,
+    pub run_id: Option<String>,
+    pub created_at: i64,
+}
+
+pub fn save_generation(g: GenerationRow) -> Result<(), String> {
+    with_conn(|c| {
+        c.execute(
+            "INSERT INTO generations (id, kind, src, name, prompt, model, run_id, created_at) \
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8) \
+             ON CONFLICT(id) DO UPDATE SET \
+               kind=excluded.kind, src=excluded.src, name=excluded.name, \
+               prompt=excluded.prompt, model=excluded.model, run_id=excluded.run_id",
+            params![g.id, g.kind, g.src, g.name, g.prompt, g.model, g.run_id, g.created_at],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+}
+
+pub fn list_generations(limit: i64) -> Result<Vec<GenerationRow>, String> {
+    with_conn(|c| {
+        let mut stmt = c
+            .prepare(
+                "SELECT id, kind, src, name, prompt, model, run_id, created_at \
+                 FROM generations ORDER BY created_at DESC LIMIT ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![limit], |r| {
+                Ok(GenerationRow {
+                    id: r.get(0)?,
+                    kind: r.get(1)?,
+                    src: r.get(2)?,
+                    name: r.get(3)?,
+                    prompt: r.get(4)?,
+                    model: r.get(5)?,
+                    run_id: r.get(6)?,
+                    created_at: r.get(7)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    })
+}
+
+pub fn delete_generation(id: &str) -> Result<(), String> {
+    with_conn(|c| {
+        c.execute("DELETE FROM generations WHERE id = ?1", params![id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+}
+
 // --- Projects ---
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

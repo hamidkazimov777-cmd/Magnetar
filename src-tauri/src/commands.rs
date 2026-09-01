@@ -2,8 +2,8 @@
 
 use crate::canon::{self, MessageRow, SessionMeta};
 use crate::workspace::{
-    self, AgentEventRow, AgentRunRow, ConnectionRow, Decision, Divergence, KnowledgeEdge,
-    KnowledgeNode, MemoryFact, Project, Proposal, Task,
+    self, AgentEventRow, AgentRunRow, ConnectionRow, Decision, Divergence, GenerationRow,
+    KnowledgeEdge, KnowledgeNode, MemoryFact, Project, Proposal, Task,
     TimelineEvent,
 };
 use crate::keychain;
@@ -139,6 +139,23 @@ pub fn agent_runs_reconcile() -> Result<usize, String> {
 #[tauri::command]
 pub fn agent_run_delete(id: String) -> Result<(), String> {
     workspace::delete_agent_run(&id)
+}
+
+// ---- Generations (Studio gallery, durable) ---------------------------------
+
+#[tauri::command]
+pub fn generation_save(generation: GenerationRow) -> Result<(), String> {
+    workspace::save_generation(generation)
+}
+
+#[tauri::command]
+pub fn generations_list(limit: Option<i64>) -> Result<Vec<GenerationRow>, String> {
+    workspace::list_generations(limit.unwrap_or(100))
+}
+
+#[tauri::command]
+pub fn generation_delete(id: String) -> Result<(), String> {
+    workspace::delete_generation(&id)
 }
 
 // ---- Workspace (Projects, Tasks, Knowledge, Timeline) ----------------------

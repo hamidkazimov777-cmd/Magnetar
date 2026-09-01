@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Image as ImageIcon,
   Clapperboard,
@@ -19,6 +19,7 @@ import {
 } from "./icons";
 import { useStore } from "../lib/store";
 import { api } from "../lib/api";
+import { db } from "../lib/db";
 import { useT } from "../lib/i18n";
 import { cn } from "../lib/cn";
 import { Select } from "./ui/Select";
@@ -185,6 +186,30 @@ export function StudioView({ onOpenSettings }: { onOpenSettings: () => void }) {
       return value;
     });
 
+  // Restore the gallery from SQLite the first time the Studio opens in a session.
+  // Only when the in-session transcript is empty — a live run this session must
+  // not be clobbered by history, and reopening the Studio should not reload it.
+  const historyLoaded = useRef(CACHED_TURNS.length > 0);
+  useEffect(() => {
+    if (historyLoaded.current) return;
+    historyLoaded.current = true;
+    void db
+      .listGenerations(60)
+      .then((rows) => {
+        if (rows.length === 0) return;
+        const restored: Turn[] = rows.map((g) => ({
+          id: g.id,
+          userText: g.prompt ?? g.name,
+          finalPrompt: g.prompt ?? undefined,
+          status: "done" as const,
+          outputs: [{ kind: g.kind === "video" ? "video" : "image", src: g.src }],
+        }));
+        writeTurns((prev) => (prev.length > 0 ? prev : restored));
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // The LLM-prompter's own provider+model, chosen in the Studio (persisted),
   // seeded from the app's active text model but independently changeable.
   const [prompterConnId, setPrompterConnId] = useState<string>(
@@ -321,6 +346,24 @@ export function StudioView({ onOpenSettings }: { onOpenSettings: () => void }) {
               refs.map((r) => r.src),
             );
       patch({ status: "done", outputs, progress: undefined });
+      // Persist each asset so the gallery survives a restart. Fire-and-forget:
+      // a failed write (or the web preview with no backend) must not break the
+      // result the user is already looking at.
+      const at = Date.now();
+      for (const o of outputs) {
+        void db
+          .saveGeneration({
+            id: uid(),
+            kind: o.kind,
+            src: o.src,
+            name: model.label,
+            prompt: finalPrompt,
+            model: model.id,
+            runId: null,
+            createdAt: at,
+          })
+          .catch(() => {});
+      }
     } catch (e) {
       patch({ status: "error", error: String(e), progress: undefined });
     } finally {
@@ -328,7 +371,13 @@ export function StudioView({ onOpenSettings }: { onOpenSettings: () => void }) {
     }
   };
 
-  const removeTurn = (id: string) => writeTurns((p) => p.filter((x) => x.id !== id));
+  const removeTurn = (id: string) => {
+    writeTurns((p) => p.filter((x) => x.id !== id));
+    // Best-effort durable delete: for a turn restored from history the id is the
+    // generation id, so this removes it for good; for a live turn the id differs
+    // and this is a harmless no-op.
+    void db.deleteGeneration(id).catch(() => {});
+  };
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-[var(--color-bg)]">

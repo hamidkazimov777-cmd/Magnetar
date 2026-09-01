@@ -71,6 +71,19 @@ export interface AgentEventRow {
   createdAt: number;
 }
 
+/** One produced Studio asset, kept so the gallery survives a restart. `src` is a
+ *  URL or a data-URI; `kind` is "image" or "video". */
+export interface GenerationRow {
+  id: string;
+  kind: string;
+  src: string;
+  name: string;
+  prompt: string | null;
+  model: string | null;
+  runId: string | null;
+  createdAt: number;
+}
+
 export const db = {
   listConnections: () => invoke<ConnectionRow[]>("list_connections"),
   saveConnection: (connection: ConnectionRow) =>
@@ -90,6 +103,13 @@ export const db = {
     invoke<AgentRunRow[]>("agent_runs_list", { sessionId: sessionId ?? null, limit: limit ?? null }),
   activeAgentRuns: () => invoke<AgentRunRow[]>("agent_runs_active"),
   reconcileAgentRuns: () => invoke<number>("agent_runs_reconcile"),
+
+  // Durable Studio gallery.
+  saveGeneration: (generation: GenerationRow) =>
+    invoke<void>("generation_save", { generation }),
+  listGenerations: (limit?: number) =>
+    invoke<GenerationRow[]>("generations_list", { limit: limit ?? null }),
+  deleteGeneration: (id: string) => invoke<void>("generation_delete", { id }),
   getAgentRun: (id: string) => invoke<AgentRunRow | null>("agent_run_get", { id }),
   listAgentEvents: (runId: string) => invoke<AgentEventRow[]>("agent_events_list", { runId }),
   deleteAgentRun: (id: string) => invoke<void>("agent_run_delete", { id }),
