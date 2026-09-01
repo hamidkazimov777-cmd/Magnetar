@@ -506,6 +506,20 @@ fn migrate_v4(conn: &Connection) -> Result<(), String> {
     .map_err(|e| e.to_string())
 }
 
+/// Mark runs left in flight as interrupted. Called at startup: nothing can still
+/// be running, because the loop lived in a process that is gone. This keeps the
+/// durable record honest — a killed app no longer leaves runs forever "running"
+/// — and lets the UI show what was interrupted. Returns how many were fixed.
+pub fn reconcile_agent_runs(conn: &Connection, now: i64) -> Result<usize, String> {
+    conn.execute(
+        "UPDATE agent_runs SET status = 'interrupted', updated_at = ?1, ended_at = ?1, \
+           error = COALESCE(error, 'App was closed while this run was in flight') \
+         WHERE status IN ('running', 'paused')",
+        [now],
+    )
+    .map_err(|e| e.to_string())
+}
+
 fn migrate_v1(conn: &Connection) -> Result<(), String> {
     for stmt in [
         "ALTER TABLE sessions ADD COLUMN connection_id TEXT",
@@ -800,6 +814,47 @@ mod tests {
             )
             .unwrap();
         assert_eq!(kind, "model_turn");
+    }
+
+    #[test]
+    fn reconcile_marks_stranded_runs_interrupted() {
+        let conn = Connection::open_in_memory().unwrap();
+        old_schema(&conn);
+        migrate(&conn).unwrap();
+
+        conn.execute_batch(
+            "INSERT INTO agent_runs (id, status, started_at, updated_at) VALUES ('a','running',1,1);
+             INSERT INTO agent_runs (id, status, started_at, updated_at) VALUES ('b','paused',1,1);
+             INSERT INTO agent_runs (id, status, started_at, updated_at, error) VALUES ('c','running',1,1,'boom');
+             INSERT INTO agent_runs (id, status, started_at, updated_at) VALUES ('d','done',1,1);",
+        )
+        .unwrap();
+
+        let fixed = reconcile_agent_runs(&conn, 99).unwrap();
+        assert_eq!(fixed, 3); // a, b, c — not the already-done d
+
+        let statuses: Vec<(String, String)> = {
+            let mut stmt = conn
+                .prepare("SELECT id, status FROM agent_runs ORDER BY id")
+                .unwrap();
+            let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+            rows.map(|x| x.unwrap()).collect()
+        };
+        assert_eq!(
+            statuses,
+            vec![
+                ("a".into(), "interrupted".into()),
+                ("b".into(), "interrupted".into()),
+                ("c".into(), "interrupted".into()),
+                ("d".into(), "done".into()),
+            ]
+        );
+
+        // An existing error message is preserved, not clobbered.
+        let err_c: String = conn
+            .query_row("SELECT error FROM agent_runs WHERE id='c'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(err_c, "boom");
     }
 
     #[test]

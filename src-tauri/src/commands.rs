@@ -132,6 +132,11 @@ pub fn agent_events_list(run_id: String) -> Result<Vec<AgentEventRow>, String> {
 }
 
 #[tauri::command]
+pub fn agent_runs_reconcile() -> Result<usize, String> {
+    workspace::reconcile_agent_runs()
+}
+
+#[tauri::command]
 pub fn agent_run_delete(id: String) -> Result<(), String> {
     workspace::delete_agent_run(&id)
 }

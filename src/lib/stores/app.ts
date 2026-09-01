@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db, type AgentRunRow } from "../db";
 import { reportError, reportPromise } from "../errors";
 import type { Connection, Session } from "../types";
 import type { Slice } from "./state";
@@ -18,10 +18,16 @@ export interface AppSlice {
    *  banner; the app still starts empty instead of blocking. */
   startupError?: string;
   setStartupError: (msg: string | undefined) => void;
+  /** Runs that were in flight when the app last closed — reconciled to
+   *  "interrupted" at startup and offered to the user to review or clear. */
+  interruptedRuns: AgentRunRow[];
+  dismissInterruptedRuns: () => void;
 }
 
 export const createAppSlice: Slice<AppSlice> = (set, get) => ({
   setStartupError: (msg) => set({ startupError: msg }),
+  interruptedRuns: [],
+  dismissInterruptedRuns: () => set({ interruptedRuns: [] }),
 
   hydrate: async () => {
     try {
@@ -106,6 +112,15 @@ export const createAppSlice: Slice<AppSlice> = (set, get) => ({
       // hears about it through a user action — so without this a restart left
       // path containment and repository trust switched off.
       await get().adoptRestoredWorkspace();
+
+      // Any run still marked in-flight belongs to a process that no longer
+      // exists — mark them interrupted so the record is honest, and surface the
+      // ones just reconciled so the user knows work was cut off by a restart.
+      const fixed = await db.reconcileAgentRuns().catch(() => 0);
+      if (fixed > 0) {
+        const recent = await db.listAgentRuns(undefined, 100).catch(() => []);
+        set({ interruptedRuns: recent.filter((r) => r.status === "interrupted").slice(0, 10) });
+      }
     } catch (e) {
       set({ hydrated: true, startupError: reportError(e, "db:hydrate").message });
     }

@@ -176,6 +176,7 @@ pub fn run() {
             commands::agent_runs_active,
             commands::agent_run_get,
             commands::agent_events_list,
+            commands::agent_runs_reconcile,
             commands::agent_run_delete,
             commands::list_projects,
             commands::save_project,

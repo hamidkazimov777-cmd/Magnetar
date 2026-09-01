@@ -253,6 +253,15 @@ pub fn list_agent_events(run_id: &str) -> Result<Vec<AgentEventRow>, String> {
     })
 }
 
+/// At startup, mark any run left in flight as interrupted (see db::reconcile).
+pub fn reconcile_agent_runs() -> Result<usize, String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    with_conn(|c| crate::db::reconcile_agent_runs(c, now))
+}
+
 /// Remove a run and its trace.
 pub fn delete_agent_run(id: &str) -> Result<(), String> {
     with_conn(|c| {

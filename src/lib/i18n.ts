@@ -18,6 +18,8 @@ const ru: Dict = {
   // --- Brand ---------------------------------------------------------------
   appTagline: "Твой командный центр ИИ",
   startupErrorTitle: "Не удалось загрузить сохранённые данные",
+  interruptedRunsTitle: "Прогон агента был прерван",
+  interruptedRunsBody: "Приложение закрылось во время работы агента ({n}). Задача остановлена — при необходимости запустите её снова.",
 
   // --- Generic verbs / shared labels --------------------------------------
   cancel: "Отмена",
@@ -854,6 +856,8 @@ const ru: Dict = {
 const en: Dict = {
   appTagline: "Your AI command center",
   startupErrorTitle: "Couldn't load saved data",
+  interruptedRunsTitle: "An agent run was interrupted",
+  interruptedRunsBody: "The app closed while the agent was working ({n}). The task was stopped — start it again if you still need it.",
 
   cancel: "Cancel",
   close: "Close",
@@ -1658,6 +1662,8 @@ const en: Dict = {
 const es: Dict = {
   appTagline: "Tu centro de mando de IA",
   startupErrorTitle: "No se pudieron cargar los datos guardados",
+  interruptedRunsTitle: "Una ejecución del agente se interrumpió",
+  interruptedRunsBody: "La app se cerró mientras el agente trabajaba ({n}). La tarea se detuvo — vuelve a iniciarla si aún la necesitas.",
 
   cancel: "Cancelar",
   close: "Cerrar",

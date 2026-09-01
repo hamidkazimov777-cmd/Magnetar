@@ -48,7 +48,7 @@ export interface AgentRunRow {
   projectId: string | null;
   connectionId: string | null;
   model: string | null;
-  status: "running" | "paused" | "done" | "cancelled" | "error";
+  status: "running" | "paused" | "done" | "cancelled" | "error" | "interrupted";
   startedAt: number;
   updatedAt: number;
   endedAt: number | null;
@@ -89,6 +89,7 @@ export const db = {
   listAgentRuns: (sessionId?: string, limit?: number) =>
     invoke<AgentRunRow[]>("agent_runs_list", { sessionId: sessionId ?? null, limit: limit ?? null }),
   activeAgentRuns: () => invoke<AgentRunRow[]>("agent_runs_active"),
+  reconcileAgentRuns: () => invoke<number>("agent_runs_reconcile"),
   getAgentRun: (id: string) => invoke<AgentRunRow | null>("agent_run_get", { id }),
   listAgentEvents: (runId: string) => invoke<AgentEventRow[]>("agent_events_list", { runId }),
   deleteAgentRun: (id: string) => invoke<void>("agent_run_delete", { id }),

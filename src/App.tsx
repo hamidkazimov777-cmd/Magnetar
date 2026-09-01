@@ -33,6 +33,8 @@ export default function App() {
   const setOnboarded = useStore((s) => s.setOnboarded);
   const startupError = useStore((s) => s.startupError);
   const setStartupError = useStore((s) => s.setStartupError);
+  const interruptedRuns = useStore((s) => s.interruptedRuns);
+  const dismissInterruptedRuns = useStore((s) => s.dismissInterruptedRuns);
   const t = useT();
 
   // Load the canon from SQLite, then ensure there's a session to type into.
@@ -150,6 +152,25 @@ export default function App() {
             title={t("close")}
             aria-label={t("close")}
             onClick={() => setStartupError(undefined)}
+          >
+            <X size={12} />
+          </button>
+        </div>
+      )}
+
+      {interruptedRuns.length > 0 && (
+        <div className="alert fixed inset-x-0 top-3 z-40 mx-auto w-[min(92vw,560px)] shadow-lg">
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold">{t("interruptedRunsTitle")}</div>
+            <p className="mt-1 break-words text-[length:var(--fs-sm)] opacity-90">
+              {t("interruptedRunsBody").replace("{n}", String(interruptedRuns.length))}
+            </p>
+          </div>
+          <button
+            className="icon-btn h-5 w-5 shrink-0"
+            title={t("close")}
+            aria-label={t("close")}
+            onClick={dismissInterruptedRuns}
           >
             <X size={12} />
           </button>
