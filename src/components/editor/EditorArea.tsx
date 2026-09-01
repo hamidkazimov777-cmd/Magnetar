@@ -7,6 +7,7 @@ import { useStore, type EditorTab } from "../../lib/store";
 import { syncCheckMarkers } from "../../lib/markers";
 import * as lsp from "../../lib/lspManager";
 import { registerLspProviders, installDefinitionOpener } from "../../lib/lspEditor";
+import { registerInlineCompletion } from "../../lib/inlineCompletion";
 import { useT } from "../../lib/i18n";
 import { cn } from "../../lib/cn";
 import { EmptyState } from "../ui/EmptyState";
@@ -320,6 +321,7 @@ export function EditorArea() {
     // Wire language-server features (hover, definition, …) to the editor.
     // Idempotent — safe on every mount.
     registerLspProviders(monacoInstance);
+    registerInlineCompletion(monacoInstance);
     installDefinitionOpener(editor, { openTab, revealInFile });
     // The breadcrumb trail follows the cursor, so it has to hear about it.
     setCursorLine(editor.getPosition()?.lineNumber ?? 1);
@@ -798,7 +800,12 @@ function CodePane({
   path: string;
   value: string;
   theme: string;
-  prefs: { editorFontSize: number; editorMinimap: boolean; editorWordWrap: boolean };
+  prefs: {
+    editorFontSize: number;
+    editorMinimap: boolean;
+    editorWordWrap: boolean;
+    inlineCompletion: boolean;
+  };
   onMount?: OnMount;
   onChange: (value: string) => void;
 }) {
@@ -832,6 +839,9 @@ function CodePane({
         tabSize: 2,
         wordWrap: prefs.editorWordWrap ? "on" : "off",
         scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
+        // AI ghost text. The provider also checks the pref, but gating the
+        // option means Monaco does not even ask when the feature is off.
+        inlineSuggest: { enabled: prefs.inlineCompletion },
       }}
     />
   );

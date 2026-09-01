@@ -137,6 +137,12 @@ export function SettingsView() {
             value={prefs.formatOnSave}
             onChange={(v) => setPrefs({ formatOnSave: v })}
           />
+          <Toggle
+            label={t("prefInlineCompletion")}
+            hint={t("prefInlineCompletionHint")}
+            value={prefs.inlineCompletion}
+            onChange={(v) => setPrefs({ inlineCompletion: v })}
+          />
         </Section>
 
         {/* Interface */}

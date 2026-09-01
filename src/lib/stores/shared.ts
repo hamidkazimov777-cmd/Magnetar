@@ -113,6 +113,11 @@ export interface Prefs {
   editorFontSize: number;
   editorWordWrap: boolean;
   editorMinimap: boolean;
+  /** Offer AI ghost-text completions in the editor. Off by default: it spends
+   *  tokens on every pause and needs a configured model, so it is a choice the
+   *  user makes, not a surprise on their bill. Uses the memory model when set,
+   *  otherwise the chat's model. */
+  inlineCompletion: boolean;
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -129,6 +134,7 @@ export const DEFAULT_PREFS: Prefs = {
   editorFontSize: 13,
   editorWordWrap: false,
   editorMinimap: true,
+  inlineCompletion: false,
 };
 
 export const uid = () =>
