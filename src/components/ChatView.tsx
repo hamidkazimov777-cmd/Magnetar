@@ -21,6 +21,7 @@ import { buildCatalog, recommend, type Recommendation } from "../lib/adaptive";
 import { buildOutgoing, maybeSummarize } from "../lib/handoff";
 import { backgroundQueue } from "../lib/backgroundQueue";
 import { runAgent, AGENT_SYSTEM } from "../lib/agent";
+import { beginRunLog } from "../lib/agentRunLog";
 import { buildProjectMemory } from "../lib/memory";
 import type { AskRequest } from "../lib/agent";
 import { buildMentionContext, expandSlash } from "../lib/mentions";
@@ -241,6 +242,17 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     // results stay on screen until a new one begins.
     useStore.getState().clearSubagents();
     const agentStartedAt = Date.now();
+    // The durable record of this run: it survives a restart, so a killed app can
+    // show what was in flight and (later) resume it. Wraps the handlers below so
+    // the live loop stays untouched.
+    const runLog = beginRunLog({
+      sessionId,
+      projectId: useStore.getState().activeProjectId ?? null,
+      connectionId: connId,
+      model,
+    });
+    let runStatus: "done" | "cancelled" | "error" = "done";
+    let runError: string | null = null;
     try {
       const sess = useStore.getState().sessions.find((s) => s.id === sessionId);
       const projectMemory =
@@ -250,7 +262,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
         connection,
         model,
         history,
-        {
+        runLog.wrap({
           confirm: (name, args) =>
             new Promise<boolean>((resolve) => setConfirm({ name, args, resolve })),
           ask: (req) => new Promise<string>((resolve) => setAsk({ req, resolve })),
@@ -281,13 +293,17 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
               refreshExplorer();
           },
           cancelled: () => agentCancelRef.current,
-        },
+        }),
         projectMemory,
       );
+      if (agentCancelRef.current) runStatus = "cancelled";
     } catch (e) {
+      runStatus = "error";
+      runError = String(e);
       noteModelFailure(connId, model, String(e), setModelStatus);
       setLastError({ message: String(e), sessionId: sessionId! });
     } finally {
+      void runLog.finish(runStatus, runError);
       useStore.getState().setMessageMeta(sessionId!, assistantId, {
         durationMs: Date.now() - agentStartedAt,
       });
