@@ -85,9 +85,9 @@ target or intentionally manual. Test IDs are mapped to quality gates below.
 | Pause / resume / cancellation / retry | ✅ cancel to process group + provider; interrupted runs reconciled | — | ✅ | ✅ | ✅ | Cancel kills process group and provider request; retry uses bounded backoff. `AGENT-02` | P0 |
 | Budgets / cost / context compaction | ◐ per-run token budget stops with a reason; cost/compaction pending | — | ✅ | ✅ | ✅ | Per-run and per-agent budgets stop work with an explainable reason. `AGENT-03` | P0 |
 | Checkpoint / diff / accept / rollback | ✅ run-grouped + per-file rollback; per-hunk pending | — | ✅ | ✅ | ✅ | Isolate task, review diff, accept/reject/rollback whole task and hunk. `CHANGE-01` | P0 |
-| MCP client and permissions | □ | ◐ extensions | ✅ | ✅ | ◐ | Register server, authorize tool by capability, audit calls, deny by default. `INT-01` | P1 |
+| MCP client and permissions | □ deferred with reasons (needs live servers to build safely) | ◐ extensions | ✅ | ✅ | ◐ | Register server, authorize tool by capability, audit calls, deny by default. `INT-01` | P1 |
 | Sandboxed plugin API | □ intentionally delayed | ✅ extensions | ✅ | ✅ | □ | No plugin gets filesystem/network by default; capability grant is visible. `INT-02` | P2 |
-| Inline completion | □ | ✅ | ✅ | ✅ | ✅ | Ghost text accepts word/line/all, cancels stale requests, limits context and cost. `AI-01` | P1 |
+| Inline completion | ✅ opt-in ghost text, capped context, debounced, stale-cancel | ✅ | ✅ | ✅ | ✅ | Ghost text accepts word/line/all, cancels stale requests, limits context and cost. `AI-01` | P1 |
 | Provider-neutral memory / provenance | ✅ one canon, one renderer | — | ◐ | ◐ | ◐ | Facts cite source, verification state and relevance; switching provider preserves canon. `MEM-01` | P0 |
 | Decisions / divergence queue | ✅ | — | ◐ | ◐ | — | Contradictions queue without interrupting work and resolve with audit trail. `MEM-02` | P0 |
 | Local-first / BYOK / no account | ✅ intended | — | ◐ | ◐ | ◐ | Offline UI/index works; only configured endpoints receive network traffic. `SEC-01` | P0 |
@@ -130,8 +130,8 @@ something deliberately not built is a permanent false failure.
 | 7 | Persistent/incremental search, watcher, scale and budgets | **Done**; scale targets recorded, live scale runs pending |
 | 8 | Durable agent runtime | **Done** (frontend-durable, not headless): SQLite runs + append-only event trace, startup reconcile of interrupted runs, per-run token budget with an explainable stop, cancel to process group + provider. Cost accounting and context compaction pending; the loop stays in the frontend by choice (see below) |
 | 9 | Checkpoints, isolated changes and rollback | **Done** for whole-task and per-file rollback: each edit is stamped with its run id and the Changes panel rolls back a run as a unit. Per-hunk rollback within a run pending |
-| 10 | MCP and restricted integration API | `INT-*` deny-by-default tests |
-| 11 | Inline completion | `AI-*` privacy/cancellation/cost tests |
+| 10 | MCP and restricted integration API | **Deferred with reasons** (see below): needs live MCP servers and in-app testing to build safely; a blind implementation would ship an unverifiable surface |
+| 11 | Inline completion | **Done**: opt-in ghost text from the user's model, capped context window, 300ms debounce, stale requests dropped on cancel; `prefs.inlineCompletion` off by default |
 | 12 | UX/onboarding/transparency | `UX-*` first-run walkthrough |
 | 13 | Keep Studio as secondary IDE utility | Generation history/asset metadata tests |
 | 14 | Release candidate | All release gates green; no Apple account action |
@@ -172,7 +172,29 @@ made runs survive a restart — is what mattered and is now in SQLite. These
 remain open if a headless daemon (background runs with the app closed) is ever
 wanted.
 
-Step 10 (MCP) is next.
+Phase 2 (IDE parity) is largely done. Inline completion (Step 11) shipped as
+opt-in ghost text. The "replace the Monaco TS worker with
+typescript-language-server" item turned out to be already handled by design: the
+LSP bridge is configured for `typescript-language-server` on TS and JS (it
+provides the project-aware semantics — definitions, references, rename,
+diagnostics — when installed), while Monaco's built-in TS worker is kept only for
+syntax validation and a single-file completion floor, with semantic validation
+switched off so it never emits false "not found" errors. That hybrid is better
+than fully replacing the worker, because it keeps a useful offline floor when no
+server is installed; it is treated as done, not a gap.
+
+MCP (Step 10) is deliberately deferred, with reasons. An MCP client is
+protocol-heavy (spawn a server, `initialize`, `tools/list`, `tools/call` over
+newline-delimited JSON-RPC — the stdio framing in `lsp.rs` is close but not
+identical) and, more importantly, cannot be built responsibly without live MCP
+servers to test the round-trips and without in-app iteration on the
+deny-by-default permission flow. Shipping it blind, in a window with no rebuild,
+would add a large unverifiable surface to a working app. When taken up, the plan
+is: an `mcp.rs` client keyed like the LSP handle map; a durable `mcp_servers`
+config (command + args, off by default); `mcp_list_tools`/`mcp_call_tool`
+commands; and agent integration that namespaces tools as `mcp__<server>__<tool>`,
+requires confirmation by default, and records calls through `audit.rs`. Until
+then, no MCP surface exists, so nothing is half-built.
 
 In parallel with the step roadmap, the Generation Studio was rebuilt as a
 data-driven design (HANDOFF Entry 134): a curated `GEN_MODELS` registry

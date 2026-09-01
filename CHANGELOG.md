@@ -14,6 +14,9 @@
 - Roll back a whole agent run: every edit is stamped with its run id and the
   Changes panel groups a run's edits under one "roll back the whole run" action,
   alongside the existing per-file undo.
+- Opt-in AI inline completion (ghost text) in the editor, from the user's own
+  model, with a capped context window, debounced requests and stale-request
+  cancellation (`agentMaxTokens` unaffected; `inlineCompletion` off by default).
 
 - Step 0 baseline implementation plan with feature-parity matrix and acceptance IDs.
 - Quality gates, security policy, architecture baseline and release checklist.
