@@ -14,6 +14,7 @@ import {
   Square,
   FolderPlus,
   FolderOpen,
+  Paperclip,
 } from "./icons";
 import { api } from "../lib/api";
 import { useStore } from "../lib/store";
@@ -49,6 +50,7 @@ interface SendOpts {
 
 export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
   const t = useT();
+  const agentDragging = useStore((s) => s.agentDragging);
   const connections = useStore((s) => s.connections);
   const models = useStore((s) => s.models);
   const adaptive = useStore((s) => s.adaptive);
@@ -414,7 +416,17 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
   };
 
   return (
-    <div className="flex h-full min-w-0 flex-col">
+    <div className="relative flex h-full min-w-0 flex-col">
+      {/* Drop-to-attach target covering the whole agent panel: the file drop is
+          window-wide (Tauri), this just makes where to aim unmistakable. */}
+      {agentDragging && (
+        <div className="pointer-events-none absolute inset-0 z-40 m-2 flex items-center justify-center rounded-[var(--r-lg)] border-2 border-dashed border-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_12%,var(--color-bg))]/85 backdrop-blur-[2px]">
+          <div className="flex flex-col items-center gap-2 text-[var(--color-accent-strong)]">
+            <Paperclip size={22} />
+            <span className="text-[length:var(--fs-base)] font-medium">{t("dropToAttach")}</span>
+          </div>
+        </div>
+      )}
       <header
         data-tauri-drag-region
         className="flex h-[var(--h-titlebar)] shrink-0 items-center gap-1.5 border-b border-[var(--color-border)] px-2"

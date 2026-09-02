@@ -4,6 +4,11 @@
 
 ### Added
 
+- Drop-to-attach across the whole agent panel. Dragging a file from Finder over
+  the window now shows a clear full-panel dashed drop target ("drop to attach")
+  instead of only a small highlight around the composer, so you can aim anywhere
+  in the chat area. Attachment thumbnails now fit the image inside the frame
+  (contain, not crop) so you can see what you attached.
 - Drag and drop in the file explorer. Drag a file or folder onto another folder
   to move it there; the target folder highlights while hovering, and the two
   affected folders refresh in place (folders expanded elsewhere stay open). The

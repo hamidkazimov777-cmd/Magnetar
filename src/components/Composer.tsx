@@ -74,9 +74,13 @@ export function Composer({
     let cancelled = false;
     void getCurrentWebview()
       .onDragDropEvent((event) => {
-        if (event.payload.type === "over") setDragging(true);
-        else if (event.payload.type === "drop") {
+        const setAgentDragging = useStore.getState().setAgentDragging;
+        if (event.payload.type === "over") {
+          setDragging(true);
+          setAgentDragging(true);
+        } else if (event.payload.type === "drop") {
           setDragging(false);
+          setAgentDragging(false);
           const paths = event.payload.paths ?? [];
           if (paths.length) {
             // The drop is window-wide, so make sure the panel it lands in is
@@ -84,7 +88,10 @@ export function Composer({
             useStore.getState().toggleAgentPanel(true);
             void ingestPaths(paths);
           }
-        } else setDragging(false);
+        } else {
+          setDragging(false);
+          setAgentDragging(false);
+        }
       })
       .then((fn) => {
         if (cancelled) fn();
@@ -355,10 +362,12 @@ export function Composer({
                   <img
                     src={`data:${a.mimeType};base64,${a.data}`}
                     alt={a.name}
-                    className="h-14 w-14 object-cover"
+                    // contain, not cover: show the whole image fitted inside the
+                    // frame instead of cropping it to a square.
+                    className="h-16 w-16 object-contain p-0.5"
                   />
                 ) : (
-                  <div className="grid h-14 w-14 place-items-center">
+                  <div className="grid h-16 w-16 place-items-center">
                     <FileText size={20} className="text-[var(--color-text-dim)]" />
                   </div>
                 )}
