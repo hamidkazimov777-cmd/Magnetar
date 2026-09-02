@@ -583,6 +583,20 @@ pub async fn tool_delete_file(app: tauri::AppHandle, path: String) -> Result<(),
 }
 
 #[tauri::command]
+pub async fn tool_move_file(
+    app: tauri::AppHandle,
+    from: String,
+    to: String,
+) -> Result<(), String> {
+    // A move is a write, and both ends must be inside the project — dragging a
+    // file out of the workspace is the accident containment exists to stop.
+    policy::require(Access::Write)?;
+    let from = ensure_allowed(&app, &from).await?;
+    let to = ensure_allowed(&app, &to).await?;
+    blocking(move || tools::move_file(&from.to_string_lossy(), &to.to_string_lossy())).await
+}
+
+#[tauri::command]
 pub async fn tool_edit_file(
     app: tauri::AppHandle,
     path: String,

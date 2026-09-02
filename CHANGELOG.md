@@ -4,6 +4,12 @@
 
 ### Added
 
+- Drag and drop in the file explorer. Drag a file or folder onto another folder
+  to move it there; the target folder highlights while hovering, and the two
+  affected folders refresh in place (folders expanded elsewhere stay open). The
+  move goes through a new `move_file` backend command with the same path
+  containment as every other write — it refuses to leave the workspace,
+  overwrite an existing target, or nest a folder inside itself.
 - More slash commands in the composer: `/security` (security-audit the current
   changes), `/simplify` (safe cleanups, no bug hunting), `/docs` (write/update
   documentation), `/commit` (write a conventional-commit message and commit),

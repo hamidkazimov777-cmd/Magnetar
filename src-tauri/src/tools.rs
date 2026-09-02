@@ -200,6 +200,33 @@ pub fn delete_file(path: &str) -> Result<(), String> {
     std::fs::remove_file(p).map_err(|e| format!("{path}: {e}"))
 }
 
+/// Move (or rename) a file or directory. Refuses to overwrite an existing
+/// target — a silent clobber during a drag is exactly the accident to prevent —
+/// and to move something into itself. Containment of both paths is enforced by
+/// the caller (`ensure_allowed`), so this only handles the filesystem move.
+pub fn move_file(from: &str, to: &str) -> Result<(), String> {
+    let src = Path::new(from);
+    let dst = Path::new(to);
+    if !src.exists() {
+        return Err(format!("{from}: no such file"));
+    }
+    if dst.exists() {
+        return Err(format!("{to}: already exists"));
+    }
+    // Moving a directory into its own subtree would orphan it.
+    if src.is_dir() {
+        if let (Ok(s), Ok(d)) = (src.canonicalize(), dst.parent().map_or(Ok(src.to_path_buf()), |p| p.canonicalize())) {
+            if d.starts_with(&s) {
+                return Err(format!("{to}: cannot move a folder into itself"));
+            }
+        }
+    }
+    if let Some(parent) = dst.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("{to}: {e}"))?;
+    }
+    std::fs::rename(src, dst).map_err(|e| format!("{from} -> {to}: {e}"))
+}
+
 pub fn edit_file(path: &str, old: &str, new: &str) -> Result<EditResult, String> {
     let src = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
     let count = src.matches(old).count();
@@ -627,6 +654,34 @@ pub fn kill_bash(pid: Option<u32>) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn moving_a_file_relocates_it_but_refuses_to_clobber_or_self_nest() {
+        let dir = std::env::temp_dir().join(format!("magnetar-move-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        let a = dir.join("a.txt");
+        std::fs::write(&a, "hi").unwrap();
+
+        // Move a.txt into sub/.
+        let dst = dir.join("sub").join("a.txt");
+        move_file(&a.to_string_lossy(), &dst.to_string_lossy()).unwrap();
+        assert!(!a.exists());
+        assert_eq!(std::fs::read_to_string(&dst).unwrap(), "hi");
+
+        // Refuses to overwrite an existing target.
+        let b = dir.join("b.txt");
+        std::fs::write(&b, "b").unwrap();
+        assert!(move_file(&b.to_string_lossy(), &dst.to_string_lossy()).is_err());
+        assert_eq!(std::fs::read_to_string(&dst).unwrap(), "hi");
+
+        // Refuses to move a folder into its own subtree.
+        let sub = dir.join("sub");
+        let into_self = dir.join("sub").join("deep");
+        assert!(move_file(&sub.to_string_lossy(), &into_self.to_string_lossy()).is_err());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn reading_a_slice_does_not_depend_on_reading_the_whole_file() {

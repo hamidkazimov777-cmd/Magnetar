@@ -119,17 +119,24 @@ function flattenTree(
 
 /** One row of the tree. Git status is computed here, only for rows that are
  *  actually mounted — off-screen rows cost nothing. */
+/** Private drag payload: the absolute path of the dragged entry. A custom MIME
+ *  type keeps files dragged from outside the app from being treated as moves. */
+const DRAG_MIME = "application/x-magnetar-path";
+
 const TreeRow = memo(function TreeRow({
   row,
   onToggle,
+  onMove,
 }: {
   row: FlatRow;
   onToggle: (path: string, name: string, isDir: boolean) => void;
+  onMove: (from: string, toDir: string) => void;
 }) {
   const t = useT();
   const activeTabPath = useStore((s) => s.activeTabPath);
   const workspaceRoot = useStore((s) => s.workspaceRoot);
   const gitStatus = useStore((s) => s.gitStatus);
+  const [dropTarget, setDropTarget] = useState(false);
 
   if (row.kind === "loading") {
     return (
@@ -170,6 +177,34 @@ const TreeRow = memo(function TreeRow({
       style={{ paddingLeft: 6 + depth * 11 }}
       className="row"
       data-active={!isDir && activeTabPath === path}
+      data-drop-target={dropTarget || undefined}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData(DRAG_MIME, path);
+        e.dataTransfer.effectAllowed = "move";
+      }}
+      // Only folders accept a drop; a file dropped on a file does nothing.
+      onDragOver={
+        isDir
+          ? (e) => {
+              if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              setDropTarget(true);
+            }
+          : undefined
+      }
+      onDragLeave={isDir ? () => setDropTarget(false) : undefined}
+      onDrop={
+        isDir
+          ? (e) => {
+              e.preventDefault();
+              setDropTarget(false);
+              const from = e.dataTransfer.getData(DRAG_MIME);
+              if (from && from !== path) onMove(from, path);
+            }
+          : undefined
+      }
     >
       {isDir ? (
         <>
@@ -293,6 +328,35 @@ export function ExplorerPanel() {
       }
     },
     [openTab, loadChildren],
+  );
+
+  // Move an entry into a folder by dragging. Both ends are contained in Rust;
+  // here we guard the no-op (same folder) and the impossible (into itself or a
+  // descendant), then refresh just the two affected folders — not the whole
+  // tree — so expanded folders elsewhere stay open.
+  const moveEntry = useCallback(
+    async (from: string, toDir: string) => {
+      const base = from.split("/").pop();
+      if (!base) return;
+      const target = `${toDir}/${base}`;
+      if (target === from) return; // dropped back into its own folder
+      if (toDir === from || toDir.startsWith(`${from}/`)) return; // into itself
+      try {
+        await api.toolMoveFile(from, target);
+        const srcParent = from.slice(0, from.lastIndexOf("/"));
+        setTree((prev) => ({
+          ...prev,
+          [toDir]: {
+            ...(prev[toDir] ?? { children: null, loading: false }),
+            expanded: true,
+          },
+        }));
+        await Promise.all([loadChildren(srcParent), loadChildren(toDir)]);
+      } catch (e) {
+        alert("Move failed: " + String(e));
+      }
+    },
+    [loadChildren],
   );
 
   const rows = useMemo(
@@ -470,7 +534,7 @@ export function ExplorerPanel() {
                   transform: `translateY(${vi.start}px)`,
                 }}
               >
-                <TreeRow row={row} onToggle={toggle} />
+                <TreeRow row={row} onToggle={toggle} onMove={moveEntry} />
               </div>
             );
           })}
