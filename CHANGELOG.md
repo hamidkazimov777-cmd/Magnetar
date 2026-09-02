@@ -2,7 +2,25 @@
 
 ## Unreleased
 
+### Added
+
+- More slash commands in the composer: `/security` (security-audit the current
+  changes), `/simplify` (safe cleanups, no bug hunting), `/docs` (write/update
+  documentation), `/commit` (write a conventional-commit message and commit),
+  and `/btw` (a quick read-only side question that changes nothing).
+
+### Changed
+
+- One `/prompt` command instead of a hardcoded `/prompt <Model>` per generative
+  model. The target model is named in the text (`/prompt <model> <request>`) and
+  works for any model, not just the listed ones.
+
 ### Fixed
+
+- `/prompt` no longer swallows the request into the model name. The model is now
+  the first token and the rest is the request, so `/prompt gpt-4o a cat on a
+  roof` targets gpt-4o with "a cat on a roof" instead of treating the whole tail
+  as the model.
 
 - The loop guard no longer mistakes progress for a stuck run. It now judges a
   repeat by whether the result changed, not by the call being reissued: polling
