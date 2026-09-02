@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Fixed
+
+- The loop guard no longer mistakes progress for a stuck run. It now judges a
+  repeat by whether the result changed, not by the call being reissued: polling
+  a long build with `sleep N && tail log` reruns the same command on purpose,
+  and while the log grows the result differs, so it is not blocked. Only the
+  same call returning the same result over and over is stopped. (This is what
+  blocked a legitimate build-wait as "going in circles".)
+- The agent prompt now distinguishes a finite slow command (a build, install or
+  test run — run it in the foreground and wait; it has a generous timeout) from
+  a never-exiting process (a dev server or watcher — detach and read the log
+  once), instead of telling it to background and poll everything long-running.
+
+### Changed
+
+- Default per-run token budget raised from 400k to 1M — enough for real
+  scaffolding turns while still stopping a runaway run. It remains per-run, so
+  each "continue" starts fresh, and is adjustable in Settings (0 = off).
+- When asked to continue after a stopped run, the agent is told to trust the
+  conversation and handoff summary instead of re-scanning the tree and
+  re-reading files it already created — which was burning the budget on every
+  continuation.
+
 ### Added
 
 - Outbound-network host allowlist. Every provider call goes through

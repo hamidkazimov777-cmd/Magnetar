@@ -127,7 +127,7 @@ export const DEFAULT_PREFS: Prefs = {
   autosaveDelayMs: 1000,
   confirmBash: true,
   agentMaxSteps: 80,
-  agentMaxTokens: 400_000,
+  agentMaxTokens: 1_000_000,
   bashTimeoutSecs: 600,
   subagentParallel: 3,
   subagentRoster: [],
