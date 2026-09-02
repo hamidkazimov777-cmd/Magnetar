@@ -134,6 +134,20 @@ describe("the folder is the unit of work", () => {
     expect(after.recentFolders).toEqual(["/repo"]);
   });
 
+  it("stamps the active run id onto file changes, so a task can be grouped", () => {
+    useStore.setState({ changes: [] });
+    const st = useStore.getState();
+
+    st.setActiveRunId("run-1");
+    st.addChange({ path: "/repo/a.ts", before: null, after: "x", tool: "write_file" });
+    st.addChange({ path: "/repo/b.ts", before: "old", after: "new", tool: "edit_file" });
+    st.setActiveRunId(undefined);
+    st.addChange({ path: "/repo/c.ts", before: null, after: "y", tool: "write_file" });
+
+    const changes = useStore.getState().changes;
+    expect(changes.map((c) => c.runId)).toEqual(["run-1", "run-1", undefined]);
+  });
+
   it("asks whether a newly opened folder is trusted, and mirrors the answer", async () => {
     const workspaceTrusted = vi.mocked(api.workspaceTrusted);
     workspaceTrusted.mockClear().mockResolvedValue(false);
@@ -359,15 +373,6 @@ describe("a model choice belongs to its conversation", () => {
 });
 
 describe("switching tracks", () => {
-  it("takes the centre to the studio and back", () => {
-    useStore.setState({ centerView: "editor" });
-    useStore.getState().switchTrack("generation");
-    expect(useStore.getState().centerView).toBe("studio");
-
-    useStore.getState().switchTrack("agent");
-    expect(useStore.getState().centerView).toBe("editor");
-  });
-
   it("returns to the conversation you were having on that track", () => {
     useStore.setState({
       sessions: [

@@ -710,3 +710,20 @@ impl Provider for Anthropic {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn thinking_is_offered_for_recent_claude_only() {
+        assert!(supports_thinking("claude-3-7-sonnet"));
+        assert!(supports_thinking("claude-opus-4-20250101"));
+        assert!(supports_thinking("claude-sonnet-4-5"));
+        assert!(supports_thinking("claude-opus-5"));
+        // Older Claude and non-Claude models do not.
+        assert!(!supports_thinking("claude-2.1"));
+        assert!(!supports_thinking("claude-3-haiku"));
+        assert!(!supports_thinking("gpt-4o"));
+    }
+}

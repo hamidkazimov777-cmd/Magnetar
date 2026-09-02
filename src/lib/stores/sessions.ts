@@ -2,9 +2,8 @@ import { keepBytes, toMetadata } from "../attachments";
 import { db } from "../db";
 import { fromMetadata } from "../attachments";
 import { reportPromise } from "../errors";
-import { providerForBaseUrl } from "../generation";
 import type { ChatMessage, Session, Track } from "../types";
-import { NEW_CHAT_TITLE, now, persistMeta, uid, type CenterView } from "./shared";
+import { NEW_CHAT_TITLE, now, persistMeta, uid } from "./shared";
 import type { Slice } from "./state";
 
 /* ==========================================================================
@@ -14,7 +13,7 @@ import type { Slice } from "./state";
    model produced them. Everything here writes memory first and SQLite in the
    background, because chat must never block on disk.
 
-   A track (discussion / agent / generation) is a property of the conversation,
+   A track (discussion / agent) is a property of the conversation,
    not of the window. Switching tracks therefore switches conversations, and
    with them the model — otherwise you return to a discussion held with one
    model and continue it, unannounced, with another.
@@ -109,21 +108,12 @@ export const createSessionsSlice: Slice<SessionsSlice> = (set, get) => ({
     const id = uid();
     const st = get();
     const resolvedTrack = track ?? st.activeTrack;
-    // A generative conversation runs on a generative provider; a fresh one
-    // must not inherit the text model the user was just talking to.
-    const genConn =
-      resolvedTrack === "generation"
-        ? st.connections.find((c) => c.kind === "generative")
-        : undefined;
     const session: Session = {
       id,
       title: NEW_CHAT_TITLE,
       messages: [],
-      connectionId: resolvedTrack === "generation" ? genConn?.id : st.activeConnectionId,
-      model:
-        resolvedTrack === "generation"
-          ? (genConn ? providerForBaseUrl(genConn.baseUrl)?.models[0] : undefined)
-          : st.activeModel,
+      connectionId: st.activeConnectionId,
+      model: st.activeModel,
       projectId: st.activeProjectId,
       track: resolvedTrack,
       messagesLoaded: true,
@@ -151,37 +141,18 @@ export const createSessionsSlice: Slice<SessionsSlice> = (set, get) => ({
       // Helper rows belong to the run that produced them; carrying them
       // into another conversation makes them look like live work there.
       if (!sess) return { activeSessionId: id, subagents: {} };
-      // A generative conversation must not fall back to the text model the
-      // user was just on — the two tracks use different provider kinds.
       return {
         activeSessionId: id,
         subagents: {},
         activeTrack: sess.track ?? "chat",
-        activeConnectionId:
-          sess.track === "generation"
-            ? sess.connectionId
-            : (sess.connectionId ?? s.activeConnectionId),
-        activeModel:
-          sess.track === "generation"
-            ? sess.model
-            : (sess.model ?? s.activeModel),
+        activeConnectionId: sess.connectionId ?? s.activeConnectionId,
+        activeModel: sess.model ?? s.activeModel,
       };
     });
   },
 
   switchTrack: (track) => {
     const st = get();
-    // The centre follows the mode: generation is a full-screen studio; the
-    // text tracks (discussion / agent) work over the editor. Leaving the
-    // studio returns to the editor; other center views (settings, projects)
-    // are left as-is.
-    const centerView: CenterView =
-      track === "generation"
-        ? "studio"
-        : st.centerView === "studio"
-          ? "editor"
-          : st.centerView;
-    set({ centerView });
     const current = st.sessions.find((x) => x.id === st.activeSessionId);
     if (current?.track === track) {
       set({ activeTrack: track });

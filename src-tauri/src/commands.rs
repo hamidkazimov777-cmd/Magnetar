@@ -2,8 +2,8 @@
 
 use crate::canon::{self, MessageRow, SessionMeta};
 use crate::workspace::{
-    self, ConnectionRow, Decision, Divergence, Generation, KnowledgeEdge, KnowledgeNode,
-    MemoryFact, Project, Proposal, Task,
+    self, AgentEventRow, AgentRunRow, ConnectionRow, Decision, Divergence, GenerationRow,
+    KnowledgeEdge, KnowledgeNode, MemoryFact, Project, Proposal, Task,
     TimelineEvent,
 };
 use crate::keychain;
@@ -25,24 +25,14 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 static CANCELS: Lazy<Mutex<HashMap<String, Arc<AtomicBool>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
-/// One shared HTTP client for generation requests. Building a `reqwest::Client`
-/// per call meant a fresh connection pool and TLS setup every time — which adds
-/// up when several generations run alongside the agent and chat. Cloning shares
-/// the same pool (the client is Arc-backed internally).
+/// Shared HTTP client for media generation (image/video) calls. Cloning shares
+/// one connection pool instead of rebuilding TLS per request.
 static GEN_HTTP: Lazy<reqwest::Client> = Lazy::new(|| {
     reqwest::Client::builder()
         .pool_idle_timeout(std::time::Duration::from_secs(90))
-        .tcp_keepalive(std::time::Duration::from_secs(60))
         .build()
         .unwrap_or_else(|_| reqwest::Client::new())
 });
-
-/// Bounds how many heavy generation jobs run at once, so a burst can't starve
-/// the agent or the UI — the "isolate concurrent generation workers" gap. The
-/// cap is generous (6): a real user rarely fires that many together, so normal
-/// use is never serialized; it only tames pathological load. A permit is held
-/// for the whole job (including the minutes a video spends polling).
-static GEN_SEM: Lazy<tokio::sync::Semaphore> = Lazy::new(|| tokio::sync::Semaphore::new(6));
 
 // ---- Canon (SQLite) --------------------------------------------------------
 
@@ -101,6 +91,71 @@ pub fn save_connection(connection: ConnectionRow) -> Result<(), String> {
 #[tauri::command]
 pub fn delete_connection(id: String) -> Result<(), String> {
     workspace::delete_connection(&id)
+}
+
+// ---- Agent runs (durable) --------------------------------------------------
+
+#[tauri::command]
+pub fn agent_run_save(run: AgentRunRow) -> Result<(), String> {
+    workspace::save_agent_run(run)
+}
+
+#[tauri::command]
+pub fn agent_event_append(
+    run_id: String,
+    id: String,
+    kind: String,
+    payload: Option<String>,
+    created_at: i64,
+) -> Result<i64, String> {
+    workspace::append_agent_event(&run_id, &id, &kind, payload, created_at)
+}
+
+#[tauri::command]
+pub fn agent_runs_list(session_id: Option<String>, limit: Option<i64>) -> Result<Vec<AgentRunRow>, String> {
+    workspace::list_agent_runs(session_id, limit.unwrap_or(50))
+}
+
+#[tauri::command]
+pub fn agent_runs_active() -> Result<Vec<AgentRunRow>, String> {
+    workspace::active_agent_runs()
+}
+
+#[tauri::command]
+pub fn agent_run_get(id: String) -> Result<Option<AgentRunRow>, String> {
+    workspace::get_agent_run(&id)
+}
+
+#[tauri::command]
+pub fn agent_events_list(run_id: String) -> Result<Vec<AgentEventRow>, String> {
+    workspace::list_agent_events(&run_id)
+}
+
+#[tauri::command]
+pub fn agent_runs_reconcile() -> Result<usize, String> {
+    workspace::reconcile_agent_runs()
+}
+
+#[tauri::command]
+pub fn agent_run_delete(id: String) -> Result<(), String> {
+    workspace::delete_agent_run(&id)
+}
+
+// ---- Generations (Studio gallery, durable) ---------------------------------
+
+#[tauri::command]
+pub fn generation_save(generation: GenerationRow) -> Result<(), String> {
+    workspace::save_generation(generation)
+}
+
+#[tauri::command]
+pub fn generations_list(limit: Option<i64>) -> Result<Vec<GenerationRow>, String> {
+    workspace::list_generations(limit.unwrap_or(100))
+}
+
+#[tauri::command]
+pub fn generation_delete(id: String) -> Result<(), String> {
+    workspace::delete_generation(&id)
 }
 
 // ---- Workspace (Projects, Tasks, Knowledge, Timeline) ----------------------
@@ -204,26 +259,6 @@ pub fn persist_window_theme(app: tauri::AppHandle, dark: bool) -> Result<(), Str
 }
 
 #[tauri::command]
-pub fn list_generations() -> Result<Vec<Generation>, String> {
-    workspace::list_generations()
-}
-
-#[tauri::command]
-pub fn save_generation(generation: Generation) -> Result<(), String> {
-    workspace::save_generation(generation)
-}
-
-#[tauri::command]
-pub fn delete_generation(id: String) -> Result<(), String> {
-    workspace::delete_generation(&id)
-}
-
-#[tauri::command]
-pub fn clear_generations() -> Result<(), String> {
-    workspace::clear_generations()
-}
-
-#[tauri::command]
 pub fn list_tasks(project_id: String) -> Result<Vec<Task>, String> {
     workspace::list_tasks(&project_id)
 }
@@ -311,6 +346,10 @@ async fn resolve_key(conn: &Connection) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn list_models(connection: Connection) -> Result<Vec<ModelInfo>, String> {
+    // Testing a connection ("Load models") happens before it is saved, so the
+    // act of testing a host the user just typed authorizes reaching it — the
+    // same intent a save carries, one step earlier.
+    policy::allow_network(&connection.base_url);
     let key = resolve_key(&connection).await?;
     let provider = build_provider(&connection, key).map_err(|e| e.to_string())?;
     provider.list_models().await.map_err(|e| e.to_string())
@@ -321,351 +360,6 @@ pub async fn complete(connection: Connection, params: ChatParams) -> Result<Stri
     let key = resolve_key(&connection).await?;
     let provider = build_provider(&connection, key).map_err(|e| e.to_string())?;
     provider.complete(params).await.map_err(|e| e.to_string())
-}
-
-/// One universal generative call: POST `{base}/{endpoint}` with
-/// `{model, prompt, ...params}` and collect the returned assets. Nothing here is
-/// image-specific — `image` is just a provider whose endpoint happens to be
-/// `images/generations`; a video or audio provider is a different catalog entry
-/// with a different endpoint and the same request/result shapes.
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GenerationResult {
-    pub kind: String,
-    pub assets: Vec<GenerationAsset>,
-}
-
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GenerationAsset {
-    pub url: Option<String>,
-    pub b64: Option<String>,
-    pub mime_type: Option<String>,
-}
-
-#[tauri::command]
-pub async fn generate(
-    connection: Connection,
-    kind: String,
-    model: String,
-    prompt: String,
-    endpoint: String,
-    params: Option<serde_json::Value>,
-    // Provider-shape knobs (default = OpenAI-compatible):
-    //   auth_scheme:   "key" sends `Authorization: Key <k>` (fal.ai); else Bearer.
-    //   result_path:   where the assets array lives in the response (default "data";
-    //                  fal.ai uses "images").
-    //   model_in_body: false omits "model" from the body — for providers that put
-    //                  the model in the URL path (fal.ai).
-    auth_scheme: Option<String>,
-    result_path: Option<String>,
-    model_in_body: Option<bool>,
-) -> Result<GenerationResult, String> {
-    let _permit = GEN_SEM.acquire().await.map_err(|e| e.to_string())?;
-    let key = resolve_key(&connection).await?;
-    let url = connection.endpoint(&endpoint);
-
-    let mut body = serde_json::json!({ "prompt": prompt });
-    if model_in_body != Some(false) {
-        body["model"] = serde_json::json!(model);
-    }
-    if let Some(serde_json::Value::Object(map)) = params {
-        for (k, v) in map {
-            body[k] = v;
-        }
-    }
-
-    let req = GEN_HTTP.post(&url).json(&body);
-    let req = if auth_scheme.as_deref() == Some("key") {
-        req.header("Authorization", format!("Key {key}"))
-    } else {
-        req.bearer_auth(&key)
-    };
-    let resp = req
-        .send()
-        .await
-        .map_err(|e| format!("network error: {e}"))?;
-
-    if !resp.status().is_success() {
-        let code = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(format!("{code}: {text}"));
-    }
-
-    let v: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    let arr = v
-        .get(result_path.as_deref().unwrap_or("data"))
-        .and_then(|d| d.as_array())
-        .cloned()
-        .unwrap_or_default();
-
-    let assets: Vec<GenerationAsset> = arr
-        .iter()
-        .filter_map(|item| {
-            let url = item.get("url").and_then(|x| x.as_str()).map(String::from);
-            let b64 = item
-                .get("b64_json")
-                .and_then(|x| x.as_str())
-                .map(String::from);
-            let mime_type = item
-                .get("mime_type")
-                .and_then(|x| x.as_str())
-                .map(String::from);
-            if url.is_none() && b64.is_none() {
-                return None;
-            }
-            Some(GenerationAsset { url, b64, mime_type })
-        })
-        .collect();
-
-    if assets.is_empty() {
-        return Err("provider returned no assets".to_string());
-    }
-    Ok(GenerationResult { kind, assets })
-}
-
-/// Pull produced assets out of a response JSON. Handles the shapes providers
-/// actually return: an array at `result_path` (images/data), or a single media
-/// object with a `url` (fal.ai video/audio return `{ "video": { "url": … } }`).
-fn extract_assets(v: &serde_json::Value, result_path: &str) -> Vec<GenerationAsset> {
-    let asset_from = |item: &serde_json::Value| -> Option<GenerationAsset> {
-        let url = item.get("url").and_then(|x| x.as_str()).map(String::from);
-        let b64 = item
-            .get("b64_json")
-            .and_then(|x| x.as_str())
-            .map(String::from);
-        let mime_type = item
-            .get("content_type")
-            .or_else(|| item.get("mime_type"))
-            .and_then(|x| x.as_str())
-            .map(String::from);
-        if url.is_none() && b64.is_none() {
-            return None;
-        }
-        Some(GenerationAsset { url, b64, mime_type })
-    };
-
-    // Try, in order: the named path (array or single object), then the common
-    // fallbacks.
-    for key in [result_path, "images", "data", "video", "audio", "image"] {
-        if let Some(node) = v.get(key) {
-            if let Some(arr) = node.as_array() {
-                let out: Vec<_> = arr.iter().filter_map(asset_from).collect();
-                if !out.is_empty() {
-                    return out;
-                }
-            } else if let Some(a) = asset_from(node) {
-                return vec![a];
-            }
-        }
-    }
-    Vec::new()
-}
-
-/// Long-running generation (video / audio) via fal.ai's queue: submit the job,
-/// poll its status until it completes, then fetch the result. Blocking on the
-/// Rust async side, so the UI thread is never held.
-#[tauri::command]
-pub async fn generate_async(
-    connection: Connection,
-    kind: String,
-    model: String,
-    prompt: String,
-    params: Option<serde_json::Value>,
-    result_path: Option<String>,
-) -> Result<GenerationResult, String> {
-    let _permit = GEN_SEM.acquire().await.map_err(|e| e.to_string())?;
-    let key = resolve_key(&connection).await?;
-    let auth = format!("Key {key}");
-    // fal.ai's synchronous host is fal.run; its queue is queue.fal.run.
-    let base = connection.base_url.replace("fal.run", "queue.fal.run");
-    let submit_url = format!("{}/{}", base.trim_end_matches('/'), model);
-
-    let mut body = serde_json::json!({ "prompt": prompt });
-    if let Some(serde_json::Value::Object(map)) = params {
-        for (k, v) in map {
-            body[k] = v;
-        }
-    }
-
-    let client = GEN_HTTP.clone();
-    let sub: serde_json::Value = client
-        .post(&submit_url)
-        .header("Authorization", &auth)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("network error: {e}"))?
-        .error_for_status()
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let status_url = sub
-        .get("status_url")
-        .and_then(|x| x.as_str())
-        .ok_or("no status_url in submit response")?
-        .to_string();
-    let response_url = sub
-        .get("response_url")
-        .and_then(|x| x.as_str())
-        .ok_or("no response_url in submit response")?
-        .to_string();
-
-    // Poll up to ~5 minutes; video can genuinely take that long.
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(300);
-    loop {
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-        if std::time::Instant::now() > deadline {
-            return Err("generation timed out".to_string());
-        }
-        let st: serde_json::Value = client
-            .get(&status_url)
-            .header("Authorization", &auth)
-            .send()
-            .await
-            .map_err(|e| format!("network error: {e}"))?
-            .json()
-            .await
-            .map_err(|e| e.to_string())?;
-        match st.get("status").and_then(|x| x.as_str()) {
-            Some("COMPLETED") => break,
-            Some("IN_QUEUE") | Some("IN_PROGRESS") | None => continue,
-            Some(other) => return Err(format!("generation {other}")),
-        }
-    }
-
-    let result: serde_json::Value = client
-        .get(&response_url)
-        .header("Authorization", &auth)
-        .send()
-        .await
-        .map_err(|e| format!("network error: {e}"))?
-        .json()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let assets = extract_assets(&result, result_path.as_deref().unwrap_or("video"));
-    if assets.is_empty() {
-        return Err("provider returned no assets".to_string());
-    }
-    Ok(GenerationResult { kind, assets })
-}
-
-/// Replicate's `output` is a plain URL string, an array of URL strings, or the
-/// occasional `{url}` object — never fal's `{images:[…]}` shape. Pull the URLs.
-fn replicate_assets(out: Option<&serde_json::Value>) -> Vec<GenerationAsset> {
-    let mut assets = Vec::new();
-    let push = |s: &str, v: &mut Vec<GenerationAsset>| {
-        if s.starts_with("http") || s.starts_with("data:") {
-            v.push(GenerationAsset { url: Some(s.to_string()), b64: None, mime_type: None });
-        }
-    };
-    match out {
-        Some(serde_json::Value::String(s)) => push(s, &mut assets),
-        Some(serde_json::Value::Array(arr)) => {
-            for item in arr {
-                if let Some(s) = item.as_str() {
-                    push(s, &mut assets);
-                } else if let Some(u) = item.get("url").and_then(|x| x.as_str()) {
-                    push(u, &mut assets);
-                }
-            }
-        }
-        Some(obj) if obj.is_object() => {
-            if let Some(u) = obj.get("url").and_then(|x| x.as_str()) {
-                push(u, &mut assets);
-            }
-        }
-        _ => {}
-    }
-    assets
-}
-
-/// Generation via Replicate. Creates a prediction against a model by name
-/// (`owner/name`, no version hash needed for official models), asks the API to
-/// block until done (`Prefer: wait`), and polls the prediction if it is still
-/// running. Auth is `Token <key>`; output URLs are pulled by `replicate_assets`.
-#[tauri::command]
-pub async fn generate_replicate(
-    connection: Connection,
-    kind: String,
-    model: String,
-    prompt: String,
-    params: Option<serde_json::Value>,
-) -> Result<GenerationResult, String> {
-    let _permit = GEN_SEM.acquire().await.map_err(|e| e.to_string())?;
-    let key = resolve_key(&connection).await?;
-    let auth = format!("Token {key}");
-    let base = connection.base_url.trim_end_matches('/');
-    let create_url = format!("{base}/models/{model}/predictions");
-
-    let mut input = serde_json::json!({ "prompt": prompt });
-    if let Some(serde_json::Value::Object(map)) = params {
-        for (k, v) in map {
-            input[k] = v;
-        }
-    }
-    let body = serde_json::json!({ "input": input });
-
-    let client = GEN_HTTP.clone();
-    let mut pred: serde_json::Value = client
-        .post(&create_url)
-        .header("Authorization", &auth)
-        .header("Prefer", "wait")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("network error: {e}"))?
-        .error_for_status()
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let get_url = pred
-        .get("urls")
-        .and_then(|u| u.get("get"))
-        .and_then(|x| x.as_str())
-        .map(String::from);
-
-    // `Prefer: wait` usually returns a terminal prediction already; poll only if
-    // it is still running (slow video/audio models).
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(300);
-    loop {
-        match pred.get("status").and_then(|x| x.as_str()) {
-            Some("succeeded") => break,
-            Some("failed") | Some("canceled") => {
-                let err = pred
-                    .get("error")
-                    .and_then(|x| x.as_str())
-                    .unwrap_or("generation failed");
-                return Err(err.to_string());
-            }
-            _ => {}
-        }
-        if std::time::Instant::now() > deadline {
-            return Err("generation timed out".to_string());
-        }
-        let url = get_url.clone().ok_or("no poll url in prediction")?;
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-        pred = client
-            .get(&url)
-            .header("Authorization", &auth)
-            .send()
-            .await
-            .map_err(|e| format!("network error: {e}"))?
-            .json()
-            .await
-            .map_err(|e| e.to_string())?;
-    }
-
-    let assets = replicate_assets(pred.get("output"));
-    if assets.is_empty() {
-        return Err("provider returned no assets".to_string());
-    }
-    Ok(GenerationResult { kind, assets })
 }
 
 #[tauri::command]
@@ -875,7 +569,9 @@ pub async fn tool_write_file(
 }
 
 #[tauri::command]
-pub async fn list_project_files(root: String) -> Result<Vec<String>, String> {
+pub async fn list_project_files(app: tauri::AppHandle, root: String) -> Result<Vec<String>, String> {
+    policy::require(Access::Read)?;
+    let root = ensure_allowed(&app, &root).await?.to_string_lossy().into_owned();
     blocking(move || crate::index::list_files(&root)).await
 }
 
@@ -884,6 +580,20 @@ pub async fn tool_delete_file(app: tauri::AppHandle, path: String) -> Result<(),
     policy::require(Access::Write)?;
     let path = ensure_allowed(&app, &path).await?;
     blocking(move || tools::delete_file(&path.to_string_lossy())).await
+}
+
+#[tauri::command]
+pub async fn tool_move_file(
+    app: tauri::AppHandle,
+    from: String,
+    to: String,
+) -> Result<(), String> {
+    // A move is a write, and both ends must be inside the project — dragging a
+    // file out of the workspace is the accident containment exists to stop.
+    policy::require(Access::Write)?;
+    let from = ensure_allowed(&app, &from).await?;
+    let to = ensure_allowed(&app, &to).await?;
+    blocking(move || tools::move_file(&from.to_string_lossy(), &to.to_string_lossy())).await
 }
 
 #[tauri::command]
@@ -1109,7 +819,9 @@ pub fn search_cancel(id: String) {
 // ---- Codebase index (BM25 retrieval) --------------------------------------
 
 #[tauri::command]
-pub async fn index_build(root: String) -> Result<crate::index::IndexStats, String> {
+pub async fn index_build(app: tauri::AppHandle, root: String) -> Result<crate::index::IndexStats, String> {
+    policy::require(Access::Read)?;
+    let root = ensure_allowed(&app, &root).await?.to_string_lossy().into_owned();
     blocking(move || crate::index::sync(&root)).await
 }
 
@@ -1128,10 +840,13 @@ pub fn index_unwatch(root: String) {
 
 #[tauri::command]
 pub async fn index_search(
+    app: tauri::AppHandle,
     root: String,
     query: String,
     top_k: Option<usize>,
 ) -> Result<Vec<crate::index::SearchHit>, String> {
+    policy::require(Access::Read)?;
+    let root = ensure_allowed(&app, &root).await?.to_string_lossy().into_owned();
     blocking(move || crate::index::search(&root, &query, top_k.unwrap_or(8))).await
 }
 
@@ -1209,14 +924,29 @@ pub async fn git_apply(
 // ---- Embedded terminal (PTY) ----------------------------------------------
 
 #[tauri::command]
-pub fn pty_spawn(
+pub async fn pty_spawn(
+    app: tauri::AppHandle,
     id: String,
     cwd: Option<String>,
     cols: u16,
     rows: u16,
     on_data: Channel<String>,
 ) -> Result<(), String> {
-    crate::pty::spawn(id, cwd, cols, rows, on_data)
+    // A terminal runs the user's shell — execution — in a directory that must be
+    // inside the project the same way a bash tool call is. The webview is the
+    // untrusted side, so this cannot be left ungated.
+    policy::require(Access::Execute)?;
+    let requested = cwd.unwrap_or_else(|| ".".into());
+    let dir = match ensure_allowed(&app, &requested).await {
+        Ok(d) => d,
+        Err(refusal) => {
+            audit::record("pty", &requested, "<shell>", &refusal);
+            return Err(refusal);
+        }
+    };
+    let dir = dir.to_string_lossy().into_owned();
+    audit::record("pty", &dir, "<shell>", "spawn");
+    crate::pty::spawn(id, Some(dir), cols, rows, on_data)
 }
 
 #[tauri::command]
@@ -1240,14 +970,29 @@ pub fn lsp_which(bin: String) -> Option<String> {
 }
 
 #[tauri::command]
-pub fn lsp_spawn(
+pub async fn lsp_spawn(
+    app: tauri::AppHandle,
     id: String,
     cmd: String,
     args: Vec<String>,
     cwd: Option<String>,
     on_msg: Channel<String>,
 ) -> Result<(), String> {
-    crate::lsp::spawn(id, cmd, args, cwd, on_msg)
+    // A language server is a spawned process that runs build scripts and
+    // proc-macros (rust-analyzer does both) — execution — so it is gated and
+    // contained to the project like any other command.
+    policy::require(Access::Execute)?;
+    let requested = cwd.unwrap_or_else(|| ".".into());
+    let dir = match ensure_allowed(&app, &requested).await {
+        Ok(d) => d,
+        Err(refusal) => {
+            audit::record("lsp", &requested, &cmd, &refusal);
+            return Err(refusal);
+        }
+    };
+    let dir = dir.to_string_lossy().into_owned();
+    audit::record("lsp", &dir, &format!("{cmd} {}", args.join(" ")), "spawn");
+    crate::lsp::spawn(id, cmd, args, Some(dir), on_msg)
 }
 
 #[tauri::command]
@@ -1269,7 +1014,7 @@ pub fn lsp_kill(id: String) -> Result<(), String> {
 // the process reaping and pipe-drain behaviour right.
 
 #[tauri::command]
-pub fn dap_spawn(
+pub async fn dap_spawn(
     app: tauri::AppHandle,
     id: String,
     cmd: String,
@@ -1278,12 +1023,20 @@ pub fn dap_spawn(
     on_msg: Channel<String>,
 ) -> Result<(), String> {
     // A debug adapter launches the user's own program, so it is execution and
-    // gated as such. The working directory is recorded like any command.
+    // gated as such — and contained to the project, so the working directory is
+    // authorized like any command, not merely recorded.
     policy::require(Access::Execute)?;
-    let where_ = cwd.clone().unwrap_or_default();
-    audit::record("dap", &where_, &format!("{cmd} {}", args.join(" ")), "spawn");
-    let _ = app;
-    crate::lsp::spawn(id, cmd, args, cwd, on_msg)
+    let requested = cwd.unwrap_or_else(|| ".".into());
+    let dir = match ensure_allowed(&app, &requested).await {
+        Ok(d) => d,
+        Err(refusal) => {
+            audit::record("dap", &requested, &cmd, &refusal);
+            return Err(refusal);
+        }
+    };
+    let dir = dir.to_string_lossy().into_owned();
+    audit::record("dap", &dir, &format!("{cmd} {}", args.join(" ")), "spawn");
+    crate::lsp::spawn(id, cmd, args, Some(dir), on_msg)
 }
 
 #[tauri::command]
@@ -1393,4 +1146,285 @@ pub async fn attachment_read(id: String) -> Result<Option<String>, String> {
         }
     })
     .await
+}
+
+// ============================================================================
+// MEDIA GENERATION (image + video)
+//
+// Three provider shapes, all verified live against real keys:
+//   - openai_images : POST {base}/images/generations -> data[].b64_json|url
+//                     (TokenRouter, OpenAI Images)
+//   - chat_image    : POST {base}/chat/completions with modalities
+//                     -> choices[0].message.images[].image_url.url (OpenRouter),
+//                     falling back to a data:/http URL inside message.content
+//   - video_poll    : POST {base}/video/generations -> { task_id }, then
+//                     GET {base}/video/generations/{id} -> data.result_url
+//                     (TokenRouter async video; one normalized url field for
+//                     every upstream provider — MiniMax/Kling/Dreamina)
+// Keys resolve from the connection's Keychain entry, HTTP goes through the
+// backend so the webview CSP never blocks a provider call.
+// ============================================================================
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenAsset {
+    pub url: Option<String>,
+    pub b64: Option<String>,
+    pub mime: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenImageResult {
+    pub assets: Vec<GenAsset>,
+}
+
+/// Pull a `data:`/`http` image URL out of a chat reply's text content, for
+/// proxies that inline the image as markdown (`![](data:image/png;base64,…)`).
+fn image_url_from_text(content: &str) -> Option<String> {
+    if let Some(i) = content.find("data:image/") {
+        let tail = &content[i..];
+        let end = tail
+            .find(|c: char| c == ')' || c == ']' || c == '"' || c == '\'' || c.is_whitespace())
+            .unwrap_or(tail.len());
+        return Some(tail[..end].to_string());
+    }
+    for word in content.split_whitespace() {
+        let clean = word.trim_matches(|c| matches!(c, '(' | ')' | '[' | ']' | '<' | '>' | '!' | '"' | '\''));
+        if clean.starts_with("http") {
+            return Some(clean.to_string());
+        }
+    }
+    None
+}
+
+#[tauri::command]
+pub async fn gen_image(
+    connection: Connection,
+    api: String,
+    model: String,
+    prompt: String,
+    params: Option<serde_json::Value>,
+    // Reference images as `data:` URIs, for edit / image-to-image / character
+    // reference. Sent as chat image parts for chat_image; passed through as an
+    // `image` field for openai_images (edit-capable models use it).
+    images: Option<Vec<String>>,
+) -> Result<GenImageResult, String> {
+    let key = resolve_key(&connection).await?;
+    let refs: Vec<String> = images.unwrap_or_default();
+
+    if api == "chat_image" {
+        let url = connection.endpoint("chat/completions");
+        // With references, the message content becomes an array of parts (text +
+        // one image_url per reference); without, a plain string.
+        let content = if refs.is_empty() {
+            serde_json::json!(prompt)
+        } else {
+            let mut parts = vec![serde_json::json!({ "type": "text", "text": prompt })];
+            for u in &refs {
+                parts.push(serde_json::json!({
+                    "type": "image_url",
+                    "image_url": { "url": u },
+                }));
+            }
+            serde_json::Value::Array(parts)
+        };
+        let body = serde_json::json!({
+            "model": model,
+            "modalities": ["image", "text"],
+            "messages": [{ "role": "user", "content": content }],
+        });
+        let resp = GEN_HTTP
+            .post(&url)
+            .bearer_auth(&key)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("network error: {e}"))?;
+        if !resp.status().is_success() {
+            let code = resp.status();
+            return Err(format!("{code}: {}", resp.text().await.unwrap_or_default()));
+        }
+        let v: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+        let msg = v
+            .get("choices")
+            .and_then(|c| c.as_array())
+            .and_then(|a| a.first())
+            .and_then(|f| f.get("message"))
+            .ok_or_else(|| "provider returned no message".to_string())?;
+
+        let mut assets = Vec::new();
+        if let Some(imgs) = msg.get("images").and_then(|i| i.as_array()) {
+            for img in imgs {
+                let u = img
+                    .get("image_url")
+                    .and_then(|x| x.get("url"))
+                    .and_then(|x| x.as_str())
+                    .or_else(|| img.get("url").and_then(|x| x.as_str()));
+                if let Some(u) = u {
+                    assets.push(GenAsset { url: Some(u.to_string()), b64: None, mime: None });
+                }
+            }
+        }
+        if assets.is_empty() {
+            if let Some(content) = msg.get("content").and_then(|c| c.as_str()) {
+                if let Some(u) = image_url_from_text(content) {
+                    assets.push(GenAsset { url: Some(u), b64: None, mime: None });
+                }
+            }
+        }
+        if assets.is_empty() {
+            return Err("provider returned no image (model may not support image output)".into());
+        }
+        return Ok(GenImageResult { assets });
+    }
+
+    // openai_images
+    let url = connection.endpoint("images/generations");
+    let mut body = serde_json::json!({ "model": model, "prompt": prompt });
+    if let Some(serde_json::Value::Object(map)) = params {
+        for (k, val) in map {
+            body[k] = val;
+        }
+    }
+    // Best-effort reference passthrough for edit-capable models. Only set when
+    // references exist, so plain text-to-image requests are unchanged.
+    if !refs.is_empty() {
+        body["image"] = serde_json::json!(refs);
+    }
+    let resp = GEN_HTTP
+        .post(&url)
+        .bearer_auth(&key)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("network error: {e}"))?;
+    if !resp.status().is_success() {
+        let code = resp.status();
+        return Err(format!("{code}: {}", resp.text().await.unwrap_or_default()));
+    }
+    let v: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let arr = v
+        .get("data")
+        .and_then(|d| d.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let assets: Vec<GenAsset> = arr
+        .iter()
+        .filter_map(|item| {
+            let url = item.get("url").and_then(|x| x.as_str()).map(String::from);
+            let b64 = item
+                .get("b64_json")
+                .or_else(|| item.get("b64"))
+                .and_then(|x| x.as_str())
+                .map(String::from);
+            let mime = item
+                .get("mime_type")
+                .or_else(|| item.get("content_type"))
+                .and_then(|x| x.as_str())
+                .map(String::from);
+            if url.is_none() && b64.is_none() {
+                return None;
+            }
+            Some(GenAsset { url, b64, mime })
+        })
+        .collect();
+    if assets.is_empty() {
+        return Err("provider returned no image".into());
+    }
+    Ok(GenImageResult { assets })
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenVideoSubmit {
+    pub task_id: String,
+}
+
+#[tauri::command]
+pub async fn gen_video_submit(
+    connection: Connection,
+    model: String,
+    prompt: String,
+    params: Option<serde_json::Value>,
+) -> Result<GenVideoSubmit, String> {
+    let key = resolve_key(&connection).await?;
+    let url = connection.endpoint("video/generations");
+    let mut body = serde_json::json!({ "model": model, "prompt": prompt });
+    if let Some(serde_json::Value::Object(map)) = params {
+        for (k, val) in map {
+            body[k] = val;
+        }
+    }
+    let resp = GEN_HTTP
+        .post(&url)
+        .bearer_auth(&key)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("network error: {e}"))?;
+    let v: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    // The provider reports quota / validation failures in the body with HTTP 200.
+    if let Some(task) = v
+        .get("task_id")
+        .or_else(|| v.get("id"))
+        .and_then(|x| x.as_str())
+    {
+        return Ok(GenVideoSubmit { task_id: task.to_string() });
+    }
+    let msg = v
+        .get("message")
+        .and_then(|x| x.as_str())
+        .filter(|s| !s.is_empty())
+        .or_else(|| v.get("code").and_then(|x| x.as_str()))
+        .unwrap_or("video submit failed");
+    Err(msg.to_string())
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenVideoStatus {
+    pub status: String,
+    pub progress: Option<String>,
+    pub url: Option<String>,
+    pub fail_reason: Option<String>,
+}
+
+#[tauri::command]
+pub async fn gen_video_poll(
+    connection: Connection,
+    task_id: String,
+) -> Result<GenVideoStatus, String> {
+    let key = resolve_key(&connection).await?;
+    let url = connection.endpoint(&format!("video/generations/{task_id}"));
+    let resp = GEN_HTTP
+        .get(&url)
+        .bearer_auth(&key)
+        .send()
+        .await
+        .map_err(|e| format!("network error: {e}"))?;
+    let v: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let d = v.get("data").unwrap_or(&v);
+    let status = d
+        .get("status")
+        .and_then(|x| x.as_str())
+        .unwrap_or("UNKNOWN")
+        .to_string();
+    let progress = d
+        .get("progress")
+        .and_then(|x| x.as_str().map(String::from).or_else(|| x.as_i64().map(|n| n.to_string())));
+    // TokenRouter normalizes the finished asset to `data.result_url`; keep a few
+    // fallbacks for other proxy shapes.
+    let url = d
+        .get("result_url")
+        .or_else(|| d.get("video_url"))
+        .or_else(|| d.get("url"))
+        .and_then(|x| x.as_str())
+        .map(String::from);
+    let fail_reason = d
+        .get("fail_reason")
+        .and_then(|x| x.as_str())
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+    Ok(GenVideoStatus { status, progress, url, fail_reason })
 }

@@ -558,7 +558,7 @@ impl Provider for OpenAiCompat {
         // the network splits wherever it likes (see utf8.rs).
         let mut decoder = crate::utf8::Utf8Stream::new();
 
-        while let Some(chunk) = stream.next().await {
+        'stream_loop: while let Some(chunk) = stream.next().await {
             if cancel.load(Ordering::Relaxed) {
                 break;
             }
@@ -570,10 +570,24 @@ impl Provider for OpenAiCompat {
                 buf.drain(..=idx);
                 let Some(data) = line.strip_prefix("data:") else { continue };
                 let data = data.trim();
-                if data.is_empty() || data == "[DONE]" {
+                if data.is_empty() {
                     continue;
                 }
+                if data == "[DONE]" {
+                    // The server closes the SSE stream here. Stop reading so
+                    // reqwest doesn't hang waiting on a half-closed connection.
+                    break 'stream_loop;
+                }
                 let Ok(v) = serde_json::from_str::<Value>(data) else { continue };
+
+                if let Some(err) = v.get("error") {
+                    let message = err
+                        .as_str()
+                        .map(String::from)
+                        .or_else(|| err.get("message").and_then(|m| m.as_str()).map(String::from))
+                        .unwrap_or_else(|| err.to_string());
+                    return Err(ProviderError::Api(message));
+                }
 
                 if let Some(u) = v.get("usage") {
                     let _ = channel.send(StreamEvent::Usage {
@@ -645,5 +659,60 @@ impl Provider for OpenAiCompat {
             content: (!text.is_empty()).then_some(text),
             tool_calls,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_temperature_refusal_is_a_400_that_names_temperature() {
+        // The retry-without-temperature path hinges on this: a 400 mentioning
+        // temperature is retried, anything else is a real error.
+        assert!(is_temperature_refusal(
+            reqwest::StatusCode::BAD_REQUEST,
+            "Unsupported value: 'temperature' is not supported",
+        ));
+        assert!(!is_temperature_refusal(
+            reqwest::StatusCode::BAD_REQUEST,
+            "invalid api key",
+        ));
+        assert!(!is_temperature_refusal(
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+            "temperature",
+        ));
+    }
+
+    #[test]
+    fn prompt_cache_is_openrouter_plus_an_anthropic_family_model() {
+        assert!(supports_prompt_cache(
+            "https://openrouter.ai/api/v1",
+            "anthropic/claude-3.5-sonnet"
+        ));
+        assert!(supports_prompt_cache("https://OpenRouter.ai", "google/gemini-pro"));
+        // Not OpenRouter, or not a cacheable family:
+        assert!(!supports_prompt_cache("https://api.openai.com/v1", "gpt-4o"));
+        assert!(!supports_prompt_cache("https://openrouter.ai", "meta/llama-3"));
+    }
+
+    #[test]
+    fn caching_wraps_only_the_system_prompt() {
+        let mut msgs = vec![
+            json!({"role": "system", "content": "S"}),
+            json!({"role": "user", "content": "U"}),
+        ];
+        maybe_cache_system(&mut msgs, true);
+        assert_eq!(msgs[0]["content"][0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(msgs[0]["content"][0]["text"], "S");
+        // The user turn is left exactly as it was.
+        assert_eq!(msgs[1]["content"], "U");
+    }
+
+    #[test]
+    fn caching_disabled_changes_nothing() {
+        let mut msgs = vec![json!({"role": "system", "content": "S"})];
+        maybe_cache_system(&mut msgs, false);
+        assert_eq!(msgs[0]["content"], "S");
     }
 }

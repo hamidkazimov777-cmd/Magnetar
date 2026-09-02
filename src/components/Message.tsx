@@ -12,15 +12,6 @@ import { acceptProposal, extractProposal, rejectProposal, stripProposalTags } fr
 import { loadBytes } from "../lib/attachments";
 import type { Attachment, ChatMessage } from "../lib/types";
 
-function extractMagnetarPrompt(content: string): string | null {
-  const m = content.match(/<MagnetarPrompt>([\s\S]*?)<\/MagnetarPrompt>/i);
-  return m ? m[1].trim() : null;
-}
-
-function stripMagnetarPromptTags(content: string): string {
-  return content.replace(/<\/?MagnetarPrompt>/gi, "");
-}
-
 /** A code block with a copy button, used inside the markdown renderer. */
 function Pre({ children }: { children?: React.ReactNode }) {
   const t = useT();
@@ -78,12 +69,9 @@ export const Message = memo(function Message({
     ? proposals?.find((p) => p.messageId === message.id)
     : undefined;
     
-  const generatedPrompt = !isUser && message.content ? extractMagnetarPrompt(message.content) : null;
-  
   let renderedContent = message.content;
   if (!isUser) {
     renderedContent = stripProposalTags(renderedContent);
-    renderedContent = stripMagnetarPromptTags(renderedContent);
   }
 
   const copyAll = async () => {
@@ -198,33 +186,6 @@ export const Message = memo(function Message({
                 >
                   {renderedContent}
                 </ReactMarkdown>
-              )}
-              {generatedPrompt && (
-                <div className="mt-3 rounded-[var(--r-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-                  <div className="mb-2 text-[length:var(--fs-xs)] font-medium text-[var(--color-text-mute)] uppercase tracking-wide">
-                    {t("promptGenerated")}
-                  </div>
-                  <div className="prose-chat mb-3 text-[length:var(--fs-md)]">
-                    <pre className="whitespace-pre-wrap break-words rounded-[var(--r-sm)] bg-[var(--color-surface-2)] p-2">
-                      {generatedPrompt}
-                    </pre>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => navigator.clipboard.writeText(generatedPrompt)}
-                      className="btn btn-secondary btn-sm"
-                    >
-                      <Copy size={13} className="mr-1.5" />
-                      {t("copy")}
-                    </button>
-                    <button
-                      onClick={() => useStore.getState().requestStudioPrompt(generatedPrompt)}
-                      className="btn btn-primary btn-sm"
-                    >
-                      {t("promptSendToStudio")}
-                    </button>
-                  </div>
-                </div>
               )}
             </div>
           ) : isPending ? (

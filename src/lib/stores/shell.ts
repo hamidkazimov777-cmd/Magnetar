@@ -68,6 +68,11 @@ export interface ShellSlice {
   consumeCommand: () => string | undefined;
   agentPanelOpen: boolean;
   toggleAgentPanel: (v?: boolean) => void;
+  /** True while a file from outside is being dragged over the window, so the
+   *  agent panel can show a full-area "drop to attach" target — the drop itself
+   *  is window-wide (Tauri), the overlay just makes where to aim obvious. */
+  agentDragging: boolean;
+  setAgentDragging: (v: boolean) => void;
 }
 
 export const createShellSlice: Slice<ShellSlice> = (set, get) => ({
@@ -128,4 +133,6 @@ export const createShellSlice: Slice<ShellSlice> = (set, get) => ({
   agentPanelOpen: true,
   toggleAgentPanel: (v) =>
     set((s) => ({ agentPanelOpen: v ?? !s.agentPanelOpen })),
+  agentDragging: false,
+  setAgentDragging: (agentDragging) => set({ agentDragging }),
 });

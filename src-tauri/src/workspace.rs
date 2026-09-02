@@ -53,12 +53,292 @@ pub fn save_connection(c0: ConnectionRow) -> Result<(), String> {
         )
         .map_err(|e| e.to_string())?;
         Ok(())
-    })
+    })?;
+    // Saving a connection is what authorizes reaching its host over the network.
+    crate::policy::allow_network(&c0.base_url);
+    Ok(())
 }
 
 pub fn delete_connection(id: &str) -> Result<(), String> {
     with_conn(|c| {
         c.execute("DELETE FROM connections WHERE id = ?1", params![id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+}
+
+// --- Agent runs (durable) ---
+//
+// A run is the canon of one agent turn: what it is, what it spent, and how it
+// ended. The live loop stays in the frontend, but it now writes here so a run
+// survives a restart and can be resumed, budgeted and reviewed. `agent_events`
+// is the append-only trace that reconstructs the run.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentRunRow {
+    pub id: String,
+    pub session_id: Option<String>,
+    pub project_id: Option<String>,
+    pub connection_id: Option<String>,
+    pub model: Option<String>,
+    pub status: String,
+    pub started_at: i64,
+    pub updated_at: i64,
+    pub ended_at: Option<i64>,
+    pub steps: i64,
+    pub tokens_in: i64,
+    pub tokens_out: i64,
+    pub cost_usd: f64,
+    pub budget_steps: Option<i64>,
+    pub budget_usd: Option<f64>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentEventRow {
+    pub id: String,
+    pub run_id: String,
+    pub seq: i64,
+    pub kind: String,
+    pub payload: Option<String>,
+    pub created_at: i64,
+}
+
+fn read_run(r: &rusqlite::Row) -> rusqlite::Result<AgentRunRow> {
+    Ok(AgentRunRow {
+        id: r.get(0)?,
+        session_id: r.get(1)?,
+        project_id: r.get(2)?,
+        connection_id: r.get(3)?,
+        model: r.get(4)?,
+        status: r.get(5)?,
+        started_at: r.get(6)?,
+        updated_at: r.get(7)?,
+        ended_at: r.get(8)?,
+        steps: r.get(9)?,
+        tokens_in: r.get(10)?,
+        tokens_out: r.get(11)?,
+        cost_usd: r.get(12)?,
+        budget_steps: r.get(13)?,
+        budget_usd: r.get(14)?,
+        error: r.get(15)?,
+    })
+}
+
+const RUN_COLS: &str = "id, session_id, project_id, connection_id, model, status, \
+    started_at, updated_at, ended_at, steps, tokens_in, tokens_out, cost_usd, \
+    budget_steps, budget_usd, error";
+
+/// Create a run or update it in place — the frontend holds the run object and
+/// writes the whole thing on each change, which keeps the durable copy in step
+/// without a patch protocol.
+pub fn save_agent_run(run: AgentRunRow) -> Result<(), String> {
+    with_conn(|c| {
+        c.execute(
+            "INSERT INTO agent_runs (id, session_id, project_id, connection_id, model, \
+               status, started_at, updated_at, ended_at, steps, tokens_in, tokens_out, \
+               cost_usd, budget_steps, budget_usd, error) \
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16) \
+             ON CONFLICT(id) DO UPDATE SET \
+               session_id=excluded.session_id, project_id=excluded.project_id, \
+               connection_id=excluded.connection_id, model=excluded.model, \
+               status=excluded.status, updated_at=excluded.updated_at, \
+               ended_at=excluded.ended_at, steps=excluded.steps, \
+               tokens_in=excluded.tokens_in, tokens_out=excluded.tokens_out, \
+               cost_usd=excluded.cost_usd, budget_steps=excluded.budget_steps, \
+               budget_usd=excluded.budget_usd, error=excluded.error",
+            params![
+                run.id, run.session_id, run.project_id, run.connection_id, run.model,
+                run.status, run.started_at, run.updated_at, run.ended_at, run.steps,
+                run.tokens_in, run.tokens_out, run.cost_usd, run.budget_steps,
+                run.budget_usd, run.error,
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+}
+
+/// Append one event to a run's trace. `seq` is assigned as the next index for
+/// the run, so callers never have to track it.
+pub fn append_agent_event(
+    run_id: &str,
+    id: &str,
+    kind: &str,
+    payload: Option<String>,
+    created_at: i64,
+) -> Result<i64, String> {
+    with_conn(|c| {
+        let seq: i64 = c
+            .query_row(
+                "SELECT COALESCE(MAX(seq) + 1, 0) FROM agent_events WHERE run_id = ?1",
+                params![run_id],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        c.execute(
+            "INSERT INTO agent_events (id, run_id, seq, kind, payload, created_at) \
+             VALUES (?1,?2,?3,?4,?5,?6)",
+            params![id, run_id, seq, kind, payload, created_at],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(seq)
+    })
+}
+
+/// Recent runs, newest first, optionally scoped to one session.
+pub fn list_agent_runs(session_id: Option<String>, limit: i64) -> Result<Vec<AgentRunRow>, String> {
+    with_conn(|c| {
+        let sql = format!(
+            "SELECT {RUN_COLS} FROM agent_runs {} ORDER BY started_at DESC LIMIT ?",
+            if session_id.is_some() { "WHERE session_id = ?" } else { "" },
+        );
+        let mut stmt = c.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = match session_id {
+            Some(s) => stmt.query_map(params![s, limit], read_run),
+            None => stmt.query_map(params![limit], read_run),
+        }
+        .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    })
+}
+
+/// Runs that were still in flight — used at startup to offer resume or close.
+pub fn active_agent_runs() -> Result<Vec<AgentRunRow>, String> {
+    with_conn(|c| {
+        let mut stmt = c
+            .prepare(&format!(
+                "SELECT {RUN_COLS} FROM agent_runs \
+                 WHERE status IN ('running','paused') ORDER BY started_at DESC",
+            ))
+            .map_err(|e| e.to_string())?;
+        let rows = stmt.query_map([], read_run).map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    })
+}
+
+pub fn get_agent_run(id: &str) -> Result<Option<AgentRunRow>, String> {
+    with_conn(|c| {
+        let mut stmt = c
+            .prepare(&format!("SELECT {RUN_COLS} FROM agent_runs WHERE id = ?1"))
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt.query_map(params![id], read_run).map_err(|e| e.to_string())?;
+        match rows.next() {
+            Some(r) => Ok(Some(r.map_err(|e| e.to_string())?)),
+            None => Ok(None),
+        }
+    })
+}
+
+pub fn list_agent_events(run_id: &str) -> Result<Vec<AgentEventRow>, String> {
+    with_conn(|c| {
+        let mut stmt = c
+            .prepare(
+                "SELECT id, run_id, seq, kind, payload, created_at \
+                 FROM agent_events WHERE run_id = ?1 ORDER BY seq ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![run_id], |r| {
+                Ok(AgentEventRow {
+                    id: r.get(0)?,
+                    run_id: r.get(1)?,
+                    seq: r.get(2)?,
+                    kind: r.get(3)?,
+                    payload: r.get(4)?,
+                    created_at: r.get(5)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    })
+}
+
+/// At startup, mark any run left in flight as interrupted (see db::reconcile).
+pub fn reconcile_agent_runs() -> Result<usize, String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    with_conn(|c| crate::db::reconcile_agent_runs(c, now))
+}
+
+/// Remove a run and its trace.
+pub fn delete_agent_run(id: &str) -> Result<(), String> {
+    with_conn(|c| {
+        c.execute("DELETE FROM agent_events WHERE run_id = ?1", params![id])
+            .map_err(|e| e.to_string())?;
+        c.execute("DELETE FROM agent_runs WHERE id = ?1", params![id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+}
+
+// --- Generations (Studio gallery, durable) ---
+//
+// The Studio's results were kept only in a module cache, so a restart lost the
+// gallery. They live in the `generations` table now: one row per produced asset,
+// with the prompt and model that made it. `src` is a URL or a data-URI.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerationRow {
+    pub id: String,
+    pub kind: String,
+    pub src: String,
+    pub name: String,
+    pub prompt: Option<String>,
+    pub model: Option<String>,
+    pub run_id: Option<String>,
+    pub created_at: i64,
+}
+
+pub fn save_generation(g: GenerationRow) -> Result<(), String> {
+    with_conn(|c| {
+        c.execute(
+            "INSERT INTO generations (id, kind, src, name, prompt, model, run_id, created_at) \
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8) \
+             ON CONFLICT(id) DO UPDATE SET \
+               kind=excluded.kind, src=excluded.src, name=excluded.name, \
+               prompt=excluded.prompt, model=excluded.model, run_id=excluded.run_id",
+            params![g.id, g.kind, g.src, g.name, g.prompt, g.model, g.run_id, g.created_at],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+}
+
+pub fn list_generations(limit: i64) -> Result<Vec<GenerationRow>, String> {
+    with_conn(|c| {
+        let mut stmt = c
+            .prepare(
+                "SELECT id, kind, src, name, prompt, model, run_id, created_at \
+                 FROM generations ORDER BY created_at DESC LIMIT ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![limit], |r| {
+                Ok(GenerationRow {
+                    id: r.get(0)?,
+                    kind: r.get(1)?,
+                    src: r.get(2)?,
+                    name: r.get(3)?,
+                    prompt: r.get(4)?,
+                    model: r.get(5)?,
+                    run_id: r.get(6)?,
+                    created_at: r.get(7)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    })
+}
+
+pub fn delete_generation(id: &str) -> Result<(), String> {
+    with_conn(|c| {
+        c.execute("DELETE FROM generations WHERE id = ?1", params![id])
             .map_err(|e| e.to_string())?;
         Ok(())
     })
@@ -750,78 +1030,6 @@ pub fn save_timeline_event(t: TimelineEvent) -> Result<(), String> {
              ON CONFLICT(id) DO NOTHING",
             params![t.id, t.project_id, t.event_type, t.content, t.created_at],
         ).map_err(|e| e.to_string())?;
-        Ok(())
-    })
-}
-
-// --- Generation studio history (global personal output library) ---
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Generation {
-    pub id: String,
-    /// image | video | audio | voice
-    pub kind: String,
-    /// Hosted URL or inline data-URI — the asset itself.
-    pub src: String,
-    pub name: String,
-    pub prompt: Option<String>,
-    pub model: Option<String>,
-    pub created_at: i64,
-}
-
-pub fn list_generations() -> Result<Vec<Generation>, String> {
-    with_conn(|c| {
-        let mut stmt = c
-            .prepare(
-                "SELECT id, kind, src, name, prompt, model, created_at \
-                 FROM generations \
-                 ORDER BY created_at DESC",
-            )
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([], |r| {
-                Ok(Generation {
-                    id: r.get(0)?,
-                    kind: r.get(1)?,
-                    src: r.get(2)?,
-                    name: r.get(3)?,
-                    prompt: r.get(4)?,
-                    model: r.get(5)?,
-                    created_at: r.get(6)?,
-                })
-            })
-            .map_err(|e| e.to_string())?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
-    })
-}
-
-pub fn save_generation(g: Generation) -> Result<(), String> {
-    with_conn(|c| {
-        c.execute(
-            "INSERT INTO generations \
-               (id, kind, src, name, prompt, model, created_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) \
-             ON CONFLICT(id) DO NOTHING",
-            params![g.id, g.kind, g.src, g.name, g.prompt, g.model, g.created_at],
-        )
-        .map_err(|e| e.to_string())?;
-        Ok(())
-    })
-}
-
-pub fn delete_generation(id: &str) -> Result<(), String> {
-    with_conn(|c| {
-        c.execute("DELETE FROM generations WHERE id = ?1", params![id])
-            .map_err(|e| e.to_string())?;
-        Ok(())
-    })
-}
-
-pub fn clear_generations() -> Result<(), String> {
-    with_conn(|c| {
-        c.execute("DELETE FROM generations", [])
-            .map_err(|e| e.to_string())?;
         Ok(())
     })
 }

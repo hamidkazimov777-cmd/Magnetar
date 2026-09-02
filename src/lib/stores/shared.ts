@@ -62,6 +62,10 @@ export interface FileChange {
   tool: "write_file" | "edit_file";
   at: number;
   reverted?: boolean;
+  /** The agent run that made this edit, so the Changes panel can group a task's
+   *  edits and roll the whole task back at once. Absent for edits made outside a
+   *  run. */
+  runId?: string;
 }
 
 /** User-facing behaviour switches, surfaced in Settings. */
@@ -87,6 +91,11 @@ export interface Prefs {
   confirmBash: boolean;
   /** How many tool-use rounds the agent may take before stopping. */
   agentMaxSteps: number;
+  /** Token ceiling for one run (input + output, summed across turns). A run
+   *  that crosses it stops with an explainable reason instead of burning
+   *  tokens until the provider runs out of credit — the failure mode that
+   *  motivated the agent guardrails. 0 disables the ceiling. */
+  agentMaxTokens: number;
   /** Seconds a single shell command may run (npm install/cargo build are slow). */
   bashTimeoutSecs: number;
   /** Model used for background work: project memory, handoff notes, knowledge
@@ -104,6 +113,11 @@ export interface Prefs {
   editorFontSize: number;
   editorWordWrap: boolean;
   editorMinimap: boolean;
+  /** Offer AI ghost-text completions in the editor. Off by default: it spends
+   *  tokens on every pause and needs a configured model, so it is a choice the
+   *  user makes, not a surprise on their bill. Uses the memory model when set,
+   *  otherwise the chat's model. */
+  inlineCompletion: boolean;
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -113,12 +127,14 @@ export const DEFAULT_PREFS: Prefs = {
   autosaveDelayMs: 1000,
   confirmBash: true,
   agentMaxSteps: 80,
+  agentMaxTokens: 1_000_000,
   bashTimeoutSecs: 600,
   subagentParallel: 3,
   subagentRoster: [],
   editorFontSize: 13,
   editorWordWrap: false,
   editorMinimap: true,
+  inlineCompletion: false,
 };
 
 export const uid = () =>

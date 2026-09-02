@@ -46,6 +46,14 @@ pub fn run() {
                 keychain::init(&dir);
                 audit::init(&dir);
                 policy::init(&dir);
+                // Seed the network allowlist from every saved connection, so a
+                // provider configured before this gate existed stays reachable
+                // and BYOK keeps working without any migration step.
+                if let Ok(conns) = workspace::list_connections() {
+                    for c in &conns {
+                        policy::allow_network(&c.base_url);
+                    }
+                }
                 index::init(&dir);
                 // The theme the frontend last persisted (see persist_window_theme).
                 dark = std::fs::read_to_string(dir.join("window-theme"))
@@ -82,6 +90,10 @@ pub fn run() {
                 .title_bar_style(tauri::TitleBarStyle::Overlay)
                 .hidden_title(true)
                 .background_color(color)
+                // Let the webview receive HTML5 drag-and-drop of files (Studio
+                // reference images). Without this, Tauri's OS-level file-drop
+                // handler swallows the events before the DOM sees them.
+                .disable_drag_drop_handler()
                 .initialization_script(&init)
                 // Start hidden so no half-painted white frame is ever shown; the
                 // frontend calls `show` once the splash is drawn (command below).
@@ -105,9 +117,9 @@ pub fn run() {
             commands::has_api_key,
             commands::list_models,
             commands::complete,
-            commands::generate,
-            commands::generate_async,
-            commands::generate_replicate,
+            commands::gen_image,
+            commands::gen_video_submit,
+            commands::gen_video_poll,
             commands::chat_stream,
             commands::cancel_stream,
             commands::list_sessions,
@@ -123,6 +135,7 @@ pub fn run() {
             commands::tool_grep,
             commands::tool_create_dir, commands::tool_write_file,
             commands::tool_delete_file,
+            commands::tool_move_file,
             commands::list_project_files,
             commands::tool_edit_file,
             commands::tool_run_bash,
@@ -166,6 +179,17 @@ pub fn run() {
             commands::list_connections,
             commands::save_connection,
             commands::delete_connection,
+            commands::agent_run_save,
+            commands::agent_event_append,
+            commands::agent_runs_list,
+            commands::agent_runs_active,
+            commands::agent_run_get,
+            commands::agent_events_list,
+            commands::agent_runs_reconcile,
+            commands::agent_run_delete,
+            commands::generation_save,
+            commands::generations_list,
+            commands::generation_delete,
             commands::list_projects,
             commands::save_project,
             commands::delete_project,
@@ -181,10 +205,6 @@ pub fn run() {
             commands::list_proposals,
             commands::save_proposal,
             commands::persist_window_theme,
-            commands::list_generations,
-            commands::save_generation,
-            commands::delete_generation,
-            commands::clear_generations,
             commands::list_tasks,
             commands::save_task,
             commands::delete_task,
@@ -304,11 +324,9 @@ mod config_tests {
     }
 
     #[test]
-    fn remote_media_is_allowed_only_where_generated_assets_need_it() {
-        // Generation providers hand back an https URL for the finished asset,
-        // and Studio renders it directly. That is the whole reason `https:`
-        // appears here; it must not spread to anything executable. Step 13
-        // saves assets to disk, and this can be tightened once it does.
+    fn remote_media_is_allowed_but_never_executable() {
+        // Remote https: images/media are allowed to render; it must not spread
+        // to anything executable.
         assert!(directive("img-src").contains("https:"));
         assert!(directive("media-src").contains("https:"));
         assert!(!directive("script-src").contains("https:"));

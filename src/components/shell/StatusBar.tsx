@@ -114,18 +114,8 @@ export function StatusBar({ onOpenSettings }: { onOpenSettings: () => void }) {
       {/* Agent and model are AI state — the only violet in the status bar. */}
       <Item
         icon={Bot}
-        label={
-          activeTrack === "agent"
-            ? t("statusAgentOn")
-            : activeTrack === "generation"
-              ? t("trackGeneration")
-              : t("statusAgentOff")
-        }
-        onClick={() =>
-          switchTrack(
-            activeTrack === "chat" ? "agent" : activeTrack === "agent" ? "generation" : "chat",
-          )
-        }
+        label={activeTrack === "agent" ? t("statusAgentOn") : t("statusAgentOff")}
+        onClick={() => switchTrack(activeTrack === "chat" ? "agent" : "chat")}
         tone={activeTrack !== "chat" ? "ai" : undefined}
       />
       <Hint text={t("hintTerminal")} side="top">

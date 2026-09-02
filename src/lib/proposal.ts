@@ -100,8 +100,7 @@ export function rejectProposal(
 async function reviewProposal(p: Proposal): Promise<void> {
   const st = useStore.getState();
   const picked = cheapModel();
-  // Generative connections serve image/audio models — they cannot review text.
-  if (!picked || picked.connection.kind === "generative") return;
+  if (!picked) return;
 
   const context = [renderFacts(projectFacts(p.projectId)), renderDecisions(projectDecisions(p.projectId), 6)]
     .filter(Boolean)

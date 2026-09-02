@@ -60,13 +60,24 @@ const REPEAT_LIMIT = 3;
 const FAILURE_LIMIT = 5;
 
 export interface LoopWatch {
-  /** Signature → how many times it has been seen. */
-  seen: Map<string, number>;
+  /** Signature → how many times it repeated AND the last result seen for it.
+   *  Progress is judged by the result changing, not by the call being reissued:
+   *  polling a build with `sleep N && tail log` reruns the same command on
+   *  purpose, and as long as the log grows the result differs and it is not a
+   *  loop. Only the same call returning the same result over and over is stuck. */
+  seen: Map<string, { count: number; lastResult: string }>;
   consecutiveFailures: number;
 }
 
 export function newLoopWatch(): LoopWatch {
   return { seen: new Map(), consecutiveFailures: 0 };
+}
+
+/** A compact digest of a result for equality comparison. The tail is kept
+ *  because a growing log changes at the end; numbers are NOT normalised here (a
+ *  changing byte count or timestamp is exactly the progress we want to see). */
+function resultDigest(result: string): string {
+  return result.replace(/\s+/g, " ").trim().slice(-400);
 }
 
 /** Normalise a call so that trivially different repeats still match: the same
@@ -85,12 +96,15 @@ export function callSignature(name: string, args: ToolArgs): string {
   return `${name}:${path}`;
 }
 
-/** Record a call and report why the run should stop, if it should.
- *  Returns an explanation for the model, or null to carry on. */
+/** Record a completed call and report why the run should stop, if it should.
+ *  Called AFTER the tool runs, so it can judge progress by the result: a repeat
+ *  that returns something new (a growing log, a different error) is work, not a
+ *  loop. Returns an explanation for the model, or null to carry on. */
 export function checkLoop(
   watch: LoopWatch,
   name: string,
   args: ToolArgs,
+  result: string,
   lastResultFailed: boolean,
 ): string | null {
   watch.consecutiveFailures = lastResultFailed ? watch.consecutiveFailures + 1 : 0;
@@ -99,11 +113,18 @@ export function checkLoop(
     return `${FAILURE_LIMIT} tool calls in a row failed. Stop and tell the user what is blocking you instead of trying again.`;
 
   const sig = callSignature(name, args);
-  const count = (watch.seen.get(sig) ?? 0) + 1;
-  watch.seen.set(sig, count);
+  const digest = resultDigest(result);
+  const prev = watch.seen.get(sig);
 
-  if (count > REPEAT_LIMIT)
-    return `You have run essentially the same call ${count} times ("${sig}") without making progress. Stop, summarise what you found and what is blocking you, and ask the user how to proceed.`;
+  if (prev && prev.lastResult === digest) {
+    // Same call, same result — no progress. This is the real loop.
+    prev.count += 1;
+    if (prev.count > REPEAT_LIMIT)
+      return `You have run essentially the same call ${prev.count} times ("${sig}") and got the same result each time — no progress. Stop, summarise what you found and what is blocking you, and ask the user how to proceed.`;
+  } else {
+    // First time, or the result changed: reset the counter for this signature.
+    watch.seen.set(sig, { count: 1, lastResult: digest });
+  }
 
   return null;
 }

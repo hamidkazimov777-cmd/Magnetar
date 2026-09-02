@@ -40,12 +40,15 @@ around.
 | **Project memory** | Facts that carry where they came from and whether a machine confirmed them — stack, architecture, constraints, current state. Collected automatically, editable by hand, selected per request |
 | **Decision log** | What was decided, when, why, what was rejected, which files it touches, at which commit |
 | **Agent** | Reads, writes and edits files, searches the code, runs shell commands. Every edit is reviewable and revertible |
-| **Discussion track** | A second conversation with its own model and no tools: talk the task through, then hand the prompt to the agent |
-| **Editor** | Monaco (the engine behind VS Code) with tabs, side-by-side diffs and TypeScript IntelliSense — bundled locally, no CDN |
+| **Discussion track** | A conversation with its own model and no tools: talk the task through, then hand the prompt to the agent |
+| **Generation Studio** | Full-screen image and video studio: a data-driven model registry (settings render from each model's params) with an optional LLM prompt-refinement step before generation |
+| **Editor** | Monaco (the engine behind VS Code) with tabs, side-by-side diffs, AI inline completion (ghost text), and real language intelligence over LSP — hover, go-to-definition, rename, references, completion and diagnostics — bundled locally, no CDN |
+| **Language servers** | Real LSP clients for Rust (rust-analyzer), Python (Pyright), Go (gopls) and TypeScript/JavaScript, spawned by the Rust backend and offered with an install hint when a server is missing |
+| **Debugger** | Debug Adapter Protocol client — breakpoints, stepping, call stack, scopes, variables and expression evaluation. Python (debugpy) and Rust (lldb-dap, with an automatic `cargo build` and binary resolve) are wired end-to-end; other adapters are offered with an install hint |
 | **Source control** | Branch, staging, commit, diff, log, fetch/pull/push |
 | **Terminal** | A real PTY in the project root, sharing the shell the agent uses |
 | **Problems** | Runs the project's own type-check, linter and tests; output is parsed into a clickable list |
-| **Code search** | Local BM25 index — ranked search with no embeddings and no network |
+| **Code search** | Local BM25 index — ranked search with no embeddings and no network, and no file cap (measured to 50k files) |
 | **Knowledge graph & roadmap** | Entities and relations mined from your work; a Kanban board of tasks |
 | **Subscriptions** | Open ChatGPT / Claude / Gemini / DeepSeek in a built-in browser and move project context in and out by hand |
 
@@ -122,15 +125,18 @@ agents at all.
 
 ## Privacy
 
-- API keys live in **`secrets.json`** in the app data directory, created with
-  `0600` permissions — owner-only. The file is not encrypted: a deliberate
-  trade-off at the level of `~/.aws/credentials`, made because macOS ties a
-  Keychain entry's ACL to the code signature, so every rebuild asked for the
-  password again and "Always Allow" never stuck. Keys are still never kept in
-  SQLite, localStorage or git
+- API keys live in the **macOS Keychain**, in a single encrypted entry.
+  A release build never writes a key to disk in the clear under any
+  circumstance. The only fallback is a `0600` `secrets.json` in **debug builds**,
+  for an unsigned developer build the Keychain refuses; keys found in that old
+  file are migrated into the Keychain and the file deleted. Keys are never kept
+  in SQLite, localStorage or git
 - Conversations, memory and the code index live in a local **SQLite** database
 - The app talks to exactly the endpoints you configured — there is no telemetry,
-  no analytics and no "home" to phone
+  no analytics and no "home" to phone. This is **enforced**, not just promised:
+  outbound requests go through a host allowlist seeded from the connections you
+  save (plus the built-in GigaChat hosts), so a compromised page cannot redirect
+  a request to a host it invents
 
 ---
 
@@ -153,8 +159,9 @@ Then, in this order — it matters:
    builds the code index, collects the first facts and verifies the checkable
    ones. The agent track turns itself on.
 4. **Work.** Use the **Agent** tab to change the project, the **Discussion** tab
-   to think out loud — each keeps its own model. "To agent" under a reply moves
-   a prompt from one to the other.
+   to think out loud, and the **Generation** tab to produce images, video or
+   audio — each keeps its own model. "To agent" under a reply moves a prompt
+   from one to the other.
 5. **Switch models freely.** The handoff note is written for you.
 
 New to the interface? The **`i`** button at the top of the rail turns on hint
@@ -162,15 +169,19 @@ mode: hover any control to learn what it does and when it runs.
 
 ### Verifying a change
 
-Five gates, all offline — no API key and no network are needed:
+Six gates, all offline — no API key and no network are needed:
 
 ```bash
 npm run typecheck
+npm run lint
 npm run test:unit -- --run
 npm run build
 cargo test --manifest-path src-tauri/Cargo.toml
 npm run smoke
 ```
+
+Formatting is available too (`npm run format` / `npm run format:check`, Prettier),
+though it is not yet enforced as a gate.
 
 The smoke fixture is generated into the OS temp directory; set
 `MAGNETAR_FIXTURE_DIR` to put it somewhere else. Targets and current baseline
@@ -210,14 +221,15 @@ src-tauri/src/
   tools.rs         Agent tools, git, process control
   index.rs         BM25 code index
   pty.rs           Terminal sessions
-  keychain.rs      Secret storage (secrets.json, 0600) + one-time Keychain migration
+  keychain.rs      Secret storage (Keychain-first; 0600 secrets.json only in debug) + migration
   utf8.rs          Incremental UTF-8 decoding for streamed output
 src/
   components/shell/    Rail, status bar, command palette, terminal dock
   components/panels/   Files, Search, Git, Problems, Changes, Project memory
   components/editor/   Monaco editor and diff viewer
-  lib/                 Store, agent loop, guards, memory facts, verification,
-                       decisions, divergences, relevance, problems, theme, i18n
+  lib/                 Store, agent loop, generation studio (registry + run chain),
+                       guards, memory facts, verification, decisions, divergences,
+                       relevance, problems, theme, i18n
 ```
 
 The core abstraction is the **provider-neutral canon**: one transcript that each
@@ -232,26 +244,39 @@ Version 0.1.0, macOS, actively built. This is a development build, not a
 public release. The authoritative delivery plan and acceptance criteria are in
 [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md).
 
-**Works and is used daily** — chat and agent across all three provider families,
-editor, git, terminal, code search, project memory with provenance and machine
-verification, the decision log, the divergence queue, roadmap,
-subscriptions bridge, light and dark themes, RU/EN/ES interface.
+**Works and is used daily** — chat, agent and the generation studio across the
+provider families, editor with AI inline completion and LSP navigation, git,
+terminal, code search, project memory with provenance and machine verification,
+the decision log, the divergence queue, roadmap, subscriptions bridge, durable
+agent runs with per-run rollback, light and dark themes, RU/EN/ES interface.
+
+**Recently landed** (development phases)
+- Durable agent runs: each run is persisted through an append-only event log, a
+  per-run token budget stops it with an explainable reason, and file changes are
+  grouped by run so a whole task can be rolled back. On startup, runs left
+  in flight are reconciled — **marked interrupted and surfaced**, not resumed;
+  replaying an interrupted run from its event log is future work (Phase 1)
+- AI inline completion — ghost text in the editor (Phase 2)
+- Generation gallery persisted to SQLite (Phase 3)
+- Code index O(n²) initial sync fixed — 50k files from 621s to 5.6s, and the
+  5,000-file cap removed (Phase 4)
 
 **Rough edges and release blockers**
 - Built and tested on the current development Mac; universal build and
   notarization are not complete
-- Provider secrets currently use a 0600 `secrets.json` fallback; production
-  must return to Keychain
-- LSP is present for Rust, Python, Go and TypeScript/JavaScript, but parser
-  fallback, formatting and full IDE navigation are incomplete
-- Search is an in-memory BM25 index capped at 5,000 files (the search panel and
-  replace use a separate text engine and are not capped)
+- LSP is present for Rust, Python, Go and TypeScript/JavaScript (hover,
+  definition, rename, references, completion, diagnostics, formatting), but
+  parser fallback and some navigation edges are incomplete
+- The debugger speaks DAP end-to-end for Python (debugpy) and Rust (lldb-dap,
+  built with `cargo build` first). Rust needs `lldb-dap` present — LLVM 18+ /
+  Xcode 16+, or `brew install llvm`; on older toolchains it is offered with an
+  install hint. Node's adapter is not bundled
+- MCP support is deferred
 - One folder at a time: multi-root is deliberately not built, see
   [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
-- Backend path authorization, trust/read-only mode, durable agent runs,
-  checkpoints/rollback, DAP debugger, MCP and inline completion are incomplete
-- The production build keeps Monaco in a lazy ~3.96 MB chunk; the initial
-  route is ~408.75 KB gzip and the lazy-asset warning remains visible
+- Monaco is split into its own lazy ~4.45 MB (~1.14 MB gzip) chunk via
+  `manualChunks`, separate from the app shell (~447.93 KB gzip); the size
+  warning now trips only on that deliberately-large editor chunk
 - Embedded browser sign-in for Google-backed services needs a compatibility
   toggle, and some sites behave better in a real browser
 

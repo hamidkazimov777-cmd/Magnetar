@@ -14,6 +14,7 @@ import {
   Square,
   FolderPlus,
   FolderOpen,
+  Paperclip,
 } from "./icons";
 import { api } from "../lib/api";
 import { useStore } from "../lib/store";
@@ -21,10 +22,10 @@ import { buildCatalog, recommend, type Recommendation } from "../lib/adaptive";
 import { buildOutgoing, maybeSummarize } from "../lib/handoff";
 import { backgroundQueue } from "../lib/backgroundQueue";
 import { runAgent, AGENT_SYSTEM } from "../lib/agent";
-import { buildProjectMemory, buildGenerationContext } from "../lib/memory";
+import { beginRunLog } from "../lib/agentRunLog";
+import { buildProjectMemory } from "../lib/memory";
 import type { AskRequest } from "../lib/agent";
 import { buildMentionContext, expandSlash } from "../lib/mentions";
-import { providerForBaseUrl } from "../lib/generation";
 import { Hint } from "./ui/Hint";
 import { ToolPreview } from "./ToolPreview";
 import { AskDialog } from "./AskDialog";
@@ -49,6 +50,7 @@ interface SendOpts {
 
 export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
   const t = useT();
+  const agentDragging = useStore((s) => s.agentDragging);
   const connections = useStore((s) => s.connections);
   const models = useStore((s) => s.models);
   const adaptive = useStore((s) => s.adaptive);
@@ -242,6 +244,23 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     // results stay on screen until a new one begins.
     useStore.getState().clearSubagents();
     const agentStartedAt = Date.now();
+    // The durable record of this run: it survives a restart, so a killed app can
+    // show what was in flight and (later) resume it. Wraps the handlers below so
+    // the live loop stays untouched.
+    const prefs = useStore.getState().prefs;
+    const runLog = beginRunLog({
+      sessionId,
+      projectId: useStore.getState().activeProjectId ?? null,
+      connectionId: connId,
+      model,
+      budgetSteps: prefs?.agentMaxSteps ?? null,
+      budgetTokens: prefs?.agentMaxTokens ?? null,
+    });
+    // Stamp this run's id onto every file change it makes, so the Changes panel
+    // can group the task's edits and roll them back together.
+    useStore.getState().setActiveRunId(runLog.runId);
+    let runStatus: "done" | "cancelled" | "error" = "done";
+    let runError: string | undefined;
     try {
       const sess = useStore.getState().sessions.find((s) => s.id === sessionId);
       const projectMemory =
@@ -251,7 +270,7 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
         connection,
         model,
         history,
-        {
+        runLog.wrap({
           confirm: (name, args) =>
             new Promise<boolean>((resolve) => setConfirm({ name, args, resolve })),
           ask: (req) => new Promise<string>((resolve) => setAsk({ req, resolve })),
@@ -282,13 +301,18 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
               refreshExplorer();
           },
           cancelled: () => agentCancelRef.current,
-        },
+        }),
         projectMemory,
       );
+      if (agentCancelRef.current) runStatus = "cancelled";
     } catch (e) {
+      runStatus = "error";
+      runError = String(e);
       noteModelFailure(connId, model, String(e), setModelStatus);
       setLastError({ message: String(e), sessionId: sessionId! });
     } finally {
+      void runLog.finish(runStatus, runError);
+      useStore.getState().setActiveRunId(undefined);
       useStore.getState().setMessageMeta(sessionId!, assistantId, {
         durationMs: Date.now() - agentStartedAt,
       });
@@ -299,70 +323,6 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
       // the queue until the next run picked it up out of nowhere.
       useStore.getState().clearAgentInterjections();
       useStore.getState().persistMessage(sessionId!, assistantId);
-    }
-  };
-
-  const runGeneration = async (
-    text: string,
-    attachments: Attachment[],
-    connId: string,
-    model: string,
-    opts: SendOpts = {},
-  ) => {
-    const connection = useStore.getState().connections.find((c) => c.id === connId);
-    if (!connection) return;
-    let sessionId = useStore.getState().activeSessionId;
-    if (!sessionId) sessionId = newSession("generation");
-
-    if (!opts.skipUserMessage)
-      addMessage(sessionId, { role: "user", content: text, attachments });
-    const assistantId = addMessage(sessionId, { role: "assistant", content: "", model });
-
-    // The provider catalogue is the single source of truth for how to reach a
-    // generative model — base URL, endpoint, response format and defaults.
-    const provider = providerForBaseUrl(connection.baseUrl);
-    if (!provider || !provider.available) {
-      useStore.getState().setMessageContent(sessionId, assistantId, "");
-      setLastError({ message: t("genProviderUnavailable"), sessionId });
-      return;
-    }
-
-    const params: Record<string, unknown> = {};
-    for (const p of provider.params) if (p.default !== undefined) params[p.key] = p.default;
-    if (provider.responseFormat) params.response_format = provider.responseFormat;
-
-    // When this chat sees the project, steer generation with a one-line project
-    // descriptor — enough to place the request ("a hero image for my app")
-    // without burying the visual prompt in memory.
-    const sess = useStore.getState().sessions.find((s) => s.id === sessionId);
-    const brief = buildGenerationContext(sess);
-    const prompt = brief ? `${brief}\n\n${text}` : text;
-
-    setStreaming(true);
-    try {
-      const result = await api.generate(connection, {
-        kind: provider.kind,
-        model,
-        prompt,
-        endpoint: provider.endpoint,
-        params,
-      });
-      const assets: Attachment[] = result.assets.map((a, i) => ({
-        id: `${assistantId}-${i}`,
-        type: "image",
-        mimeType: a.mimeType ?? "image/png",
-        name: `${provider.name} · ${i + 1}`,
-        data: a.b64 ?? undefined,
-        path: a.url ?? undefined,
-      }));
-      const st = useStore.getState();
-      st.setMessageContent(sessionId, assistantId, assets.length ? t("genResult") : t("genEmpty"));
-      st.setMessageAttachments(sessionId, assistantId, assets);
-    } catch (e) {
-      useStore.getState().setMessageContent(sessionId, assistantId, "");
-      setLastError({ message: String(e), sessionId });
-    } finally {
-      setStreaming(false);
     }
   };
 
@@ -398,9 +358,8 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
     let connId = activeConnectionId!;
     let model = activeModel;
 
-    // Adaptive routing picks among *text* models; generation runs on a
-    // generative provider and is dispatched directly.
-    if (activeTrack !== "generation" && adaptive) {
+    // Adaptive routing picks among *text* models.
+    if (adaptive) {
       const catalog = buildCatalog(connections, models);
       const rec = recommend(text, catalog, { connectionId: connId, model });
       const reason = t(`reason_${rec.tier}`);
@@ -413,10 +372,6 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
       if (rec.upgrade) setUpgrade(rec.upgrade);
     }
 
-    if (activeTrack === "generation") {
-      await runGeneration(text, attachments, connId, model, opts);
-      return;
-    }
     const isAgentTurn = activeTrack === "agent" || text.startsWith("/team ") || text.startsWith("/cto");
     if (isAgentTurn) await runAgentPath(text, attachments, connId, model, opts);
     else await runSend(text, attachments, connId, model, opts);
@@ -461,7 +416,17 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
   };
 
   return (
-    <div className="flex h-full min-w-0 flex-col">
+    <div className="relative flex h-full min-w-0 flex-col">
+      {/* Drop-to-attach target covering the whole agent panel: the file drop is
+          window-wide (Tauri), this just makes where to aim unmistakable. */}
+      {agentDragging && (
+        <div className="pointer-events-none absolute inset-0 z-40 m-2 flex items-center justify-center rounded-[var(--r-lg)] border-2 border-dashed border-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_12%,var(--color-bg))]/85 backdrop-blur-[2px]">
+          <div className="flex flex-col items-center gap-2 text-[var(--color-accent-strong)]">
+            <Paperclip size={22} />
+            <span className="text-[length:var(--fs-base)] font-medium">{t("dropToAttach")}</span>
+          </div>
+        </div>
+      )}
       <header
         data-tauri-drag-region
         className="flex h-[var(--h-titlebar)] shrink-0 items-center gap-1.5 border-b border-[var(--color-border)] px-2"
@@ -523,23 +488,19 @@ export function ChatView({ onOpenSettings }: { onOpenSettings: () => void }) {
             {t("connectModel")}
           </button>
         )}
-        {/* The bench of helper models and adaptive routing only apply to the
-            text tracks; generation is dispatched straight to its provider. */}
         {activeTrack === "agent" && <SubagentPicker />}
-        {activeTrack !== "generation" && (
-          <Hint text={t("hintAdaptive")} side="bottom">
-            <button
-              className="toggle-pill shrink-0 px-2"
-              data-ai="true"
-              data-on={adaptive}
-              onClick={() => setAdaptive(!adaptive)}
-              title={`${t("adaptive")} — ${t("adaptiveHint")}`}
-              aria-label={t("adaptive")}
-            >
-              <Sparkles size={13} />
-            </button>
-          </Hint>
-        )}
+        <Hint text={t("hintAdaptive")} side="bottom">
+          <button
+            className="toggle-pill shrink-0 px-2"
+            data-ai="true"
+            data-on={adaptive}
+            onClick={() => setAdaptive(!adaptive)}
+            title={`${t("adaptive")} — ${t("adaptiveHint")}`}
+            aria-label={t("adaptive")}
+          >
+            <Sparkles size={13} />
+          </button>
+        </Hint>
         <div className="flex-1" />
         {/* A real switch with a constant label: the words name the capability,
             the switch shows whether it's on — never ambiguous. */}

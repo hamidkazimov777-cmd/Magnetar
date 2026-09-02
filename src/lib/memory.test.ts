@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  buildGenerationContext,
   buildMemorySection,
   buildProjectMemory,
   cheapModel,
@@ -156,26 +155,6 @@ describe("one memory, whichever track asks for it", () => {
     const shared = buildMemorySection({ projectId: "p1" });
     expect(shared).not.toContain("search_code");
     expect(shared).not.toContain("Workspace root");
-  });
-});
-
-describe("context for the generation track", () => {
-  it("gives an image model the project's name and nothing else", () => {
-    useStore.setState({
-      projects: [project({ description: "local AI IDE", techStack: "Rust" })],
-      workspaceRoot: "/repo",
-    });
-    const out = buildGenerationContext(session({ projectId: "p1" }));
-    expect(out).toBe("Project context: Magnetar — local AI IDE.");
-    expect(out).not.toContain("/repo");
-  });
-
-  it("says nothing when the project is hidden, missing or unnamed by the session", () => {
-    useStore.setState({ projects: [project()] });
-    expect(buildGenerationContext(session({ projectId: "p1", seesProject: false }))).toBe("");
-    expect(buildGenerationContext(session({ projectId: "gone" }))).toBe("");
-    expect(buildGenerationContext(session())).toBe("");
-    expect(buildGenerationContext(undefined)).toBe("");
   });
 });
 

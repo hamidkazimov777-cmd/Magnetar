@@ -1,13 +1,10 @@
-export type ProviderKind = "openai_compat" | "gigachat" | "anthropic" | "custom" | "generative";
+export type ProviderKind = "openai_compat" | "gigachat" | "anthropic" | "custom";
 
-/** The three conversations that can run side by side in one project.
+/** The two conversations that can run side by side in one project.
  *
  *  - `chat` talks a task through (no tools, no edits).
- *  - `agent` has tools and changes the project.
- *  - `generation` produces assets (image/video/audio/voice) through a
- *    generative provider. It is a first-class chat, not a separate page:
- *    same memory, same project context, different model types. */
-export type Track = "chat" | "agent" | "generation";
+ *  - `agent` has tools and changes the project. */
+export type Track = "chat" | "agent";
 
 /** A configured provider endpoint. The API key lives in `secrets.json` (app
  *  data dir, 0600) — not in the Keychain since Entry 44 — keyed by
@@ -348,6 +345,7 @@ export type StreamEvent =
 /** Preset base URLs for the "add connection" form. */
 export const OPENAI_COMPAT_PRESETS: { name: string; baseUrl: string }[] = [
   { name: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1" },
+  { name: "TokenRouter", baseUrl: "https://api.tokenrouter.com/v1" },
   { name: "Kimi (Moonshot)", baseUrl: "https://api.moonshot.ai/v1" },
   { name: "OpenAI", baseUrl: "https://api.openai.com/v1" },
   { name: "Together", baseUrl: "https://api.together.xyz/v1" },

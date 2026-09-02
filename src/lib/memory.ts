@@ -214,7 +214,7 @@ export async function analyzeFolderIntoMemory(
     createdAt: 0,
   };
 
-  let parsed: Record<string, unknown> | null = null;
+  let parsed: Record<string, unknown> | null;
   try {
     const res = await api.complete(
       connection,
@@ -429,22 +429,6 @@ export async function flushHandoffToMemory(
 
 /** Build the project-memory preamble injected into the AGENT system prompt so
  *  the agent starts from memory (brain + last handoff), not a cold read. */
-/** A one-line project descriptor for the generation track. Image and audio
- *  models take the whole prompt as the thing to render, so the full project
- *  memory (paths, tool instructions, facts) would only pollute it — this gives
- *  the model just enough to steer by: the project's name and what it is.
- *  Returns "" when there is no project or the user hid it for this chat. */
-export function buildGenerationContext(session: Session | undefined): string {
-  if (session?.seesProject === false) return "";
-  const st = useStore.getState();
-  const p = session?.projectId
-    ? st.projects.find((x) => x.id === session.projectId)
-    : undefined;
-  if (!p) return "";
-  const desc = p.description ? ` — ${p.description}` : "";
-  return `Project context: ${p.name}${desc}.`;
-}
-
 export function buildProjectMemory(
   session: Session | undefined,
   /** What the user just asked. Memory is selected against it, the same way code

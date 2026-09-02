@@ -12,8 +12,8 @@ import { ProblemsPanel } from "../panels/ProblemsPanel";
 import { TasksPanel } from "../panels/TasksPanel";
 import { DebugPanel } from "../panels/DebugPanel";
 import { ProjectPanel } from "../panels/ProjectPanel";
-import { StudioView } from "../StudioView";
 import { ChatView } from "../ChatView";
+import { StudioView } from "../StudioView";
 import { SettingsView } from "../SettingsView";
 import { ProjectsView } from "../ProjectsView";
 import { RoadmapView } from "../RoadmapView";
@@ -52,9 +52,7 @@ export function Workspace({
   const terminalOpen = useStore((s) => s.terminalOpen);
   const agentPanelOpen = useStore((s) => s.agentPanelOpen);
   const toggleAgentPanel = useStore((s) => s.toggleAgentPanel);
-  const activeTrack = useStore((s) => s.activeTrack);
-  // Generation takes over the centre as a studio; the chat panel steps aside.
-  const showAgentPanel = agentPanelOpen && activeTrack !== "generation";
+  const showAgentPanel = agentPanelOpen;
 
   const workspaceRoot = useStore((s) => s.workspaceRoot);
   const workspaceTrusted = useStore((s) => s.workspaceTrusted);
@@ -129,7 +127,7 @@ export function Workspace({
                     <EditorArea />
                   </Suspense>
                 )}
-                {centerView === "studio" && <StudioView />}
+                {centerView === "studio" && <StudioView onOpenSettings={onOpenSettings} />}
                 {centerView === "settings" && <SettingsView />}
                 {centerView === "projects" && <ProjectsView />}
                 {centerView === "roadmap" && <RoadmapView />}
@@ -183,7 +181,7 @@ export function Workspace({
       {/* When the agent panel is collapsed it takes its own reopen control with
           it — this pull-tab on the right edge brings it back without hunting
           through the chat list. */}
-      {!agentPanelOpen && activeTrack !== "generation" && (
+      {!agentPanelOpen && (
         <button
           onClick={() => toggleAgentPanel(true)}
           title={t("cmdToggleAgentPanel")}

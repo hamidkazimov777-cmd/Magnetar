@@ -12,7 +12,6 @@ import { useT } from "../../lib/i18n";
 import { cn } from "../../lib/cn";
 import { EmptyState } from "../ui/EmptyState";
 import { pickWorkspaceFolder } from "./ExplorerPanel";
-import { api } from "../../lib/api";
 import { DebugSession } from "../../lib/debug/session";
 import {
   ADAPTERS,
@@ -20,6 +19,7 @@ import {
   launchConfig,
   type DebuggerId,
 } from "../../lib/debug/adapters";
+import { buildRustTarget, resolveAdapterCommand } from "../../lib/debug/cargoBuild";
 
 /** The debugger: start a session on the active file, then breakpoints, call
  *  stack, variables, watches and a console.
@@ -97,9 +97,10 @@ export function DebugPanel() {
       setError(t("debugAdapterMissing").replace("{install}", spec.install));
       return;
     }
-    // The adapter binary has to be there.
-    const found = await api.lspWhich(spec.probe).catch(() => null);
-    if (!found) {
+    // The adapter binary has to be there — on PATH, or at a known install path
+    // for keg-only tools like Homebrew's lldb-dap.
+    const command = await resolveAdapterCommand(spec.command, spec.fallbacks, root);
+    if (!command) {
       setError(t("debugProbeMissing").replace("{install}", spec.install));
       return;
     }
@@ -107,6 +108,22 @@ export function DebugPanel() {
     setError(null);
     clearConsole();
     setStatus("starting");
+
+    // A compiled language is built before it can be launched, and the artifact
+    // path — not the source file — is what the adapter debugs.
+    let program = path;
+    if (spec.build === "cargo") {
+      pushConsole({ text: t("debugBuilding"), category: "console" });
+      const built = await buildRustTarget(path);
+      if (!built.ok || !built.program) {
+        setError(t("debugBuildFailed").replace("{reason}", built.error ?? ""));
+        setStatus("idle");
+        return;
+      }
+      program = built.program;
+      pushConsole({ text: `${t("debugBuilt")} ${program}`, category: "console" });
+    }
+
     const sess = new DebugSession(dbg, {
       onStopped: (reason) => void refreshStopped(reason),
       onRunning: () => setStatus("running"),
@@ -120,7 +137,11 @@ export function DebugPanel() {
     session.current = sess;
     try {
       const bps = new Map<string, number[]>(Object.entries(useStore.getState().breakpoints));
-      await sess.start(spec, launchConfig(dbg as DebuggerId, path, root), bps);
+      await sess.start(
+        { command, args: spec.args },
+        launchConfig(dbg as DebuggerId, program, root),
+        bps,
+      );
       setStatus("running");
     } catch (e) {
       setError(String(e).replace(/^Error:\s*/, "").slice(0, 200));

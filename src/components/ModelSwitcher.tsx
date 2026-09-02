@@ -13,7 +13,6 @@ import {
 import { api } from "../lib/api";
 import { useStore } from "../lib/store";
 import { flushHandoffToMemory } from "../lib/memory";
-import { providerForBaseUrl } from "../lib/generation";
 import { Hint } from "./ui/Hint";
 import { useT } from "../lib/i18n";
 import type { ModelInfo } from "../lib/types";
@@ -24,7 +23,6 @@ export function ModelSwitcher() {
   const connections = useStore((s) => s.connections);
   const activeConnectionId = useStore((s) => s.activeConnectionId);
   const activeModel = useStore((s) => s.activeModel);
-  const activeTrack = useStore((s) => s.activeTrack);
   const setActiveConnection = useStore((s) => s.setActiveConnection);
   const setActiveModel = useStore((s) => s.setActiveModel);
   const cacheModels = useStore((s) => s.setModels);
@@ -55,15 +53,7 @@ export function ModelSwitcher() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [models, query, modelStatus, activeConnectionId]);
 
-  // The generation track shows only generative connections; every other track
-  // shows only text connections. One dropdown, scoped to the track.
-  const trackConns = useMemo(
-    () =>
-      connections.filter((c) =>
-        activeTrack === "generation" ? c.kind === "generative" : c.kind !== "generative",
-      ),
-    [connections, activeTrack],
-  );
+  const trackConns = useMemo(() => connections, [connections]);
 
   const activeConn = trackConns.find((c) => c.id === activeConnectionId);
 
@@ -91,13 +81,7 @@ export function ModelSwitcher() {
     setLoading(true);
     setError(null);
     try {
-      let list: ModelInfo[];
-      if (activeTrack === "generation") {
-        // Generative models are curated in the catalogue — no /models call.
-        list = (providerForBaseUrl(conn.baseUrl)?.models ?? []).map((id) => ({ id }));
-      } else {
-        list = await api.listModels(conn);
-      }
+      const list = await api.listModels(conn);
       setModels(list);
       cacheModels(connId, list); // cache for the adaptive router
       if (!activeModel && list[0]) setActiveModel(list[0].id);

@@ -46,6 +46,10 @@ export function WelcomeView({
       }
       if (alive) setKeyed(false);
     })();
+    // Cancel the state update if the view unmounts before the async check ends.
+    return () => {
+      alive = false;
+    };
   }, [connections]);
 
   const modelReady = keyed && Boolean(activeModel);

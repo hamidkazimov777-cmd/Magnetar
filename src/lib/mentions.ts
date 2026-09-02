@@ -20,12 +20,16 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { id: "/fix", insert: "/fix ", descKey: "slashFix" },
   { id: "/test", insert: "/test ", descKey: "slashTest" },
   { id: "/review", insert: "/review ", descKey: "slashReview" },
+  { id: "/security", insert: "/security", descKey: "slashSecurity" },
+  { id: "/simplify", insert: "/simplify ", descKey: "slashSimplify" },
+  { id: "/docs", insert: "/docs ", descKey: "slashDocs" },
+  { id: "/commit", insert: "/commit", descKey: "slashCommit" },
+  { id: "/btw", insert: "/btw ", descKey: "slashBtw" },
+  // One prompt command for any model — the target is named in the text
+  // (`/prompt <model> <request>`); expandSlash reads it, so there is no need to
+  // enumerate models.
+  { id: "/prompt", insert: "/prompt ", descKey: "slashPromt" },
 ];
-
-const PROMPT_MODELS = ["Kling", "Seedance", "Veo", "Flux", "Nano Banana", "Stable Audio", "Midjourney"];
-for (const m of PROMPT_MODELS) {
-  SLASH_COMMANDS.push({ id: `/prompt ${m}`, insert: `/prompt ${m} `, descKey: "slashPromt" });
-}
 
 /** Plain-language expansions for the commands that are just prompts. */
 export const SLASH_PROMPTS: Record<string, string> = {
@@ -35,14 +39,28 @@ export const SLASH_PROMPTS: Record<string, string> = {
   "/test": "Write or update tests covering this, and run them if a test command exists.",
   "/review":
     "Review the current changes for correctness, edge cases and clarity. Be specific.",
+  "/security":
+    "Review the current changes for security issues — injection, secret leakage, unsafe shell/network/path handling, missing authorization. Report concrete findings with file:line and a fix for each; do not change code unless asked.",
+  "/simplify":
+    "Review the changed code for reuse, simplification, dead code and needless complexity, then apply safe cleanups. Quality only — do not hunt for bugs.",
+  "/docs":
+    "Write or update the documentation (README or docs/) so it matches the current code. Be accurate and concise; do not invent behaviour that is not there.",
+  "/commit":
+    "Review the staged and unstaged changes, write one clear conventional-commit message describing them, and commit. If on the default branch, create a branch first.",
+  "/btw":
+    "This is a quick side question, not a task. Answer it using the project where relevant, and do NOT change anything — read and explain only, no writing, editing, or mutating commands.",
 };
 
 /** Expand a leading slash command into the instruction the model receives.
  *  Command names may be Latin or Cyrillic. */
 export function expandSlash(text: string): string {
-  const promptMatch = text.match(/^\/prompt\s+([a-zA-Z0-9.\- ]*)\s*([\s\S]*)$/i);
+  // `/prompt <model> <request>` — the model is the first token, everything
+  // after it is the request. Matching the model as one word (not a run that
+  // also swallows spaces) is what keeps the request from being eaten into the
+  // model name.
+  const promptMatch = text.match(/^\/prompt\b\s*(\S+)?\s*([\s\S]*)$/i);
   if (promptMatch) {
-    const model = promptMatch[1].trim();
+    const model = (promptMatch[1] ?? "").trim();
     const userText = promptMatch[2].trim();
     const target = model ? `the ${model} model` : "the right generator";
     const instruction = 

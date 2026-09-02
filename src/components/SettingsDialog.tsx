@@ -9,7 +9,6 @@ import {
   OPENAI_COMPAT_PRESETS,
   type ProviderKind,
 } from "../lib/types";
-import { GEN_PROVIDERS, GEN_PROVIDER_CHIPS, GEN_BY_ID, providerForBaseUrl } from "../lib/generation";
 import { useT, LANGS } from "../lib/i18n";
 import { cn } from "../lib/cn";
 import { SelfTest } from "./SelfTest";
@@ -46,17 +45,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [testing, setTesting] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<Record<string, string>>({});
 
-  /** Which provider category the dialog is showing. Derived from the active
-   *  track when the dialog mounts, so "Подключить модель" from the Generation
-   *  track lands on the right tab without a separate settings screen. */
-  const [category, setCategory] = useState<"llm" | "generation">(() =>
-    useStore.getState().activeTrack === "generation" ? "generation" : "llm",
-  );
-  const [genProviderId, setGenProviderId] = useState(
-    () => GEN_PROVIDERS.find((p) => p.available)?.id ?? GEN_PROVIDERS[0].id,
-  );
-  const [genKey, setGenKey] = useState("");
-
   useEffect(() => {
     (async () => {
       const entries = await Promise.all(
@@ -73,10 +61,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [formKind, setFormKind] = useState<FormKind>("openai_compat");
   const [kimiRegion, setKimiRegion] = useState<keyof typeof KIMI_BASES>("global");
 
-  const llmConnections = connections.filter((c) => c.kind !== "generative");
-  const genConnections = connections.filter((c) => c.kind === "generative");
-  const visibleConnections = category === "generation" ? genConnections : llmConnections;
-  const genProvider = GEN_BY_ID.get(genProviderId) ?? GEN_PROVIDERS[0];
+  const llmConnections = connections;
 
   const selectKind = (k: FormKind) => {
     setFormKind(k);
@@ -130,34 +115,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
       await api.saveApiKey(id, apiKey.trim());
       setApiKey("");
       setCaPath("");
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const addGeneration = async () => {
-    setError(null);
-    if (!genProvider?.available) {
-      setError(t("genProviderUnavailable"));
-      return;
-    }
-    if (!genKey.trim()) {
-      setError(t("errFillNameKey"));
-      return;
-    }
-    setBusy(true);
-    try {
-      // Same connection manager + key storage as LLM providers. The only
-      // difference is `kind: "generative"` and a catalogue-fixed base URL.
-      const id = addConnection({
-        name: genProvider.name,
-        kind: "generative",
-        baseUrl: genProvider.baseUrl,
-      });
-      await api.saveApiKey(id, genKey.trim());
-      setGenKey("");
     } catch (e) {
       setError(String(e));
     } finally {
@@ -236,32 +193,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     }
   };
 
-  /** Validate a generative connection: a successful `/models` call proves the
-   *  key works. The catalogue holds the curated model list, not the raw
-   *  `/models` response (which for OpenAI lists every text model too). */
-  const testGenerative = async (c: (typeof connections)[number]) => {
-    setTesting(c.id);
-    setTestResult((prev) => ({ ...prev, [c.id]: t("connectionTesting") }));
-    try {
-      await api.listModels(c);
-      const provider = providerForBaseUrl(c.baseUrl);
-      const count = provider?.models.length ?? 0;
-      setTestResult((prev) => ({
-        ...prev,
-        [c.id]: count
-          ? `${t("genCheckOk")} · ${count} ${t("modelsCount")}`
-          : t("genCheckOk"),
-      }));
-    } catch (e) {
-      setTestResult((prev) => ({
-        ...prev,
-        [c.id]: `${t("genCheckFail")}: ${String(e).slice(0, 160)}`,
-      }));
-    } finally {
-      setTesting(null);
-    }
-  };
-
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-lg p-0 gap-0 border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)]">
@@ -293,29 +224,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
-          {/* Category switcher: LLM (chat/agent) vs generation. One dialog,
-              one connection manager — the tab only filters what is shown. */}
-          <div className="flex gap-1.5">
-            <button
-              className="toggle-pill flex-1 justify-center"
-              data-on={category === "llm"}
-              onClick={() => setCategory("llm")}
-            >
-              {t("connTabLlm")}
-            </button>
-            <button
-              className="toggle-pill flex-1 justify-center"
-              data-on={category === "generation"}
-              onClick={() => setCategory("generation")}
-            >
-              {t("trackGeneration")}
-            </button>
-          </div>
-
-          {category === "llm" && llmConnections.length >= 1 && <SelfTest />}
-          {visibleConnections.length > 0 && (
+          {llmConnections.length >= 1 && <SelfTest />}
+          {llmConnections.length > 0 && (
             <div className="space-y-2">
-              {visibleConnections.map((c) => (
+              {llmConnections.map((c) => (
                 <div
                   key={c.id}
                   className="flex items-start gap-2 rounded-[var(--r-lg)] border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2.5"
@@ -328,9 +240,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                           ? "GigaChat"
                           : c.kind === "anthropic"
                             ? "Claude"
-                            : c.kind === "generative"
-                              ? t("trackGeneration")
-                              : "OpenAI"}
+                            : "OpenAI"}
                       </span>
                     </div>
                     <div className="truncate font-mono text-[length:var(--fs-xs)] text-[var(--color-text-mute)]">
@@ -369,9 +279,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                           : t("noKey")}
                     </span>
                     <button
-                      onClick={() =>
-                        void (c.kind === "generative" ? testGenerative(c) : testConnection(c))
-                      }
+                      onClick={() => void testConnection(c)}
                       disabled={testing !== null}
                       className="btn btn-secondary btn-sm"
                       title={t("connectionTest")}
@@ -396,9 +304,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          {category === "llm" && (
-            <div className="panel space-y-3 p-4">
+          <div className="panel space-y-3 p-4">
               <div className="text-[length:var(--fs-md)] font-semibold">{t("addConnection")}</div>
+              <p className="text-[length:var(--fs-xs)] leading-relaxed text-[var(--color-text-mute)]">
+                {t("connGenHint")}
+              </p>
 
               {/* Provider kind */}
               <div className="flex flex-wrap gap-1.5">
@@ -554,70 +464,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               {t("addConnectionBtn")}
             </button>
           </div>
-          )}
-
-          {category === "generation" && (
-            <div className="panel space-y-3 p-4">
-              <div className="text-[length:var(--fs-md)] font-semibold">{t("addConnection")}</div>
-              <p className="text-[length:var(--fs-xs)] leading-relaxed text-[var(--color-text-mute)]">
-                {t("genConnectHint")}
-              </p>
-
-              {/* Generative providers, all from the shared catalogue. */}
-              <div className="flex flex-wrap gap-1.5">
-                {GEN_PROVIDER_CHIPS.map((p) => (
-                  <button
-                    key={p.id}
-                    disabled={!p.available}
-                    onClick={() => setGenProviderId(p.id)}
-                    className="toggle-pill h-7"
-                    data-on={genProviderId === p.id}
-                    title={p.available ? undefined : t("genSoonHint")}
-                  >
-                    {p.name}
-                    {!p.available && (
-                      <span className="ml-1 text-[length:var(--fs-xs)] text-[var(--color-text-mute)]">
-                        {t("genSoon")}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
-
-              <Field label={t("genBaseUrl")}>
-                <input
-                  value={genProvider?.baseUrl ?? ""}
-                  readOnly
-                  className={cn(inputCls, "opacity-70")}
-                />
-              </Field>
-
-              <Field label={t("fieldApiKey")}>
-                <input
-                  type="password"
-                  value={genKey}
-                  onChange={(e) => setGenKey(e.target.value)}
-                  placeholder="sk-…"
-                  className={inputCls}
-                />
-              </Field>
-
-              {error && <div className="alert text-[length:var(--fs-sm)]">{error}</div>}
-
-              <button
-                onClick={addGeneration}
-                disabled={busy || !genProvider?.available}
-                className="btn btn-primary"
-              >
-                {busy ? (
-                  <Loader2 size={15} className="animate-spin" />
-                ) : (
-                  <Plus size={15} />
-                )}
-                {t("addConnectionBtn")}
-              </button>
-            </div>
-          )}
         </div>
       </DialogContent>
     </Dialog>

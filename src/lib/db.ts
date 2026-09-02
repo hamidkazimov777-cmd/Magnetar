@@ -39,7 +39,40 @@ export interface ConnectionRow {
   createdAt: number;
 }
 
-/** A produced media asset in the studio gallery history (global). */
+/** A durable agent run: the canon of one run, surviving restarts. Process state
+ *  (the live loop) still lives in the store; this is what happened and what it
+ *  is allowed to spend. Status: running | paused | done | cancelled | error. */
+export interface AgentRunRow {
+  id: string;
+  sessionId: string | null;
+  projectId: string | null;
+  connectionId: string | null;
+  model: string | null;
+  status: "running" | "paused" | "done" | "cancelled" | "error" | "interrupted";
+  startedAt: number;
+  updatedAt: number;
+  endedAt: number | null;
+  steps: number;
+  tokensIn: number;
+  tokensOut: number;
+  costUsd: number;
+  budgetSteps: number | null;
+  budgetUsd: number | null;
+  error: string | null;
+}
+
+/** One entry in a run's append-only trace. `payload` is event-specific JSON. */
+export interface AgentEventRow {
+  id: string;
+  runId: string;
+  seq: number;
+  kind: "model_turn" | "tool_call" | "tool_result" | "text" | "error" | "checkpoint";
+  payload: string | null;
+  createdAt: number;
+}
+
+/** One produced Studio asset, kept so the gallery survives a restart. `src` is a
+ *  URL or a data-URI; `kind` is "image" or "video". */
 export interface GenerationRow {
   id: string;
   kind: string;
@@ -47,6 +80,7 @@ export interface GenerationRow {
   name: string;
   prompt: string | null;
   model: string | null;
+  runId: string | null;
   createdAt: number;
 }
 
@@ -55,6 +89,30 @@ export const db = {
   saveConnection: (connection: ConnectionRow) =>
     invoke<void>("save_connection", { connection }),
   deleteConnection: (id: string) => invoke<void>("delete_connection", { id }),
+
+  // Durable agent runs.
+  saveAgentRun: (run: AgentRunRow) => invoke<void>("agent_run_save", { run }),
+  appendAgentEvent: (
+    runId: string,
+    id: string,
+    kind: AgentEventRow["kind"],
+    payload: string | null,
+    createdAt: number,
+  ) => invoke<number>("agent_event_append", { runId, id, kind, payload, createdAt }),
+  listAgentRuns: (sessionId?: string, limit?: number) =>
+    invoke<AgentRunRow[]>("agent_runs_list", { sessionId: sessionId ?? null, limit: limit ?? null }),
+  activeAgentRuns: () => invoke<AgentRunRow[]>("agent_runs_active"),
+  reconcileAgentRuns: () => invoke<number>("agent_runs_reconcile"),
+
+  // Durable Studio gallery.
+  saveGeneration: (generation: GenerationRow) =>
+    invoke<void>("generation_save", { generation }),
+  listGenerations: (limit?: number) =>
+    invoke<GenerationRow[]>("generations_list", { limit: limit ?? null }),
+  deleteGeneration: (id: string) => invoke<void>("generation_delete", { id }),
+  getAgentRun: (id: string) => invoke<AgentRunRow | null>("agent_run_get", { id }),
+  listAgentEvents: (runId: string) => invoke<AgentEventRow[]>("agent_events_list", { runId }),
+  deleteAgentRun: (id: string) => invoke<void>("agent_run_delete", { id }),
 
   listSessions: () => invoke<SessionMetaRow[]>("list_sessions"),
   loadMessages: (sessionId: string) =>
@@ -92,13 +150,6 @@ export const db = {
     invoke<import("./types").Proposal[]>("list_proposals", { projectId }),
   saveProposal: (proposal: import("./types").Proposal) =>
     invoke<void>("save_proposal", { proposal }),
-
-  // Generation studio gallery history (global, not project-scoped)
-  listGenerations: () => invoke<GenerationRow[]>("list_generations"),
-  saveGeneration: (generation: GenerationRow) =>
-    invoke<void>("save_generation", { generation }),
-  deleteGeneration: (id: string) => invoke<void>("delete_generation", { id }),
-  clearGenerations: () => invoke<void>("clear_generations"),
 
   listTasks: (projectId: string) => invoke<import("./types").Task[]>("list_tasks", { projectId }),
   saveTask: (task: import("./types").Task) => invoke<void>("save_task", { task }),

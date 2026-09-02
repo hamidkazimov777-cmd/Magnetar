@@ -78,16 +78,16 @@ target or intentionally manual. Test IDs are mapped to quality gates below.
 | Signed commits | ✅ detected and applied | ✅ | ✅ | ✅ | ✅ | Detect configured signing, report unavailable identity, never prompt invisibly. `GIT-04` | P2 |
 | Tasks and test execution | ✅ discovered from manifests | ✅ | ✅ | ✅ | ✅ | Discover package.json/Cargo/Make/pyproject/just, run one test and suite. `TEST-01` | P0 |
 | Test Explorer | ◐ tasks panel groups tests; no per-case tree | ✅ | ✅ | ✅ | ✅ | Discover, group, run, cancel and navigate individual tests. `TEST-02` | P1 |
-| Debugger / DAP | ✅ Python; Node needs js-debug | ✅ | ✅ | ✅ | ✅ | Node/Python baseline: breakpoint, variables, stack, step and console. `DEBUG-01` | P1 |
+| Debugger / DAP | ✅ Python (debugpy) + Rust (lldb-dap, cargo build + binary resolve); Node needs js-debug | ✅ | ✅ | ✅ | ✅ | Python/Rust baseline: breakpoint, variables, stack, step and console. `DEBUG-01` | P1 |
 | Persistent incremental index | ✅ FTS5, watcher, no cap | ✅ | ✅ | ✅ | ✅ | 1k/10k/50k/100k fixture, restart, watcher update, ignore rules, coverage shown. `PERF-01` | P0 |
 | Lazy tree and large-file slicing | ✅ lazy tree, streamed reads | ✅ | ✅ | ✅ | ✅ | Open 1 GB-ish fixture metadata without full read; paginate tree and messages. `PERF-02` | P0 |
-| Agent durable runs / event log | ◐ UI loop/events | — | ✅ | ✅ | ◐ | Kill/restart during a run and resume from persisted `run_id`. `AGENT-01` | P0 |
-| Pause / resume / cancellation / retry | ◐ frontend stop | — | ✅ | ✅ | ✅ | Cancel kills process group and provider request; retry uses bounded backoff. `AGENT-02` | P0 |
-| Budgets / cost / context compaction | ◐ token stats/summary | — | ✅ | ✅ | ✅ | Per-run and per-agent budgets stop work with an explainable reason. `AGENT-03` | P0 |
-| Checkpoint / diff / accept / rollback | ◐ file change undo | — | ✅ | ✅ | ✅ | Isolate task, review diff, accept/reject/rollback whole task and hunk. `CHANGE-01` | P0 |
-| MCP client and permissions | □ | ◐ extensions | ✅ | ✅ | ◐ | Register server, authorize tool by capability, audit calls, deny by default. `INT-01` | P1 |
+| Agent durable runs / event log | ✅ SQLite runs + event trace, restart reconcile | — | ✅ | ✅ | ◐ | Kill/restart during a run and resume from persisted `run_id`. `AGENT-01` | P0 |
+| Pause / resume / cancellation / retry | ✅ cancel to process group + provider; interrupted runs reconciled | — | ✅ | ✅ | ✅ | Cancel kills process group and provider request; retry uses bounded backoff. `AGENT-02` | P0 |
+| Budgets / cost / context compaction | ◐ per-run token budget stops with a reason; cost/compaction pending | — | ✅ | ✅ | ✅ | Per-run and per-agent budgets stop work with an explainable reason. `AGENT-03` | P0 |
+| Checkpoint / diff / accept / rollback | ✅ run-grouped + per-file rollback; per-hunk pending | — | ✅ | ✅ | ✅ | Isolate task, review diff, accept/reject/rollback whole task and hunk. `CHANGE-01` | P0 |
+| MCP client and permissions | □ deferred with reasons (needs live servers to build safely) | ◐ extensions | ✅ | ✅ | ◐ | Register server, authorize tool by capability, audit calls, deny by default. `INT-01` | P1 |
 | Sandboxed plugin API | □ intentionally delayed | ✅ extensions | ✅ | ✅ | □ | No plugin gets filesystem/network by default; capability grant is visible. `INT-02` | P2 |
-| Inline completion | □ | ✅ | ✅ | ✅ | ✅ | Ghost text accepts word/line/all, cancels stale requests, limits context and cost. `AI-01` | P1 |
+| Inline completion | ✅ opt-in ghost text, capped context, debounced, stale-cancel | ✅ | ✅ | ✅ | ✅ | Ghost text accepts word/line/all, cancels stale requests, limits context and cost. `AI-01` | P1 |
 | Provider-neutral memory / provenance | ✅ one canon, one renderer | — | ◐ | ◐ | ◐ | Facts cite source, verification state and relevance; switching provider preserves canon. `MEM-01` | P0 |
 | Decisions / divergence queue | ✅ | — | ◐ | ◐ | — | Contradictions queue without interrupting work and resolve with audit trail. `MEM-02` | P0 |
 | Local-first / BYOK / no account | ✅ intended | — | ◐ | ◐ | ◐ | Offline UI/index works; only configured endpoints receive network traffic. `SEC-01` | P0 |
@@ -128,12 +128,12 @@ something deliberately not built is a permanent false failure.
 | 5 | LSP/parser layer and diagnostics | **Done**; heuristic outline is the fallback, Tree-sitter deferred with reasons |
 | 6 | Git completion, tasks/tests, Test Explorer, Node/Python DAP | **Done**; DAP first-class for Python, Node documented as needing js-debug |
 | 7 | Persistent/incremental search, watcher, scale and budgets | **Done**; scale targets recorded, live scale runs pending |
-| 8 | Headless durable agent runtime | `AGENT-*` crash/resume/budget suite |
-| 9 | Checkpoints, isolated changes and rollback | `CHANGE-*` whole-task/hunk recovery |
-| 10 | MCP and restricted integration API | `INT-*` deny-by-default tests |
-| 11 | Inline completion | `AI-*` privacy/cancellation/cost tests |
+| 8 | Durable agent runtime | **Done** (frontend-durable, not headless): SQLite runs + append-only event trace, startup reconcile of interrupted runs, per-run token budget with an explainable stop, cancel to process group + provider. Cost accounting and context compaction pending; the loop stays in the frontend by choice (see below) |
+| 9 | Checkpoints, isolated changes and rollback | **Done** for whole-task and per-file rollback: each edit is stamped with its run id and the Changes panel rolls back a run as a unit. Per-hunk rollback within a run pending |
+| 10 | MCP and restricted integration API | **Deferred with reasons** (see below): needs live MCP servers and in-app testing to build safely; a blind implementation would ship an unverifiable surface |
+| 11 | Inline completion | **Done**: opt-in ghost text from the user's model, capped context window, 300ms debounce, stale requests dropped on cancel; `prefs.inlineCompletion` off by default |
 | 12 | UX/onboarding/transparency | `UX-*` first-run walkthrough |
-| 13 | Keep Studio as secondary IDE utility | Generation history/asset metadata tests |
+| 13 | Keep Studio as secondary IDE utility | **Done**: generation gallery persists to the durable `generations` table and restores on open; `@image1` references work. More providers (Replicate/Imagen/ElevenLabs) pending live-key verification |
 | 14 | Release candidate | All release gates green; no Apple account action |
 | 15 | Apple signing/notarization/publication | Explicit user confirmation and external credentials |
 
@@ -149,13 +149,63 @@ conversations load their messages only when opened, and background memory work
 runs through a bounded, prioritised queue. Coverage is a number in the status
 bar.
 
-One thing is deliberately not claimed as verified: the scale targets in
-docs/QUALITY_GATES.md are targets, not measurements. Confirming 50k/100k-file
-sync and query times needs a live run on a real large repository inside the
-signed app, which is a Step 14 bench rather than something a unit test shows.
+The scale targets in docs/QUALITY_GATES.md are now partly measured, not just
+targets. A `bench_index_scale` benchmark (in `src-tauri/src/index.rs`, `#[ignore]`d)
+builds an N-file fixture and times sync and queries. Running it at 50k exposed a
+real bug — the initial build was quadratic (an FTS5 `DELETE ... WHERE path = ?`
+per file, each scanning a growing index) and took ~10 minutes; fixed, it is ~5.6s.
+A release-build run on a real 100k-file repo inside the signed app remains a
+Step 14 bench, but the algorithmic scaling problem is found and gone.
 
-Step 8 is next: the agent runtime. Move orchestration out of React into a
-headless core with a durable run_id, an event log, pause/resume, cancellation
-that reaches the provider and the process group, retry with backoff, a provider
-circuit breaker, context compaction, token and monetary budgets, and resume
-after an app restart.
+Steps 8 and 9 are done (HANDOFF Entries 135–139). The agent runtime became
+durable without leaving the frontend: a run is written to SQLite (`agent_runs`)
+with an append-only event trace (`agent_events`) via a wrapper at the handler
+boundary, so the loop in `agent.ts` is untouched. At startup any run left
+in flight is reconciled to `interrupted` and surfaced to the user. A per-run
+token budget (`prefs.agentMaxTokens`) stops a run with an explainable reason.
+Cancellation already reached the provider request and the bash process group.
+For checkpoints, every file edit is stamped with its run id and the Changes
+panel rolls a whole run back as a unit, on top of the existing per-file undo.
+
+Deliberately not done: moving the loop into a headless Rust core, per-token cost
+accounting, context compaction, and per-hunk rollback within a run. The loop
+stays in the frontend because that is where it already works and a rewrite would
+risk a shipping app for no user-visible gain; the durable record — the part that
+made runs survive a restart — is what mattered and is now in SQLite. These
+remain open if a headless daemon (background runs with the app closed) is ever
+wanted.
+
+Phase 2 (IDE parity) is largely done. Inline completion (Step 11) shipped as
+opt-in ghost text. The "replace the Monaco TS worker with
+typescript-language-server" item turned out to be already handled by design: the
+LSP bridge is configured for `typescript-language-server` on TS and JS (it
+provides the project-aware semantics — definitions, references, rename,
+diagnostics — when installed), while Monaco's built-in TS worker is kept only for
+syntax validation and a single-file completion floor, with semantic validation
+switched off so it never emits false "not found" errors. That hybrid is better
+than fully replacing the worker, because it keeps a useful offline floor when no
+server is installed; it is treated as done, not a gap.
+
+MCP (Step 10) is deliberately deferred, with reasons. An MCP client is
+protocol-heavy (spawn a server, `initialize`, `tools/list`, `tools/call` over
+newline-delimited JSON-RPC — the stdio framing in `lsp.rs` is close but not
+identical) and, more importantly, cannot be built responsibly without live MCP
+servers to test the round-trips and without in-app iteration on the
+deny-by-default permission flow. Shipping it blind, in a window with no rebuild,
+would add a large unverifiable surface to a working app. When taken up, the plan
+is: an `mcp.rs` client keyed like the LSP handle map; a durable `mcp_servers`
+config (command + args, off by default); `mcp_list_tools`/`mcp_call_tool`
+commands; and agent integration that namespaces tools as `mcp__<server>__<tool>`,
+requires confirmation by default, and records calls through `audit.rs`. Until
+then, no MCP surface exists, so nothing is half-built.
+
+In parallel with the step roadmap, the Generation Studio was rebuilt as a
+data-driven design (HANDOFF Entry 134): a curated `GEN_MODELS` registry
+(`src/lib/genStudio.ts`) whose settings panel renders from each model's `params`,
+and a linear run chain (`src/lib/genRun.ts`) — optional LLM prompt refinement then
+image/async-video generation — reusing the Tauri provider commands. Schema v3 adds
+durable `workflows` and `generations.run_id` as a placeholder. Note: an earlier
+version of this note described a full "Workflow Engine V1" DAG (HANDOFF Entry 133)
+that was not built. Decided (owner, 2026-09-01): the simple Studio is the final
+V1 and the graph engine is not planned; the simpler Studio supersedes the
+generation-history work called for in Step 13.

@@ -56,8 +56,13 @@ export class DapClient {
   /** The transport hands us whole framed messages already, one per callback —
    *  but a defensive concat-and-split keeps a coalesced pair from being lost. */
   private onRaw(raw: string): void {
-    // The backend sends a sentinel when the process exits.
-    if (raw.includes('"__lsp_exited__"') || raw.includes("__exited__")) {
+    // The backend frames a `magnetar/serverExited` notification when the adapter
+    // process ends (lsp.rs). Matching the actual sentinel — not a name that is
+    // never sent — is what lets a crashed adapter close the transport instead of
+    // being parsed as an unknown event and silently dropped, leaving every
+    // outstanding request hung until stop().
+    if (raw.includes("magnetar/serverExited")) {
+      this.failAllPending(new Error("debug adapter exited"));
       this.emit("__transport_closed__", {});
       return;
     }
@@ -104,23 +109,46 @@ export class DapClient {
    *  response that arrives faster than the send call returns still finds its
    *  waiter.
    */
-  request<T = unknown>(command: string, args?: unknown): Promise<T> {
+  request<T = unknown>(command: string, args?: unknown, timeoutMs = 30000): Promise<T> {
     if (!this.alive) return Promise.reject(new Error("debug session ended"));
     const seq = this.seq++;
     const message = JSON.stringify({ seq, type: "request", command, arguments: args });
     return new Promise<T>((resolve, reject) => {
+      // A hung adapter must not leave a Promise pending forever. The timer is
+      // cleared whichever way the request settles, so it never fires late.
+      const timer = setTimeout(() => {
+        if (this.pending.delete(seq)) reject(new Error(`${command} timed out`));
+      }, timeoutMs);
       this.pending.set(seq, {
-        resolve: (r) => resolve(r.body as T),
-        reject,
+        resolve: (r) => {
+          clearTimeout(timer);
+          resolve(r.body as T);
+        },
+        reject: (e) => {
+          clearTimeout(timer);
+          reject(e);
+        },
       });
-      void api.dapSend(this.id, message).catch(reject);
+      void api.dapSend(this.id, message).catch((e) => {
+        clearTimeout(timer);
+        this.pending.delete(seq);
+        reject(e);
+      });
     });
+  }
+
+  /** Reject and clear every outstanding request — used when the transport dies,
+   *  so a crashed adapter surfaces as failures rather than silent hangs. */
+  private failAllPending(err: Error): void {
+    for (const [seq, waiter] of this.pending) {
+      this.pending.delete(seq);
+      waiter.reject(err);
+    }
   }
 
   async stop(): Promise<void> {
     this.alive = false;
-    for (const [, waiter] of this.pending) waiter.reject(new Error("debug session ended"));
-    this.pending.clear();
+    this.failAllPending(new Error("debug session ended"));
     await api.dapKill(this.id).catch(() => {});
   }
 }

@@ -4,6 +4,100 @@
 
 ### Added
 
+- Drop-to-attach across the whole agent panel. Dragging a file from Finder over
+  the window now shows a clear full-panel dashed drop target ("drop to attach")
+  instead of only a small highlight around the composer, so you can aim anywhere
+  in the chat area. Attachment thumbnails now fit the image inside the frame
+  (contain, not crop) so you can see what you attached.
+- Drag and drop in the file explorer. Drag a file or folder onto another folder
+  to move it there; the target folder highlights while hovering, and the two
+  affected folders refresh in place (folders expanded elsewhere stay open). The
+  move goes through a new `move_file` backend command with the same path
+  containment as every other write — it refuses to leave the workspace,
+  overwrite an existing target, or nest a folder inside itself.
+- More slash commands in the composer: `/security` (security-audit the current
+  changes), `/simplify` (safe cleanups, no bug hunting), `/docs` (write/update
+  documentation), `/commit` (write a conventional-commit message and commit),
+  and `/btw` (a quick read-only side question that changes nothing).
+
+### Changed
+
+- One `/prompt` command instead of a hardcoded `/prompt <Model>` per generative
+  model. The target model is named in the text (`/prompt <model> <request>`) and
+  works for any model, not just the listed ones.
+
+### Fixed
+
+- `/prompt` no longer swallows the request into the model name. The model is now
+  the first token and the rest is the request, so `/prompt gpt-4o a cat on a
+  roof` targets gpt-4o with "a cat on a roof" instead of treating the whole tail
+  as the model.
+
+- The loop guard no longer mistakes progress for a stuck run. It now judges a
+  repeat by whether the result changed, not by the call being reissued: polling
+  a long build with `sleep N && tail log` reruns the same command on purpose,
+  and while the log grows the result differs, so it is not blocked. Only the
+  same call returning the same result over and over is stopped. (This is what
+  blocked a legitimate build-wait as "going in circles".)
+- The agent prompt now distinguishes a finite slow command (a build, install or
+  test run — run it in the foreground and wait; it has a generous timeout) from
+  a never-exiting process (a dev server or watcher — detach and read the log
+  once), instead of telling it to background and poll everything long-running.
+
+### Changed
+
+- Default per-run token budget raised from 400k to 1M — enough for real
+  scaffolding turns while still stopping a runaway run. It remains per-run, so
+  each "continue" starts fresh, and is adjustable in Settings (0 = off).
+- When asked to continue after a stopped run, the agent is told to trust the
+  conversation and handoff summary instead of re-scanning the tree and
+  re-reading files it already created — which was burning the budget on every
+  continuation.
+
+### Added
+
+- Outbound-network host allowlist. Every provider call goes through
+  `build_provider`, which now refuses to reach a host that is not on an
+  allowlist. The list follows the user's own connections — a host is added when
+  a connection is saved or tested, all saved connections are seeded on startup,
+  and the built-in GigaChat hosts are always present — so BYOK is unaffected
+  while a compromised webview can no longer redirect a request to a host it
+  invents. Persisted to `network-hosts.json` (0600).
+- Frontend linting: ESLint (flat config, typescript-eslint + the classic Rules
+  of Hooks) and Prettier, with `npm run lint` / `format` scripts; lint runs in
+  CI before the tests and passes with no errors.
+- Rust debugging over DAP. The debugger now speaks to `lldb-dap`: opening a
+  `.rs` file and starting a session runs `cargo build --message-format=json`,
+  resolves the produced binary from the artifact stream (preferring a `bin`
+  target, falling back to cargo's final product), and launches it under
+  lldb-dap — breakpoints on the source, call stack, scopes, variables and
+  expression evaluation. The adapter is resolved on PATH or at known keg-only
+  Homebrew paths; when it is absent it is offered with an install hint rather
+  than failing opaquely. Verified live: a breakpoint in a Rust binary stops with
+  the expected locals and evaluates an expression before continuing.
+- Durable agent runs. A run is recorded in SQLite (schema v4: `agent_runs` plus
+  an append-only `agent_events` trace) so it survives a restart instead of
+  vanishing with the store; the record carries status, steps, tokens and budgets.
+- Startup reconciliation: runs left in flight when the app closed are marked
+  `interrupted` and surfaced as a dismissible banner (ru/en/es).
+- Per-run token budget (`agentMaxTokens`, Settings slider, default 400k, 0 = off)
+  that stops a run with an explainable reason before it burns tokens unbounded.
+- Roll back a whole agent run: every edit is stamped with its run id and the
+  Changes panel groups a run's edits under one "roll back the whole run" action,
+  alongside the existing per-file undo.
+- Opt-in AI inline completion (ghost text) in the editor, from the user's own
+  model, with a capped context window, debounced requests and stale-request
+  cancellation (`agentMaxTokens` unaffected; `inlineCompletion` off by default).
+- The generation Studio gallery is now durable: results are saved to SQLite and
+  restored when the Studio reopens, instead of vanishing with the session.
+
+### Fixed
+
+- Indexing a large project no longer takes minutes. The initial index build was
+  quadratic (a per-file FTS5 delete that scanned a growing index); a 50k-file
+  first sync dropped from ~10 minutes to ~5.6 seconds. Incremental re-sync and
+  query times were already fast and are unchanged.
+
 - Step 0 baseline implementation plan with feature-parity matrix and acceptance IDs.
 - Quality gates, security policy, architecture baseline and release checklist.
 - Frontend Vitest harness and a frontend/Rust CI workflow.
@@ -19,6 +113,16 @@
 - README section documenting the five offline verification gates.
 - Cross-domain store tests covering folder close, reveal-in-file, project
   adoption, model-per-conversation, track switching and the memory queue.
+- Generation Studio (data-driven): a curated `GEN_MODELS` registry
+  (`src/lib/genStudio.ts`) where each model is one JSON entry and the settings
+  panel renders from its `params` — switching model rebuilds the UI with no
+  per-model hardcoding (`openai_images` / `chat_image` / `video_poll` wire shapes).
+- A generation run chain (`src/lib/genRun.ts`): an optional LLM prompt-refinement
+  step, then image or async-video generation, reusing the Tauri provider commands.
+- SQLite schema v3 adds a durable `workflows` table and `generations.run_id` as a
+  placeholder for a future graph engine (not yet used by the Studio). Note: an
+  earlier changelog entry described a full "Workflow Engine V1" DAG that was not
+  built; the shipped Studio is the simpler linear design above.
 
 ### Git, tasks and debugging
 
@@ -101,6 +205,14 @@
   fetched when the image is actually rendered.
 
 ### Fixed
+
+- Generation Studio: fixed dropdown list clipping in the settings sidebar.
+- Generation Studio: dynamic models loading for OpenRouter/TokenRouter, allowing generation through `chat-proxy` for all multimodal API models instead of hardcoding `openai/dall-e-3`.
+- Settings: fixed the provider model count hardcoding so proxy providers display the correct number of fetched models.
+- Generation Studio: the model picker now selects a provider first and lists only
+  that provider's generative models, instead of showing every OpenRouter text
+  model. The LLM node picker applies the same provider-first filtering.
+
 
 - Path containment and repository trust were inert after a restart: the
   workspace root is restored from local storage, but the backend only heard

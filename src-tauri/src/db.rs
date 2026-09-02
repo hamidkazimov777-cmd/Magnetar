@@ -11,7 +11,7 @@ static DB: OnceCell<Mutex<Connection>> = OnceCell::new();
 /// Schema version recorded in `PRAGMA user_version`. Bump this and add a step
 /// in `migrate` whenever the schema changes — never append to the old
 /// best-effort `ALTER TABLE` list.
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 4;
 
 pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
     std::fs::create_dir_all(app_dir).map_err(|e| e.to_string())?;
@@ -219,9 +219,71 @@ pub fn init(app_dir: &std::path::Path) -> Result<(), String> {
             name       TEXT NOT NULL,
             prompt     TEXT,
             model      TEXT,
+            run_id     TEXT,
             created_at INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_generations_created ON generations(created_at);
+
+        -- Workflows: user-built generation pipelines. The definition is a JSON
+        -- document (nodes + edges) kept in one column — a V1 workflow is small
+        -- and edited wholesale, so normalising it into rows now would add schema
+        -- without a reader for it. Provider-neutral: nodes hold connection/model
+        -- references, never keys. `project_id` is optional and deliberately not a
+        -- foreign key — a workflow is a reusable personal asset, and deleting a
+        -- project must not delete it.
+        CREATE TABLE IF NOT EXISTS workflows (
+            id          TEXT PRIMARY KEY,
+            title       TEXT NOT NULL,
+            version     INTEGER NOT NULL DEFAULT 1,
+            project_id  TEXT,
+            definition  TEXT NOT NULL,
+            created_at  INTEGER NOT NULL,
+            updated_at  INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_workflows_updated ON workflows(updated_at);
+
+        -- Agent runs: the durable record of one agent run so work survives a
+        -- restart. The live loop still runs in the frontend; this table is the
+        -- canon of what a run is, what it spent, and how it ended. `status` is
+        -- one of running | paused | done | cancelled | error. Budgets are a
+        -- ceiling the run may not exceed (NULL = no ceiling). `project_id` is
+        -- deliberately not a foreign key — a run's history should outlive a
+        -- project being closed.
+        CREATE TABLE IF NOT EXISTS agent_runs (
+            id            TEXT PRIMARY KEY,
+            session_id    TEXT,
+            project_id    TEXT,
+            connection_id TEXT,
+            model         TEXT,
+            status        TEXT NOT NULL,
+            started_at    INTEGER NOT NULL,
+            updated_at    INTEGER NOT NULL,
+            ended_at      INTEGER,
+            steps         INTEGER NOT NULL DEFAULT 0,
+            tokens_in     INTEGER NOT NULL DEFAULT 0,
+            tokens_out    INTEGER NOT NULL DEFAULT 0,
+            cost_usd      REAL NOT NULL DEFAULT 0,
+            budget_steps  INTEGER,
+            budget_usd    REAL,
+            error         TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_agent_runs_session ON agent_runs(session_id, started_at);
+        CREATE INDEX IF NOT EXISTS idx_agent_runs_status ON agent_runs(status);
+
+        -- Append-only event log for a run: the ordered record of model turns,
+        -- tool calls and their results. Replaying it in `seq` order reconstructs
+        -- a run's trace after a restart. `payload` is an event-specific JSON blob.
+        -- `kind` is one of model_turn | tool_call | tool_result | text | error |
+        -- checkpoint. Rows are deleted with their run.
+        CREATE TABLE IF NOT EXISTS agent_events (
+            id         TEXT PRIMARY KEY,
+            run_id     TEXT NOT NULL,
+            seq        INTEGER NOT NULL,
+            kind       TEXT NOT NULL,
+            payload    TEXT,
+            created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_agent_events_run ON agent_events(run_id, seq);
         "#,
     )
     .map_err(|e| e.to_string())?;
@@ -244,6 +306,8 @@ fn migrate(conn: &Connection) -> Result<(), String> {
         match v {
             1 => migrate_v1(conn)?,
             2 => migrate_v2(conn)?,
+            3 => migrate_v3(conn)?,
+            4 => migrate_v4(conn)?,
             other => return Err(format!("unknown schema version {other}")),
         }
         conn.execute_batch(&format!("PRAGMA user_version = {v}"))
@@ -375,6 +439,85 @@ fn rebuild_project_tables(conn: &Connection) -> Result<(), String> {
     }
 
     tx.commit().map_err(|e| e.to_string())
+}
+
+/// v3: the workflow engine lands as a durable data model.
+///
+/// The `workflows` table is created by `init`'s idempotent schema block, which
+/// runs on every launch, so an existing database gets it without a migration
+/// step. What a migration must do is add `run_id` to the generation gallery —
+/// `CREATE TABLE IF NOT EXISTS` cannot add a column to a table that already
+/// exists. Guarded on existence because a synthetic pre-v1 test database has no
+/// `generations` table yet.
+fn migrate_v3(conn: &Connection) -> Result<(), String> {
+    let exists: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='generations'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    if exists > 0 {
+        add_column(conn, "ALTER TABLE generations ADD COLUMN run_id TEXT")?;
+    }
+    Ok(())
+}
+
+/// v4: durable agent runs land as a data model.
+///
+/// The `agent_runs` and `agent_events` tables are created by `init`'s idempotent
+/// schema block, which runs on every launch, so an existing database gets them
+/// without a migration step. They are created here too so the step is a truthful,
+/// self-contained record rather than an empty version bump.
+fn migrate_v4(conn: &Connection) -> Result<(), String> {
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS agent_runs (
+            id            TEXT PRIMARY KEY,
+            session_id    TEXT,
+            project_id    TEXT,
+            connection_id TEXT,
+            model         TEXT,
+            status        TEXT NOT NULL,
+            started_at    INTEGER NOT NULL,
+            updated_at    INTEGER NOT NULL,
+            ended_at      INTEGER,
+            steps         INTEGER NOT NULL DEFAULT 0,
+            tokens_in     INTEGER NOT NULL DEFAULT 0,
+            tokens_out    INTEGER NOT NULL DEFAULT 0,
+            cost_usd      REAL NOT NULL DEFAULT 0,
+            budget_steps  INTEGER,
+            budget_usd    REAL,
+            error         TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_agent_runs_session ON agent_runs(session_id, started_at);
+        CREATE INDEX IF NOT EXISTS idx_agent_runs_status ON agent_runs(status);
+        CREATE TABLE IF NOT EXISTS agent_events (
+            id         TEXT PRIMARY KEY,
+            run_id     TEXT NOT NULL,
+            seq        INTEGER NOT NULL,
+            kind       TEXT NOT NULL,
+            payload    TEXT,
+            created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_agent_events_run ON agent_events(run_id, seq);
+        "#,
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// Mark runs left in flight as interrupted. Called at startup: nothing can still
+/// be running, because the loop lived in a process that is gone. This keeps the
+/// durable record honest — a killed app no longer leaves runs forever "running"
+/// — and lets the UI show what was interrupted. Returns how many were fixed.
+pub fn reconcile_agent_runs(conn: &Connection, now: i64) -> Result<usize, String> {
+    conn.execute(
+        "UPDATE agent_runs SET status = 'interrupted', updated_at = ?1, ended_at = ?1, \
+           error = COALESCE(error, 'App was closed while this run was in flight') \
+         WHERE status IN ('running', 'paused')",
+        [now],
+    )
+    .map_err(|e| e.to_string())
 }
 
 fn migrate_v1(conn: &Connection) -> Result<(), String> {
@@ -616,6 +759,102 @@ mod tests {
             "#,
         )
         .unwrap();
+    }
+
+    #[test]
+    fn v3_links_the_generation_gallery_to_runs() {
+        let conn = Connection::open_in_memory().unwrap();
+        old_schema(&conn);
+        // A database from before the workflow engine that already has the
+        // generation gallery, but not the run linkage.
+        conn.execute_batch(
+            "CREATE TABLE generations (
+                id TEXT PRIMARY KEY,
+                kind TEXT NOT NULL,
+                src TEXT NOT NULL,
+                name TEXT NOT NULL,
+                prompt TEXT,
+                model TEXT,
+                created_at INTEGER NOT NULL
+            );",
+        )
+        .unwrap();
+
+        migrate(&conn).unwrap();
+
+        let cols = column_names(&conn, "generations");
+        assert!(cols.contains(&"run_id".to_string()));
+    }
+
+    #[test]
+    fn v4_creates_durable_agent_run_tables() {
+        let conn = Connection::open_in_memory().unwrap();
+        old_schema(&conn);
+        migrate(&conn).unwrap();
+
+        // A run and one event round-trip through the durable tables.
+        conn.execute_batch(
+            "INSERT INTO agent_runs (id, session_id, status, started_at, updated_at, steps)
+                VALUES ('r1', 's1', 'running', 10, 10, 0);
+             INSERT INTO agent_events (id, run_id, seq, kind, payload, created_at)
+                VALUES ('e1', 'r1', 0, 'model_turn', '{\"text\":\"hi\"}', 11);",
+        )
+        .unwrap();
+
+        let status: String = conn
+            .query_row("SELECT status FROM agent_runs WHERE id='r1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(status, "running");
+
+        let kind: String = conn
+            .query_row(
+                "SELECT kind FROM agent_events WHERE run_id='r1' ORDER BY seq",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(kind, "model_turn");
+    }
+
+    #[test]
+    fn reconcile_marks_stranded_runs_interrupted() {
+        let conn = Connection::open_in_memory().unwrap();
+        old_schema(&conn);
+        migrate(&conn).unwrap();
+
+        conn.execute_batch(
+            "INSERT INTO agent_runs (id, status, started_at, updated_at) VALUES ('a','running',1,1);
+             INSERT INTO agent_runs (id, status, started_at, updated_at) VALUES ('b','paused',1,1);
+             INSERT INTO agent_runs (id, status, started_at, updated_at, error) VALUES ('c','running',1,1,'boom');
+             INSERT INTO agent_runs (id, status, started_at, updated_at) VALUES ('d','done',1,1);",
+        )
+        .unwrap();
+
+        let fixed = reconcile_agent_runs(&conn, 99).unwrap();
+        assert_eq!(fixed, 3); // a, b, c — not the already-done d
+
+        let statuses: Vec<(String, String)> = {
+            let mut stmt = conn
+                .prepare("SELECT id, status FROM agent_runs ORDER BY id")
+                .unwrap();
+            let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+            rows.map(|x| x.unwrap()).collect()
+        };
+        assert_eq!(
+            statuses,
+            vec![
+                ("a".into(), "interrupted".into()),
+                ("b".into(), "interrupted".into()),
+                ("c".into(), "interrupted".into()),
+                ("d".into(), "done".into()),
+            ]
+        );
+
+        // An existing error message is preserved, not clobbered.
+        let err_c: String = conn
+            .query_row("SELECT error FROM agent_runs WHERE id='c'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(err_c, "boom");
     }
 
     #[test]
