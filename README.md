@@ -262,12 +262,12 @@ breaks their terms of service. The manual context bridge exists instead.
 
 ## Documentation
 
-- [OVERVIEW.md](OVERVIEW.md) — the full account of the product: philosophy, how
-  memory works, the agent, providers, data, and why each decision was made
-  (Russian)
-- [HANDOFF.md](HANDOFF.md) — the full development journal, entry by entry
-- [NEXT_TASK_FILES.md](NEXT_TASK_FILES.md) — current state, rules and file map
-- [TEST_SCENARIO.md](TEST_SCENARIO.md) — manual acceptance walkthrough
+- [docs/OVERVIEW.md](docs/OVERVIEW.md) — the full account of the product:
+  philosophy, how memory works, the agent, providers, data, and why each
+  decision was made (Russian)
+- [docs/internal/HANDOFF.md](docs/internal/HANDOFF.md) — the full development journal, entry by entry
+- [docs/internal/NEXT_TASK_FILES.md](docs/internal/NEXT_TASK_FILES.md) — current state, rules and file map
+- [docs/internal/TEST_SCENARIO.md](docs/internal/TEST_SCENARIO.md) — manual acceptance walkthrough
 - [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) — current audit,
   parity matrix, acceptance criteria and ordered delivery steps
 - [docs/QUALITY_GATES.md](docs/QUALITY_GATES.md) — required checks and budgets
